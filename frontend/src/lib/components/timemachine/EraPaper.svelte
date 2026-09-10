@@ -4,6 +4,7 @@
      One component, two languages — the layout of a broadsheet does not change with the
      language, only the words on it do. -->
 <script lang="ts">
+	import MathText from '$lib/components/MathText.svelte';
 	import { api, qs } from '$lib/api';
 	import type { Page, PostSummary } from '$lib/types';
 	import type { TravelDate } from './eras';
@@ -189,7 +190,7 @@
 								>{/if}
 						</h3>
 						<p class="art__body" class:art__body--first={i === 0}>
-							{post.summary || (lang === 'de' ? 'Näheres in der Sache selbst.' : 'Rzecz sama mówi za siebie.')}
+							{#if post.summary}<MathText text={post.summary} />{:else}{lang === 'de' ? 'Näheres in der Sache selbst.' : 'Rzecz sama mówi za siebie.'}{/if}
 						</p>
 					</article>
 				{/each}

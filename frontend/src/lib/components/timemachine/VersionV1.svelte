@@ -3,6 +3,7 @@
      edited — a new one is added alongside it, so a date from before the redesign
      keeps rendering the look the site actually had that day. -->
 <script lang="ts">
+	import MathText from '$lib/components/MathText.svelte';
 	import { api, qs } from '$lib/api';
 	import type { Page, PostSummary } from '$lib/types';
 	import { yearLabel } from '$lib/types';
@@ -61,7 +62,7 @@
 		{#each posts as post (post.id)}
 			<div class="item">
 				<h3 class="item__title"><a href="/wpis/{post.slug}">{post.title}</a></h3>
-				{#if post.summary}<div class="item__text">{post.summary}</div>{/if}
+				{#if post.summary}<div class="item__text"><MathText text={post.summary} /></div>{/if}
 				<div class="item__meta">{yearLabel(post)} · {post.category_name}</div>
 			</div>
 		{/each}

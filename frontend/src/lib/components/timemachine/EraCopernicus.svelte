@@ -2,6 +2,7 @@
      the period would actually have produced — a sheet of handwritten notes in Latin,
      with the diagram Copernicus is remembered for drawn in the margin of his own copy. -->
 <script lang="ts">
+	import MathText from '$lib/components/MathText.svelte';
 	import { api, qs } from '$lib/api';
 	import type { Page, PostSummary } from '$lib/types';
 	import { toRoman, type TravelDate } from './eras';
@@ -89,7 +90,7 @@
 							<li style="--tilt: {(i % 2 === 0 ? 0.4 : -0.3).toFixed(2)}deg">
 								<a href="/wpis/{post.slug}">{post.title}</a>
 								<span class="tongue">(lingua polonica)</span>
-								{#if post.summary}<span class="gloss"> — {post.summary}</span>{/if}
+								{#if post.summary}<span class="gloss"> — <MathText text={post.summary} /></span>{/if}
 							</li>
 						{/each}
 					</ol>
