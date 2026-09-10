@@ -1,11 +1,19 @@
 <script lang="ts">
-	import favicon from '$lib/assets/favicon.svg';
+	import '../app.css';
+	import { onMount } from 'svelte';
+	import Header from '$lib/components/Header.svelte';
+	import Footer from '$lib/components/Footer.svelte';
+	import { auth } from '$lib/auth.svelte';
 
 	let { children } = $props();
+
+	onMount(() => {
+		auth.init();
+	});
 </script>
 
-<svelte:head>
-	<link rel="icon" href={favicon} />
-</svelte:head>
-
-{@render children()}
+<Header />
+<main class="container page">
+	{@render children()}
+</main>
+<Footer />
