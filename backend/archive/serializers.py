@@ -18,9 +18,24 @@ MATH_RE = re.compile(r'\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$[^$\
 
 
 def auto_summary(body, fmt, limit=200):
-    """A one-line teaser from the body when the author wrote none: maths dropped (raw
-    `$\\int…$` is noise in a list), LaTeX/Markdown syntax stripped, clipped at a word."""
-    s = MATH_RE.sub(' ', body)
+    """A one-line teaser from the body when the author wrote none: maths KEPT as `$…$`
+    (summaries are typeset wherever they show, MathText.svelte), display maths made inline,
+    LaTeX/Markdown syntax stripped outside maths, clipped at a word — never inside a formula."""
+    s = re.sub(r'\$\$([\s\S]*?)\$\$|\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)',
+               lambda m: ' $' + (m.group(1) or m.group(2) or m.group(3) or '').strip() + '$ ', body)
+    parts = re.split(r'(\$[^$\n]*\$)', s)  # odd indexes are maths, left untouched
+    s = ''.join(part if i % 2 else _strip_syntax(part, fmt) for i, part in enumerate(parts))
+    s = re.sub(r'\s+', ' ', s).strip()
+    s = re.sub(r'\s+([.,;:!?)])', r'\1', s)
+    if len(s) > limit:
+        cut = s[:limit]
+        if cut.count('$') % 2:  # do not cut inside a formula
+            cut = cut[:cut.rfind('$')]
+        s = (cut[:cut.rfind(' ')] if ' ' in cut else cut).rstrip() + '…'
+    return s
+
+
+def _strip_syntax(s, fmt):
     if fmt == 'latex':
         s = re.sub(r'(^|[^\\])%.*$', r'\1', s, flags=re.M)
         s = re.sub(r'\\(begin|end|documentclass|usepackage|includegraphics|label|ref)\s*(\[[^\]]*\])?\s*\{[^}]*\}', ' ', s)
@@ -31,12 +46,6 @@ def auto_summary(body, fmt, limit=200):
         s = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', s)
         s = re.sub(r'^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+)', '', s, flags=re.M)
         s = re.sub(r'`{1,3}|\*\*|__|\*|_', '', s)
-    s = re.sub(r'\s+', ' ', s).strip()
-    s = re.sub(r'\s+([.,;:!?)])', r'\1', s)
-    s = re.sub(r'\s+([.,;:!?)])', r'\1', s)
-    if len(s) > limit:
-        cut = s[:limit]
-        s = (cut[:cut.rfind(' ')] if ' ' in cut else cut).rstrip() + '…'
     return s
 
 

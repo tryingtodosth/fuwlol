@@ -151,8 +151,12 @@
 	}
 	/** Body → rough plain text, for the auto-filled summary. */
 	function plainText(src: string, fmt: Format): string {
-		// maths first: raw `$\int…$` in a one-line summary reads as noise, so it is dropped
-		let s = src.replace(/\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$[^$\n]+\$/g, ' ');
+		// maths stays (summaries are typeset by MathText); display maths becomes inline, and
+		// formulas are protected from the syntax stripping below
+		const maths: string[] = [];
+		let s = src
+			.replace(/\$\$([\s\S]*?)\$\$|\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)/g, (_m, a, b, c) => ` $${(a ?? b ?? c ?? '').trim()}$ `)
+			.replace(/\$[^$\n]+\$/g, (m) => { maths.push(m); return ` \u0000${maths.length - 1}\u0000 `; });
 		if (fmt === 'latex') {
 			s = s.replace(/(^|[^\\])%.*$/gm, '$1');
 			s = s.replace(/\\(begin|end)\s*\{[^}]*\}/g, ' ');
@@ -168,6 +172,7 @@
 			s = s.replace(/`{1,3}/g, '');
 			s = s.replace(/(\*\*|__|\*|_)/g, '');
 		}
+		s = s.replace(/\u0000(\d+)\u0000/g, (_m, i) => maths[Number(i)] ?? '');
 		return s.replace(/\s+/g, ' ').replace(/\s+([.,;:!?)])/g, '$1').trim();
 	}
 	function clip(s: string, n: number): string {

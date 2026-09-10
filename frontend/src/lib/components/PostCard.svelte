@@ -15,6 +15,7 @@
 </script>
 
 <script lang="ts">
+	import MathText from './MathText.svelte';
 	import { yearLabel, type PostSummary } from '$lib/types';
 
 	let { post }: { post: PostSummary } = $props();
@@ -40,7 +41,7 @@
 		</div>
 		<div class="item__text">
 			<p>
-				{post.summary || 'Bez opisu — zajrzyj do środka.'}
+				{#if post.summary}<MathText text={post.summary} />{:else}Bez opisu — zajrzyj do środka.{/if}
 				<a class="more" href="/wpis/{post.slug}">| Więcej</a>
 			</p>
 			<div class="item__meta">

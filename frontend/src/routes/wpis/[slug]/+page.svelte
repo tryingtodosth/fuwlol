@@ -8,6 +8,7 @@
 	import PostBody from '$lib/components/PostBody.svelte';
 	import Reactions from '$lib/components/Reactions.svelte';
 	import ModTools from '$lib/components/ModTools.svelte';
+	import MathText from '$lib/components/MathText.svelte';
 	import Comments from '$lib/components/Comments.svelte';
 
 	const REASONS: { value: string; label: string }[] = [
@@ -125,7 +126,7 @@
 				{post.title}
 				{#if post.featured}<span class="pill pill--amber">Wyróżnione</span>{/if}
 			</h1>
-			{#if post.summary}<p class="lead">{post.summary}</p>{/if}
+			{#if post.summary}<p class="lead"><MathText text={post.summary} /></p>{/if}
 
 			<table class="meta">
 				<tbody>

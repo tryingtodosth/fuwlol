@@ -92,10 +92,10 @@ class SubmissionTests(Base):
     def test_auto_summary_drops_maths_and_syntax(self):
         self.login(self.user)
         r = self.client.post('/api/posts/', {'title': 'X', 'category': 'memy', 'body': 'Oto **mem** i wzór $\\int_0^1 x\\,dx$. Koniec.'})
-        self.assertEqual(r.data['summary'], 'Oto mem i wzór. Koniec.')
+        self.assertEqual(r.data['summary'], 'Oto mem i wzór $\\int_0^1 x\\,dx$. Koniec.')
         r = self.client.post('/api/posts/', {'title': 'Y', 'category': 'memy', 'format': 'latex',
                                              'body': '\\section*{Zad} Policz \\[ e^x \\] \\textbf{teraz}.'})
-        self.assertEqual(r.data['summary'], 'Zad Policz teraz.')
+        self.assertEqual(r.data['summary'], 'Zad Policz $e^x$ teraz.')
         r = self.client.post('/api/posts/', {'title': 'Z', 'category': 'memy', 'body': 'x', 'summary': 'własne'})
         self.assertEqual(r.data['summary'], 'własne')
 
