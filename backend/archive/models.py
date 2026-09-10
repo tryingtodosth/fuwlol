@@ -21,8 +21,16 @@ from .validators import validate_upload
 
 
 FORMAT_CHOICES = [('text', 'Tekst / Markdown'), ('latex', 'LaTeX')]
+# 'hidden' — taken off the public page; readable by trusted users on the moderation board.
+# 'nuked'  — the nuclear option: readable by staff only. Rules live in archive/moderation.py.
 STATUS_CHOICES = [('pending', 'Czeka na moderację'), ('published', 'Opublikowany'),
-                  ('rejected', 'Odrzucony'), ('hidden', 'Ukryty')]
+                  ('rejected', 'Odrzucony'), ('hidden', 'Ukryty'), ('nuked', 'Ukryty nuklearnie')]
+# The same two tiers for a comment, on their own field: `is_removed` stays the author's
+# own deletion tombstone, `moderation` is what a trusted user or staff did to it.
+COMMENT_MODERATION_CHOICES = [('visible', 'Widoczny'), ('hidden', 'Ukryty'), ('nuked', 'Ukryty nuklearnie')]
+MODERATION_ACTION_CHOICES = [('hide', 'ukrycie'), ('restore', 'przywrócenie'), ('nuke', 'ukrycie nuklearne'),
+                             ('unnuke', 'przywrócenie po opcji nuklearnej'), ('publish', 'publikacja'),
+                             ('reject', 'odrzucenie')]
 PRECISION_CHOICES = [('exact', 'dokładnie'), ('approx', 'około'),
                      ('decade', 'dekada'), ('unknown', 'nieznany')]
 REACTION_CHOICES = [('lol', 'lol'), ('classic', 'klasyk'), ('wow', 'wow'), ('cringe', 'cringe')]
@@ -158,6 +166,7 @@ class Comment(models.Model):
     format = models.CharField(max_length=8, choices=FORMAT_CHOICES, default='text')
     body = models.TextField()
     is_removed = models.BooleanField(default=False)
+    moderation = models.CharField(max_length=8, choices=COMMENT_MODERATION_CHOICES, default='visible')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -187,3 +196,29 @@ class Report(models.Model):
     note = models.TextField(blank=True)
     resolved = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class ModerationAction(models.Model):
+    """Who did what to which post/comment, when, and why — the moderation board's audit
+    line. Every hide/restore/nuke goes through archive/moderation.py, which writes one of
+    these; the board and the detail endpoint read the newest one per target.
+
+    `previous_status` is the state the target was in before the action (a post's `status`,
+    a comment's `moderation`). It is what lets a restore put a post back where it was —
+    'published' if it was live, 'pending' if it was still in the queue — instead of
+    publishing something that was never approved."""
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              related_name='moderation_actions', on_delete=models.SET_NULL)
+    post = models.ForeignKey(Post, null=True, blank=True, related_name='actions', on_delete=models.CASCADE)
+    comment = models.ForeignKey(Comment, null=True, blank=True, related_name='actions', on_delete=models.CASCADE)
+    action = models.CharField(max_length=8, choices=MODERATION_ACTION_CHOICES)
+    reason = models.TextField(blank=True)
+    previous_status = models.CharField(max_length=10, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        target = self.post.catalog_no if self.post_id else f'komentarz #{self.comment_id}'
+        return f'{self.get_action_display()} — {target}'

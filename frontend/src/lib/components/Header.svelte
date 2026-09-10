@@ -76,7 +76,7 @@
 				</svg>
 			</a>
 			{#if auth.isAuthenticated}
-				<a class="who" href="/moje">{auth.user?.username}</a>
+				<a class="who" href="/konto">{auth.user?.username}</a>
 				<button type="button" class="linky" onclick={logout}>Wyloguj</button>
 			{:else if auth.ready}
 				<a class="who" href="/logowanie">Zaloguj się</a>
@@ -121,9 +121,13 @@
 		<li><a href="/ludzie">Ludzie</a></li>
 		<li><a href="/os-czasu">Oś czasu</a></li>
 		<li><a href="/losowe">Losowy wpis</a></li>
+		<li><a href="/czat">Czat</a></li>
 		<li><a href="/dodaj">Dodaj wpis</a></li>
 		{#if auth.isAuthenticated}
 			<li><a href="/moje">Moje wpisy</a></li>
+		{/if}
+		{#if auth.user?.is_trusted}
+			<li><a href="/tablica">Tablica</a></li>
 		{/if}
 		{#if auth.isStaff}
 			<li>

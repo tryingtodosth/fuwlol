@@ -21,6 +21,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'accounts',
     'archive',
+    'board',
 ]
 
 MIDDLEWARE = [
@@ -93,6 +94,9 @@ REST_FRAMEWORK = {
         'login': '20/min',
         'post_create': '30/hour',
         'report': '20/hour',
+        'board_anon': '20/hour',
+        'board_user': '60/hour',
+        'verify': '5/hour',  # institutional-address confirmation mails, per user
     },
 }
 
@@ -102,6 +106,21 @@ CACHES = {'default': {
     'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
     'LOCATION': os.environ.get('FUWLOL_CACHE_DIR', BASE_DIR / 'cachedata'),
 }}
+
+# Mail — the institutional-address confirmation link (accounts/views.py). Local dev prints
+# it to the console; production talks SMTP. OVH hosting mail is SMTP on ssl0.ovh.net:587
+# (STARTTLS) with a mailbox created in the OVH panel — see deploy/OVH.md; the credentials
+# come from FUWLOL_EMAIL_USER / FUWLOL_EMAIL_PASSWORD in the environment, never this file.
+EMAIL_BACKEND = os.environ.get('FUWLOL_EMAIL_BACKEND') or (
+    'django.core.mail.backends.console.EmailBackend' if DEBUG else 'django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = os.environ.get('FUWLOL_EMAIL_HOST', 'ssl0.ovh.net')
+EMAIL_PORT = int(os.environ.get('FUWLOL_EMAIL_PORT', '587'))
+EMAIL_HOST_USER = os.environ.get('FUWLOL_EMAIL_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('FUWLOL_EMAIL_PASSWORD', '')
+EMAIL_USE_TLS = os.environ.get('FUWLOL_EMAIL_USE_TLS', '1') == '1'
+DEFAULT_FROM_EMAIL = os.environ.get('FUWLOL_FROM_EMAIL', 'fuw.lol <archiwum@fuw.lol>')
+# Where the confirmation link points (the SvelteKit site, which has the /potwierdz page).
+FUWLOL_SITE_URL = os.environ.get('FUWLOL_SITE_URL', 'http://localhost:5173').rstrip('/')
 
 CORS_ALLOWED_ORIGINS = [o for o in os.environ.get(
     'FUWLOL_CORS_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',') if o]

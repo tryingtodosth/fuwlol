@@ -15,7 +15,9 @@ strony. Wygląd celowo kopiuje www.fuw.edu.pl (Tahoma 13 px, zielony pasek `#175
 ./run.sh     # API :8000, front :5173 — Ctrl+C zatrzymuje oba
 ```
 
-Konta demo: `dziekan` (moderator) i `student`, hasło `fuwlol123`. Panel Django: `/admin/`.
+Konta demo: `dziekan` (administracja), `doktorant` (zaufany) i `student`, hasło `fuwlol123`.
+Panel Django: `/admin/`. Mail weryfikacyjny w trybie deweloperskim ląduje w konsoli backendu.
+Porty zajęte? `FUWLOL_CORS_ORIGINS` + `frontend/.env` (`PUBLIC_API_BASE_URL`) sterują adresami.
 
 ## Co jest
 
@@ -30,6 +32,13 @@ Konta demo: `dziekan` (moderator) i `student`, hasło `fuwlol123`. Panel Django:
   lub LaTeX, z obrazami.
 - **Przeglądanie**: kategorie, osoby (postacie folkloru), tagi, oś czasu (lata z niepewnością:
   dokładnie / około / dekada), szukanie, losowy wpis, sygnatury `FUW-0001`.
+- **Czat** (`/czat`): stary shoutbox — pisze każdy, także bez konta; linki i wzory tak, obrazki
+  nie; 2048 znaków; długie wiadomości zwijają się po 100 znakach; kanał RSS (`/api/board/rss/`).
+- **Zaufani użytkownicy**: potwierdzenie adresu w domenie FUW/UW/PAN (`/konto`) daje wyższe
+  uprawnienia — wpisy bez kolejki, ukrywanie treści jednym kliknięciem (trafiają na **tablicę
+  moderacji** `/tablica`, widoczną dla wszystkich zaufanych) i opcja nuklearna dla treści
+  nielegalnych lub obrzydliwie obraźliwych (wtedy treść widzi już tylko administracja).
+  Szczegóły: `backend/MODERATION-API.md`.
 - **Wehikuł czasu** na stronie głównej: data z życia fuw.lol → archiwum z tego dnia
   (rejestr wersji układu strony w `versions.ts` to grunt pod „jak strona wyglądała”);
   1998–2026 → zrzut fuw.edu.pl z Internet Archive (po animacji Wielkiego Wybuchu);
@@ -44,5 +53,6 @@ frontend/  src/lib/{api,types,auth}  src/lib/render/{markdown,latex,media}  src/
 deploy/    OVH.md — jak to postawić na hostingu OVH (FTP, Passenger)
 ```
 
-Testy: `cd backend && ../.venv/bin/python manage.py test` · `cd frontend && npm run check && npm run build`.
+Testy: `cd backend && ../.venv/bin/python manage.py test` (80) · `cd frontend && npm run check && npm run build`
+· przeglądarkowy smoke test przy działających serwerach: `cd frontend && npm run e2e` (34 kroki).
 Więcej o decyzjach: `DESIGN.md`.

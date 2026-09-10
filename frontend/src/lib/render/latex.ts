@@ -13,8 +13,8 @@ let lib: Promise<typeof import('latex.js')> | null = null;
 function load() {
 	lib ??= Promise.all([
 		import('latex.js'),
-		import('latex.js/dist/css/katex.css'),
-		import('latex.js/dist/css/article.css')
+		import('katex/dist/katex.min.css'),
+		import('./latexjs.scoped.css') // LaTeX.js's own stylesheet, scoped — see scripts/scope-latexjs-css.mjs
 	]).then(([m]) => m);
 	return lib;
 }
@@ -31,8 +31,12 @@ function graphicsWidth(opts: string): string | null {
 	return null;
 }
 
-export async function renderLatex(src: string, resolve: (name: string) => string | undefined): Promise<LatexResult> {
+export async function renderLatex(src: string, resolve: (name: string) => string | undefined,
+	options: { images?: boolean } = {}): Promise<LatexResult> {
 	const { parse, HtmlGenerator } = await load();
+	if (options.images === false) {
+		src = src.replace(/\\includegraphics\s*(\[[^\]]*\])?\s*\{[^}]*\}/g, '');
+	}
 	const images: { url?: string; name: string; width: string | null }[] = [];
 	let body = src.replace(/\\includegraphics\s*(\[[^\]]*\])?\s*\{([^}]*)\}/g, (_m, opts, name) => {
 		images.push({ url: resolve(name), name, width: graphicsWidth(opts || '') });

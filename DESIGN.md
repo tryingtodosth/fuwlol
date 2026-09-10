@@ -56,6 +56,26 @@ Removal requests from the people concerned are a first-class path, not an e-mail
 Throttles: registration 10/h, login 20/min, post creation 30/h, reports 20/h, per IP, in a
 file cache shared between processes.
 
+## The trusted tier (backend/accounts/trust.py, backend/archive/moderation.py)
+Three tiers: user, **trusted** (a confirmed e-mail at an FUW/UW/PAN domain — the curated
+`TrustedDomain` table, subdomains per row, `uw.edu.pl` without), staff. Trusted users get the
+moderation *tools* without the moderation *queue*: their own posts publish at once; they can
+hide any post or comment in one click (it leaves the public page, lands on the board where
+every trusted user can read and restore it, and its reports are resolved); and they can use the
+nuclear option for illegal or disgustingly offensive content — after which only staff can read
+or restore it, and the board shows the others just a stub (catalog number, who, when, why).
+Every transition writes a `ModerationAction`. A restore returns a post to the status it had
+(a never-approved one goes back to pending, never straight to published). The rules live in
+one module and every endpoint asks it; the serializers blank what a caller may not see rather
+than trusting views to filter.
+
+## The chat (backend/board/)
+An old-school shoutbox: anyone may write, guests under a nick (never an existing username),
+2048 characters (2^11), links yes, images no, LaTeX yes (the same two renderers with images
+switched off), ≤ 5 links, a honeypot, per-IP throttles, an RSS feed. The frontend shows the
+first 100 characters of each message and folds the rest under a spoiler; the list pages by id
+(`before`/`since`) because the stream grows at the top.
+
 ## The time machine (frontend/src/lib/components/timemachine/)
 `eraFor(date)` is one pure function with these boundaries:
 - ≥ 2026-09-10 (launch): our archive as of that day (`?before=`), rendered by the layout

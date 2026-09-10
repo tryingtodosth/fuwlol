@@ -1,8 +1,14 @@
 export type Format = 'text' | 'latex';
-export type Status = 'pending' | 'published' | 'rejected' | 'hidden';
+export type Status = 'pending' | 'published' | 'rejected' | 'hidden' | 'nuked';
 export type ReactionKind = 'lol' | 'classic' | 'wow' | 'cringe';
 
-export interface User { id: number; username: string; email: string; is_staff: boolean; date_joined: string }
+export interface Affiliation { institution: string; domain: string; email_masked: string; verified_at: string }
+export interface User {
+	id: number; username: string; email: string; is_staff: boolean; date_joined: string;
+	is_trusted?: boolean; affiliation?: Affiliation | null; pending_verification?: string | null;
+}
+export type ModerationState = 'visible' | 'hidden' | 'nuked';
+export interface ModerationBlock { actor: string; reason: string; at: string | null; action?: string }
 export interface Category { slug: string; name: string; description: string; emoji: string; post_count: number }
 export interface Person { slug: string; name: string; role: string; bio: string; post_count: number }
 export interface Tag { slug: string; name: string; post_count: number }
@@ -17,11 +23,12 @@ export interface PostSummary {
 export interface Post extends PostSummary {
 	body: string; source_note: string; source_url: string; attachments: Attachment[];
 	my_reaction: ReactionKind | null; can_edit: boolean; review_note: string;
+	can_moderate?: boolean; moderation_notice?: string | null; moderation?: ModerationBlock | null;
 	reports?: { id: number; reason: string; note: string; contact_email: string; created_at: string }[];
 }
 export interface Comment {
 	id: number; author: string; author_id: number; parent: number | null; format: Format; body: string;
-	attachments: Attachment[]; is_removed: boolean; created_at: string;
+	attachments: Attachment[]; is_removed: boolean; moderation?: ModerationState; created_at: string;
 }
 export interface Page<T> { count: number; next: string | null; previous: string | null; results: T[] }
 

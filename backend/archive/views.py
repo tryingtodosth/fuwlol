@@ -1,8 +1,9 @@
+import math
 import random
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Count, F, Max, Min, Q
+from django.db.models import Count, F, Max, Min, OuterRef, Prefetch, Q, Subquery
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -12,14 +13,35 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
-from .models import (Attachment, Category, Comment, CommentAttachment, Person, Post, Reaction,
-                     Report, Tag)
+from . import moderation as rules
+from .models import (Attachment, Category, Comment, CommentAttachment, ModerationAction, Person, Post,
+                     Reaction, Report, Tag)
 from .serializers import (CategorySerializer, CommentSerializer, ModerationPostSerializer,
                           PersonSerializer, PostDetailSerializer, PostListSerializer,
-                          PostWriteSerializer, ReportSerializer, TagSerializer, REACTION_KINDS)
+                          PostWriteSerializer, ReportSerializer, TagSerializer, REACTION_KINDS,
+                          board_comment_payload, board_post_payload)
 from .validators import kind_for, strip_image_metadata, validate_upload
 
 PUBLISHED = Q(status='published')
+# Newest audit line first, with the actor already joined — for the board and the action responses.
+ACTIONS_PREFETCH = Prefetch('actions', queryset=ModerationAction.objects.select_related('actor'))
+
+
+def post_queryset():
+    return (Post.objects.select_related('category', 'submitted_by')
+            .prefetch_related('people', 'tags', 'attachments', 'reactions')
+            # a moderated comment is a placeholder in the thread, not a comment on the card
+            .annotate(comment_count=Count('comments', filter=Q(comments__is_removed=False,
+                                                                comments__moderation='visible'), distinct=True)))
+
+
+def post_for_board(pk):
+    return post_queryset().prefetch_related(ACTIONS_PREFETCH).get(pk=pk)
+
+
+def comment_queryset():
+    return (Comment.objects.select_related('author', 'post')
+            .prefetch_related('attachments', ACTIONS_PREFETCH))
 
 
 def _published_count(qs, rel='posts'):
@@ -76,6 +98,8 @@ class PostViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated()]
         if self.action in ('queue', 'moderate'):
             return [IsAdminUser()]
+        if self.action in ('hide', 'restore', 'nuke'):
+            return [rules.IsTrusted()]
         return []
 
     def get_serializer_class(self):
@@ -88,21 +112,24 @@ class PostViewSet(viewsets.ModelViewSet):
         return PostDetailSerializer
 
     def _base(self):
-        return (Post.objects.select_related('category', 'submitted_by')
-                .prefetch_related('people', 'tags', 'attachments', 'reactions')
-                .annotate(comment_count=Count('comments', filter=Q(comments__is_removed=False), distinct=True)))
+        return post_queryset()
 
     def get_queryset(self):
         qs = self._base()
         u = self.request.user
-        if self.action in ('retrieve', 'update', 'partial_update', 'destroy', 'moderate'):
-            if u.is_authenticated and u.is_staff:
-                return qs
-            if u.is_authenticated:
-                return qs.filter(PUBLISHED | Q(submitted_by=u))
-            return qs.filter(PUBLISHED)
+        if self.action in ('retrieve', 'update', 'partial_update', 'destroy', 'moderate', 'comments'):
+            # who may read what — the one rule, in archive/moderation.py
+            return qs.filter(rules.visible_posts_q(u))
+        if self.action in ('hide', 'restore', 'nuke'):
+            # Trusted users (the permission class has already excluded everybody else) may
+            # also RESOLVE a nuked post here, so that "restore" on one answers 403 — the
+            # rules' honest refusal — instead of pretending it does not exist. They still
+            # cannot reach somebody else's pending or rejected submission.
+            return qs.filter(rules.visible_posts_q(u) | Q(status='nuked'))
         if self.action == 'mine':
-            return qs.filter(submitted_by=u).order_by('-created_at')
+            qs = qs.filter(submitted_by=u).order_by('-created_at')
+            # nuked content is staff-only, its own author included
+            return qs if u.is_staff else qs.exclude(status='nuked')
         if self.action == 'queue':
             return qs.filter(Q(status='pending') | Q(reports__resolved=False)).distinct().order_by('created_at')
         return self._filtered(qs.filter(PUBLISHED))
@@ -177,9 +204,11 @@ class PostViewSet(viewsets.ModelViewSet):
         s = PostWriteSerializer(data=request.data, context={'request': request, 'has_files': bool(files)})
         s.is_valid(raise_exception=True)
         with transaction.atomic():
-            # Staff publish straight away; everybody else waits for a moderator.
+            # Staff publish straight away — and so does a TRUSTED user (a confirmed FUW/UW/PAN
+            # address): a verified member of the community is who the queue exists to check
+            # for, so this is a small, deliberate widening. Everybody else waits for a moderator.
             post = s.save(submitted_by=request.user,
-                          status='published' if request.user.is_staff else 'pending')
+                          status='published' if rules.is_trusted(request.user) else 'pending')
             self._attach(post, files, self._captions(request))
         post = self._base().get(pk=post.pk)
         return Response(PostDetailSerializer(post, context={'request': request}).data, status=status.HTTP_201_CREATED)
@@ -190,6 +219,9 @@ class PostViewSet(viewsets.ModelViewSet):
             raise PermissionDenied()
         if not request.user.is_staff and post.status == 'published':
             raise PermissionDenied('Opublikowany wpis może zmienić tylko moderator — zgłoś poprawkę w komentarzu.')
+        if not request.user.is_staff and post.status not in ('pending', 'rejected'):
+            # hidden: it is on the moderation board as evidence of what was taken down
+            raise PermissionDenied('Ukryty wpis może zmienić tylko moderator.')
         files = _validate_files(self._files(request), settings.MAX_FILES_PER_POST)
         remove = [int(x) for x in request.data.getlist('remove_attachments') if str(x).isdigit()] \
             if hasattr(request.data, 'getlist') else []
@@ -214,7 +246,11 @@ class PostViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         post = self.get_object()
-        if not request.user.is_staff and not (post.submitted_by_id == request.user.id and post.status != 'published'):
+        # An author may withdraw their own submission while it is still in the queue (or was
+        # rejected). Not a published one, and not a hidden one either: a hidden post is
+        # what the moderation board is FOR, and deleting it would erase the evidence.
+        if not request.user.is_staff and not (post.submitted_by_id == request.user.id
+                                              and post.status in ('pending', 'rejected')):
             raise PermissionDenied()
         post.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -271,6 +307,8 @@ class PostViewSet(viewsets.ModelViewSet):
             return Response(CommentSerializer(qs, many=True, context={'request': request}).data)
         if not request.user.is_authenticated:
             return Response(status=status.HTTP_401_UNAUTHORIZED)
+        if post.status != 'published':  # a hidden/nuked post takes no new comments — 404, like the public sees it
+            return Response(status=status.HTTP_404_NOT_FOUND)
         files = _validate_files(self._files(request), 3)
         for f in files:
             if kind_for(f.name) != 'image':
@@ -295,29 +333,65 @@ class PostViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def moderate(self, request, slug=None):
-        """{decision: publish|reject|hide|feature|unfeature|resolve_reports, note}"""
+        """Staff: {decision: publish|reject|hide|nuke|feature|unfeature|resolve_reports, note}.
+        hide/nuke go through the rules module like everybody else's, so they leave an audit
+        line; publish/reject write one too, so the board can show a post's whole history."""
         post = self.get_object()
         decision = request.data.get('decision')
         note = (request.data.get('note') or '')[:2000]
+        previous = post.status
         if decision == 'publish':
             post.status, post.review_note, post.reviewed_by = 'published', note, request.user
             if post.published_at is None:
                 post.published_at = timezone.now()
+            post.save()
+            rules.record('publish', request.user, post=post, reason=note, previous_status=previous)
         elif decision == 'reject':
             post.status, post.review_note, post.reviewed_by = 'rejected', note, request.user
-        elif decision == 'hide':
-            post.status, post.review_note, post.reviewed_by = 'hidden', note, request.user
+            post.save()
+            post.reports.update(resolved=True)
+            rules.record('reject', request.user, post=post, reason=note, previous_status=previous)
+        elif decision in ('hide', 'nuke'):
+            post.review_note = note
+            post.save(update_fields=['review_note'])
+            (rules.hide_post if decision == 'hide' else rules.nuke_post)(post, request.user, note)
         elif decision in ('feature', 'unfeature'):
             post.featured = decision == 'feature'
+            post.save(update_fields=['featured'])
         elif decision == 'resolve_reports':
             post.reports.update(resolved=True)
         else:
             raise ValidationError({'decision': 'Nieznana decyzja.'})
-        post.save()
-        if decision in ('hide', 'reject'):
-            post.reports.update(resolved=True)
         post = self._base().get(pk=post.pk)
         return Response(ModerationPostSerializer(post, context={'request': request}).data)
+
+    # --- the trusted tier: hide / restore / nuke ---------------------------------------
+
+    def _reason(self, request):
+        return (request.data.get('reason') or '') if hasattr(request.data, 'get') else ''
+
+    @action(detail=True, methods=['post'])
+    def hide(self, request, slug=None):
+        """POST {reason?} — off the public page, onto the board. Resolves the post's open reports."""
+        post = self.get_object()
+        rules.hide_post(post, request.user, self._reason(request))
+        return Response(board_post_payload(post_for_board(post.pk), request))
+
+    @action(detail=True, methods=['post'])
+    def restore(self, request, slug=None):
+        """Back to where it was before it was hidden. A nuked post: staff only (403 otherwise)."""
+        post = self.get_object()
+        rules.restore_post(post, request.user)
+        post = self._base().get(pk=post.pk)
+        return Response(PostDetailSerializer(post, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'])
+    def nuke(self, request, slug=None):
+        """POST {reason} — the nuclear option; a reason is REQUIRED (400 without). From here on
+        only staff can read the post; the response is whatever the caller may still see."""
+        post = self.get_object()
+        rules.nuke_post(post, request.user, self._reason(request))
+        return Response(board_post_payload(post_for_board(post.pk), request))
 
 
 class CommentDeleteView(APIView):
@@ -333,6 +407,82 @@ class CommentDeleteView(APIView):
         c.save(update_fields=['is_removed'])
         c.attachments.all().delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class CommentModerationView(APIView):
+    """POST /api/comments/<id>/hide/ | /restore/ | /nuke/ — the same rules as for a post."""
+    permission_classes = [rules.IsTrusted]
+
+    def post(self, request, pk, verb):
+        c = Comment.objects.select_related('author', 'post').filter(pk=pk).first()
+        # The comment's post must be one the actor may see. A nuked post's comments are
+        # resolved anyway so the rules can answer 403 (staff only) rather than a 404.
+        if c is None or not (rules.can_see_post(request.user, c.post) or c.post.status == 'nuked'):
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        reason = request.data.get('reason') if hasattr(request.data, 'get') else ''
+        if verb == 'hide':
+            rules.hide_comment(c, request.user, reason)
+        elif verb == 'nuke':
+            rules.nuke_comment(c, request.user, reason)
+        else:
+            rules.restore_comment(c, request.user)
+        return Response(board_comment_payload(comment_queryset().get(pk=c.pk), request))
+
+
+class ModerationBoardView(APIView):
+    """GET /api/moderation/board/?status=hidden|nuked&kind=posts|comments&page=N
+
+    Everything taken off the public page, newest action first, for trusted users and
+    staff. One page (20) is cut from the merged, date-sorted stream of posts and comments
+    and then split into the two lists, so `page` means the same thing whatever `kind` says.
+    What a row contains depends on who is asking — see serializers.board_post_payload."""
+    permission_classes = [rules.IsTrusted]
+    page_size = 20
+
+    @staticmethod
+    def _last_action_at(**target):
+        return Subquery(ModerationAction.objects.filter(**target)
+                        .order_by('-created_at', '-id').values('created_at')[:1])
+
+    def get(self, request):
+        p = request.query_params
+        statuses = [p['status']] if p.get('status') in ('hidden', 'nuked') else ['hidden', 'nuked']
+        kinds = [p['kind']] if p.get('kind') in ('posts', 'comments') else ['posts', 'comments']
+        staff = rules.is_staff(request.user)
+
+        rows = []  # (last action time, kind, pk) — light, so the whole board can be sorted
+        if 'posts' in kinds:
+            qs = Post.objects.filter(status__in=statuses).annotate(last_at=self._last_action_at(post=OuterRef('pk')))
+            rows += [(at, 'posts', pk) for pk, at in qs.values_list('pk', 'last_at')]
+        if 'comments' in kinds:
+            qs = Comment.objects.filter(moderation__in=statuses)
+            if not staff:  # a comment on a nuked post belongs to content they may not see
+                qs = qs.exclude(post__status='nuked')
+            qs = qs.annotate(last_at=self._last_action_at(comment=OuterRef('pk')))
+            rows += [(at, 'comments', pk) for pk, at in qs.values_list('pk', 'last_at')]
+        # newest first; a legacy row with no audit line (hidden before this existed) sinks to the bottom
+        rows.sort(key=lambda r: (r[0] is None, -(r[0].timestamp() if r[0] else 0)))
+
+        page = int(p['page']) if p.get('page', '').isdigit() and int(p['page']) > 0 else 1
+        pages = max(1, math.ceil(len(rows) / self.page_size))
+        if page > pages:
+            return Response({'detail': 'Nie ma takiej strony.'}, status=status.HTTP_404_NOT_FOUND)
+        chunk = rows[(page - 1) * self.page_size: page * self.page_size]
+
+        posts = {x.pk: x for x in post_queryset().prefetch_related(ACTIONS_PREFETCH)
+                 .filter(pk__in=[pk for _, k, pk in chunk if k == 'posts'])}
+        comments = {x.pk: x for x in comment_queryset().filter(pk__in=[pk for _, k, pk in chunk if k == 'comments'])}
+        from rest_framework.utils.urls import remove_query_param, replace_query_param
+        url = request.build_absolute_uri()
+        return Response({
+            'count': len(rows), 'page': page, 'pages': pages, 'page_size': self.page_size,
+            'next': replace_query_param(url, 'page', page + 1) if page < pages else None,
+            'previous': (remove_query_param(url, 'page') if page == 2 else replace_query_param(url, 'page', page - 1))
+            if page > 1 else None,
+            'posts': [board_post_payload(posts[pk], request) for _, k, pk in chunk if k == 'posts' and pk in posts],
+            'comments': [board_comment_payload(comments[pk], request)
+                         for _, k, pk in chunk if k == 'comments' and pk in comments],
+        })
 
 
 class ReportViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):

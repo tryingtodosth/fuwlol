@@ -59,6 +59,15 @@ api/db.sqlite3
    `static(settings.MEDIA_URL, ...)` unconditionally in `config/urls.py` if the plan has no
    other way (slower, but works).
 
+## Mail (verification links)
+
+The trusted-user tier sends one e-mail per verification request. OVH hosting mail is plain
+SMTP: set `FUWLOL_EMAIL_HOST=ssl0.ovh.net`, `FUWLOL_EMAIL_PORT=587`, `FUWLOL_EMAIL_USER` /
+`FUWLOL_EMAIL_PASSWORD` (a mailbox created in the OVH panel, e.g. archiwum@fuw.lol),
+`FUWLOL_FROM_EMAIL="fuw.lol <archiwum@fuw.lol>"` and `FUWLOL_SITE_URL=https://fuw.lol`
+in `passenger_wsgi.py`'s environment. With `FUWLOL_DEBUG=0` and no host set, sending fails
+loudly (503 on the request) rather than silently.
+
 ## If the plan has no Python
 
 Cheapest workable alternative: keep the static build on OVH and run the API on any small VPS

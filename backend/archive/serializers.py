@@ -3,9 +3,13 @@ import json
 from django.contrib.auth.models import User
 from rest_framework import serializers
 
+from . import moderation as rules
 from .models import (Attachment, Category, Comment, CommentAttachment, Person, Post,
                      Reaction, Report, Tag, REACTION_CHOICES)
 from .validators import kind_for
+
+HIDDEN_NOTICE = 'Ten wpis jest ukryty — widzą go tylko zweryfikowani użytkownicy.'
+NUKED_NOTICE = 'Ten wpis jest ukryty nuklearnie — widzi go tylko administracja.'
 
 REACTION_KINDS = [k for k, _ in REACTION_CHOICES]
 
@@ -93,10 +97,40 @@ class PostDetailSerializer(PostListSerializer):
     attachments = AttachmentSerializer(many=True, read_only=True)
     my_reaction = serializers.SerializerMethodField()
     can_edit = serializers.SerializerMethodField()
+    can_moderate = serializers.SerializerMethodField()
+    moderation_notice = serializers.SerializerMethodField()
+    moderation = serializers.SerializerMethodField()
 
     class Meta(PostListSerializer.Meta):
         fields = PostListSerializer.Meta.fields + ['body', 'source_note', 'source_url', 'attachments',
-                                                   'my_reaction', 'can_edit', 'review_note']
+                                                   'my_reaction', 'can_edit', 'review_note',
+                                                   'can_moderate', 'moderation_notice', 'moderation']
+
+    def _trusted(self):
+        # One trust lookup per serializer (the context dict is shared by a many=True list),
+        # not one per post on the board.
+        if '_trusted' not in self.context:
+            req = self.context.get('request')
+            self.context['_trusted'] = rules.is_trusted(req.user if req else None)
+        return self.context['_trusted']
+
+    def get_can_moderate(self, obj):
+        return self._trusted()
+
+    def get_moderation_notice(self, obj):
+        if obj.status == 'hidden':
+            return HIDDEN_NOTICE
+        if obj.status == 'nuked':
+            return NUKED_NOTICE
+        return None
+
+    def get_moderation(self, obj):
+        """The newest hide/nuke line (who, when, why) — for trusted readers only. The author
+        of a hidden post sees the notice above, not the reason: a reason may name the
+        person who asked for the takedown."""
+        if obj.status not in ('hidden', 'nuked') or not self._trusted():
+            return None
+        return rules.action_block(obj, obj.status)
 
     def get_my_reaction(self, obj):
         req = self.context.get('request')
@@ -182,16 +216,26 @@ class CommentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Comment
-        fields = ['id', 'author', 'author_id', 'parent', 'format', 'body', 'attachments', 'is_removed', 'created_at']
-        read_only_fields = ['is_removed', 'created_at']
+        fields = ['id', 'author', 'author_id', 'parent', 'format', 'body', 'attachments', 'is_removed',
+                  'moderation', 'created_at']
+        read_only_fields = ['is_removed', 'moderation', 'created_at']
 
     def get_author(self, obj):
         return '' if obj.is_removed else _display(obj.author)
 
     def to_representation(self, obj):
+        """A removed or moderated comment stays in the thread as a placeholder (its id and
+        `parent` keep the replies attached) with the content blanked. A trusted reader gets
+        a hidden comment's real body/author back; a nuked one only staff."""
         d = super().to_representation(obj)
+        req = self.context.get('request')
         if obj.is_removed:
             d['body'] = ''
+            d['attachments'] = []
+        elif obj.moderation != 'visible' and not rules.can_see_comment(req.user if req else None, obj):
+            d['body'] = ''
+            d['author'] = ''
+            d['author_id'] = None  # a placeholder names nobody
             d['attachments'] = []
         return d
 
@@ -214,3 +258,35 @@ class ModerationPostSerializer(PostDetailSerializer):
     def get_reports(self, obj):
         return [{'id': r.id, 'reason': r.reason, 'note': r.note, 'contact_email': r.contact_email,
                  'created_at': r.created_at} for r in obj.reports.filter(resolved=False)]
+
+
+# --- the moderation board --------------------------------------------------------------
+
+def board_post_payload(post, request):
+    """One board row for a post. Hidden: the full moderation payload plus the audit line.
+    Nuked, for anybody who is not staff: ONLY the stub — id, catalog number, status, and
+    who/when/why — no title, no body, no files, not even the slug."""
+    block = rules.action_block(post, post.status)
+    if post.status == 'nuked' and not rules.is_staff(request.user):
+        return {'id': post.id, 'catalog_no': post.catalog_no, 'status': 'nuked',
+                'moderation': {'actor': block['actor'], 'reason': block['reason'], 'at': block['at']}}
+    d = ModerationPostSerializer(post, context={'request': request}).data
+    d['moderation'] = block
+    return d
+
+
+def board_comment_payload(comment, request):
+    """One board row for a comment; the CommentSerializer already blanks what the caller
+    may not see. Nuked, for non-staff: {id, post_id, moderation} and nothing else."""
+    block = rules.action_block(comment, comment.moderation)
+    if comment.moderation == 'nuked' and not rules.is_staff(request.user):
+        return {'id': comment.id, 'post_id': comment.post_id,
+                'moderation': {'actor': block['actor'], 'reason': block['reason'], 'at': block['at']}}
+    d = CommentSerializer(comment, context={'request': request}).data
+    d['post_id'] = comment.post_id
+    # Where the comment lives — only if the reader may see that post at all (a hidden
+    # comment on a nuked post must not leak the post's title to a trusted reader).
+    if rules.can_see_post(request.user, comment.post):
+        d['post_slug'], d['post_title'] = comment.post.slug, comment.post.title
+    d['moderation'] = block
+    return d

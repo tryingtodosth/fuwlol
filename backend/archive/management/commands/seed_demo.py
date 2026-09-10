@@ -113,11 +113,24 @@ class Command(BaseCommand):
 
     def handle(self, *args, **opts):
         if opts['reset']:
-            Post.objects.filter(submitted_by__username__in=['dziekan', 'student']).delete()
+            Post.objects.filter(submitted_by__username__in=['dziekan', 'student', 'doktorant']).delete()
         admin, _ = User.objects.get_or_create(username='dziekan', defaults={'is_staff': True, 'is_superuser': True, 'email': 'dziekan@fuw.lol'})
         admin.set_password('fuwlol123'); admin.is_staff = True; admin.save()
         student, _ = User.objects.get_or_create(username='student', defaults={'email': 'student@fuw.lol'})
         student.set_password('fuwlol123'); student.save()
+        # a TRUSTED demo account: verified fuw.edu.pl affiliation, no staff flag
+        doktorant, _ = User.objects.get_or_create(username='doktorant', defaults={'email': 'doktorant@fuw.lol'})
+        doktorant.set_password('fuwlol123'); doktorant.save()
+        try:
+            from accounts.models import Profile, TrustedDomain
+            dom = TrustedDomain.objects.filter(domain='fuw.edu.pl').first()
+            # edit THROUGH the user object: is_trusted() reads the cached `user.profile`
+            Profile.objects.get_or_create(user=doktorant)
+            prof = doktorant.profile
+            prof.affiliation_email, prof.affiliation_domain, prof.verified_at = 'doktorant@fuw.edu.pl', dom, timezone.now()
+            prof.save()
+        except ImportError:  # seeding before the accounts app grew profiles
+            pass
         for i, (slug, name, emoji, desc) in enumerate(CATEGORIES):
             Category.objects.update_or_create(slug=slug, defaults={'name': name, 'emoji': emoji, 'description': desc, 'order': i})
         for slug, name, role, bio in PEOPLE:
@@ -163,4 +176,16 @@ class Command(BaseCommand):
         Post.objects.create(title='Propozycja: nowy mem o sesji', category=Category.objects.get(slug='memy'),
                             format='text', body='Czeka na moderację.', year=2026, year_precision='exact',
                             submitted_by=student, status='pending')
-        self.stdout.write(self.style.SUCCESS(f'Seeded {len(created)} published posts. Logins: dziekan / student, hasło fuwlol123'))
+        # the moderation board has something on it: one hidden post, one nuked post, one hidden comment
+        from archive import moderation as rules
+        hidden = Post.objects.create(title='Mem, który był trochę za bardzo', category=Category.objects.get(slug='memy'),
+                                     format='text', body='Ukryty przez zweryfikowanego użytkownika — widać go na tablicy moderacji.',
+                                     year=2022, year_precision='exact', submitted_by=student, status='published')
+        rules.hide_post(hidden, doktorant, 'Prosiła osoba na zdjęciu.')
+        nuked = Post.objects.create(title='Wpis usunięty opcją nuklearną', category=Category.objects.get(slug='historie'),
+                                    format='text', body='Tego nie zobaczy nikt poza administracją.', year=2021,
+                                    year_precision='approx', submitted_by=student, status='published')
+        rules.nuke_post(nuked, admin, 'Treść niezgodna z prawem (demo).')
+        hc = Comment.objects.create(post=created[0], author=student, body='Ten komentarz został ukryty przez moderację.')
+        rules.hide_comment(hc, doktorant, 'Spam.')
+        self.stdout.write(self.style.SUCCESS(f'Seeded {len(created)} published posts. Logins: dziekan (staff) / doktorant (zaufany) / student, hasło fuwlol123'))
