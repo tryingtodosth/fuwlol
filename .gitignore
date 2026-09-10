@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+backend/db.sqlite3
+backend/media/
+backend/cachedata/
+backend/staticfiles/
+frontend/node_modules/
+frontend/.svelte-kit/
+frontend/build/
+frontend/.env
+*.png
+!frontend/static/*.png
+.DS_Store
