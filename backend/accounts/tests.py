@@ -215,3 +215,34 @@ class VerificationFlowTests(Base):
         self.assertIn('ippt.pan.pl', domains)
         self.assertNotIn('mimuw.edu.pl', domains)
         self.assertEqual(set(r.data[0]), {'domain', 'institution', 'kind'})
+
+
+class RealIpMiddlewareTests(APITestCase):
+    """Behind Traefik/Cloudflare the per-IP throttles must see the visitor, not the proxy."""
+
+    def _ip(self, **headers):
+        from django.test import override_settings
+        seen = {}
+        from accounts import views as v
+        original = v.LoginView.post
+
+        def spy(self_, request):
+            seen['ip'] = request.META.get('REMOTE_ADDR')
+            return original(self_, request)
+        v.LoginView.post = spy
+        try:
+            with override_settings(FUWLOL_TRUST_PROXY=True):
+                self.client.post('/api/auth/login/', {'username': 'x', 'password': 'y'}, **headers)
+        finally:
+            v.LoginView.post = original
+        return seen.get('ip')
+
+    def test_cloudflare_header_wins_then_forwarded_for(self):
+        self.assertEqual(self._ip(HTTP_CF_CONNECTING_IP='203.0.113.9', HTTP_X_FORWARDED_FOR='10.0.0.1'), '203.0.113.9')
+        self.assertEqual(self._ip(HTTP_X_FORWARDED_FOR='198.51.100.7, 10.0.0.1'), '198.51.100.7')
+
+    def test_headers_ignored_without_trust_flag(self):
+        from django.test import override_settings
+        with override_settings(FUWLOL_TRUST_PROXY=False):
+            r = self.client.post('/api/auth/login/', {'username': 'x', 'password': 'y'}, HTTP_CF_CONNECTING_IP='203.0.113.9')
+        self.assertEqual(r.status_code, 401)  # the request went through normally; the header did nothing

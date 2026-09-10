@@ -1,0 +1,60 @@
+# fuw.lol on one box (Hetzner + Coolify, or plain `docker compose up -d`).
+# Traefik/Coolify points fuw.lol at `web:80`; nothing else needs a public port.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fuwlol
+      POSTGRES_USER: fuwlol
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fuwlol"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://fuwlol:${POSTGRES_PASSWORD}@db:5432/fuwlol
+      FUWLOL_DEBUG: "0"
+      FUWLOL_TRUST_PROXY: "1"
+      FUWLOL_SECRET_KEY: ${FUWLOL_SECRET_KEY:?set FUWLOL_SECRET_KEY}
+      FUWLOL_ALLOWED_HOSTS: ${FUWLOL_DOMAIN:-fuw.lol},www.${FUWLOL_DOMAIN:-fuw.lol},api
+      FUWLOL_CSRF_ORIGINS: https://${FUWLOL_DOMAIN:-fuw.lol},https://www.${FUWLOL_DOMAIN:-fuw.lol}
+      FUWLOL_CORS_ORIGINS: ""            # same origin — nothing cross-origin to allow
+      FUWLOL_SITE_URL: https://${FUWLOL_DOMAIN:-fuw.lol}
+      FUWLOL_MEDIA_ROOT: /app/media
+      FUWLOL_CACHE_DIR: /app/cachedata
+      FUWLOL_EMAIL_HOST: ${FUWLOL_EMAIL_HOST:-}
+      FUWLOL_EMAIL_PORT: ${FUWLOL_EMAIL_PORT:-587}
+      FUWLOL_EMAIL_USER: ${FUWLOL_EMAIL_USER:-}
+      FUWLOL_EMAIL_PASSWORD: ${FUWLOL_EMAIL_PASSWORD:-}
+      FUWLOL_FROM_EMAIL: ${FUWLOL_FROM_EMAIL:-fuw.lol <archiwum@fuw.lol>}
+      FUWLOL_SEED_DEMO: ${FUWLOL_SEED_DEMO:-0}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
+    volumes:
+      - media:/app/media
+      - cachedata:/app/cachedata
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    volumes:
+      - media:/media:ro
+    ports:
+      - "${WEB_PORT:-8080}:80"   # Coolify: remove this and route the domain to web:80 instead
+
+volumes:
+  pgdata:
+  media:
+  cachedata:

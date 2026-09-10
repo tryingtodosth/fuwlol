@@ -24,9 +24,13 @@ INSTALLED_APPS = [
     'board',
 ]
 
+FUWLOL_TRUST_PROXY = os.environ.get('FUWLOL_TRUST_PROXY', '0') == '1'
+
 MIDDLEWARE = [
+    'config.middleware.RealIpMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # serves STATIC_ROOT (the admin) from gunicorn
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -48,11 +52,22 @@ TEMPLATES = [{
 }]
 WSGI_APPLICATION = 'config.wsgi.application'
 
-DATABASES = {'default': {
-    'ENGINE': 'django.db.backends.sqlite3',
-    'NAME': os.environ.get('FUWLOL_DB_PATH', BASE_DIR / 'db.sqlite3'),
-    'OPTIONS': {'timeout': 20},
-}}
+# SQLite by default (a clone, ./setup.sh); Postgres in production via DATABASE_URL, e.g.
+# postgres://fuwlol:secret@db:5432/fuwlol (see docker-compose.yml).
+if os.environ.get('DATABASE_URL'):
+    from urllib.parse import urlparse
+    _u = urlparse(os.environ['DATABASE_URL'])
+    DATABASES = {'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': _u.path.lstrip('/'), 'USER': _u.username, 'PASSWORD': _u.password,
+        'HOST': _u.hostname, 'PORT': _u.port or 5432, 'CONN_MAX_AGE': 60,
+    }}
+else:
+    DATABASES = {'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': os.environ.get('FUWLOL_DB_PATH', BASE_DIR / 'db.sqlite3'),
+        'OPTIONS': {'timeout': 20},
+    }}
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', 'OPTIONS': {'min_length': 8}},
@@ -126,7 +141,13 @@ CORS_ALLOWED_ORIGINS = [o for o in os.environ.get(
     'FUWLOL_CORS_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',') if o]
 CSRF_TRUSTED_ORIGINS = [o for o in os.environ.get('FUWLOL_CSRF_ORIGINS', '').split(',') if o]
 
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
+}
+
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    USE_X_FORWARDED_HOST = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True

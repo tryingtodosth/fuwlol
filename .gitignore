@@ -12,3 +12,4 @@ frontend/.env
 *.png
 !frontend/static/*.png
 .DS_Store
+.env

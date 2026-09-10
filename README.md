@@ -50,7 +50,7 @@ Porty zajęte? `FUWLOL_CORS_ORIGINS` + `frontend/.env` (`PUBLIC_API_BASE_URL`) s
 ```
 backend/   config/ (settings, urls)  accounts/ (rejestracja, logowanie)  archive/ (modele, API, walidacja plików, wayback, seed_demo, testy)
 frontend/  src/lib/{api,types,auth}  src/lib/render/{markdown,latex,media}  src/lib/components/{editor,timemachine,…}  src/routes/…
-deploy/    OVH.md — jak to postawić na hostingu OVH (FTP, Passenger)
+deploy/    HETZNER.md — Hetzner + Coolify + Cloudflare; Dockerfiles w backend/ i frontend/, docker-compose.yml
 ```
 
 Testy: `cd backend && ../.venv/bin/python manage.py test` (74) · `cd frontend && npm run check && npm run build`

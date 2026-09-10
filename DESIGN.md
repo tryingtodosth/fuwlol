@@ -91,8 +91,10 @@ first 100 characters of each message and folds the rest under a spoiler; the lis
 - The Big Bang animation plays on every journey to before fuw.lol existed.
 
 ## Deployment
-OVH shared hosting (see `deploy/OVH.md`): static build in `www/`, Django under Passenger
-in `api/`, SQLite. All secrets and hosts come from `FUWLOL_*` environment variables.
+Hetzner Cloud (CX23) with Coolify, behind Cloudflare's proxy — see `deploy/HETZNER.md`. Three
+containers from `docker-compose.yml`: Postgres, Django+gunicorn, nginx (static build, `/api`
+proxied, `/media` from a shared volume). All secrets and hosts come from `FUWLOL_*` variables;
+`FUWLOL_TRUST_PROXY` makes per-IP throttles see the real visitor behind the proxy.
 
 ## Left open
 - No e-mail (password reset, notifications). No real-time anything.
