@@ -8,7 +8,8 @@ import path from 'node:path';
 const dist = path.resolve('node_modules/latex.js/dist/css');
 const out = path.resolve('src/lib/render/latexjs.scoped.css');
 const read = (f) => fs.readFileSync(path.join(dist, f), 'utf8').replace(/@import[^;]*;/g, '');
-const src = read('base.css') + '\n' + read('article.css');
+// comments first, or a selector list that follows one is scoped wrongly (html, .centering leaked)
+const src = (read('base.css') + '\n' + read('article.css')).replace(/\/\*[\s\S]*?\*\//g, '');
 const ROOTS = new Set([':root', ':host', 'body', 'html', '.page']);
 const scoped = src.replace(/(^|\})([^{}@]+)\{/g, (m, before, selectors) => {
 	const list = selectors.split(',').map((s) => s.trim()).filter(Boolean).map((s) => (ROOTS.has(s) ? '.latex-doc' : `.latex-doc ${s}`));

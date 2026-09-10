@@ -151,7 +151,8 @@
 	}
 	/** Body → rough plain text, for the auto-filled summary. */
 	function plainText(src: string, fmt: Format): string {
-		let s = src;
+		// maths first: raw `$\int…$` in a one-line summary reads as noise, so it is dropped
+		let s = src.replace(/\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$[^$\n]+\$/g, ' ');
 		if (fmt === 'latex') {
 			s = s.replace(/(^|[^\\])%.*$/gm, '$1');
 			s = s.replace(/\\(begin|end)\s*\{[^}]*\}/g, ' ');
@@ -167,7 +168,7 @@
 			s = s.replace(/`{1,3}/g, '');
 			s = s.replace(/(\*\*|__|\*|_)/g, '');
 		}
-		return s.replace(/\s+/g, ' ').trim();
+		return s.replace(/\s+/g, ' ').replace(/\s+([.,;:!?)])/g, '$1').trim();
 	}
 	function clip(s: string, n: number): string {
 		if (s.length <= n) return s;

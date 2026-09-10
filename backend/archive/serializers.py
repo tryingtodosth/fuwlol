@@ -1,3 +1,4 @@
+import re
 import json
 
 from django.contrib.auth.models import User
@@ -12,6 +13,31 @@ HIDDEN_NOTICE = 'Ten wpis jest ukryty — widzą go tylko zweryfikowani użytkow
 NUKED_NOTICE = 'Ten wpis jest ukryty nuklearnie — widzi go tylko administracja.'
 
 REACTION_KINDS = [k for k, _ in REACTION_CHOICES]
+
+MATH_RE = re.compile(r'\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$[^$\n]+\$')
+
+
+def auto_summary(body, fmt, limit=200):
+    """A one-line teaser from the body when the author wrote none: maths dropped (raw
+    `$\\int…$` is noise in a list), LaTeX/Markdown syntax stripped, clipped at a word."""
+    s = MATH_RE.sub(' ', body)
+    if fmt == 'latex':
+        s = re.sub(r'(^|[^\\])%.*$', r'\1', s, flags=re.M)
+        s = re.sub(r'\\(begin|end|documentclass|usepackage|includegraphics|label|ref)\s*(\[[^\]]*\])?\s*\{[^}]*\}', ' ', s)
+        s = re.sub(r'\\[a-zA-Z@]+\*?', ' ', s)
+        s = re.sub(r'[{}&~^_\\]', ' ', s)
+    else:
+        s = re.sub(r'!\[[^\]]*\]\([^)]*\)', ' ', s)
+        s = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', s)
+        s = re.sub(r'^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+)', '', s, flags=re.M)
+        s = re.sub(r'`{1,3}|\*\*|__|\*|_', '', s)
+    s = re.sub(r'\s+', ' ', s).strip()
+    s = re.sub(r'\s+([.,;:!?)])', r'\1', s)
+    s = re.sub(r'\s+([.,;:!?)])', r'\1', s)
+    if len(s) > limit:
+        cut = s[:limit]
+        s = (cut[:cut.rfind(' ')] if ' ' in cut else cut).rstrip() + '…'
+    return s
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -177,6 +203,10 @@ class PostWriteSerializer(serializers.ModelSerializer):
     def validate(self, data):
         if not (data.get('body') or '').strip() and not self.context.get('has_files'):
             raise serializers.ValidationError({'body': 'Wpis musi mieć treść albo plik.'})
+        if 'summary' in data and not (data.get('summary') or '').strip():
+            data['summary'] = auto_summary(data.get('body') or '', data.get('format') or 'text')
+        elif 'summary' not in data and self.instance is None:
+            data['summary'] = auto_summary(data.get('body') or '', data.get('format') or 'text')
         return data
 
     def _apply_m2m(self, post, data):

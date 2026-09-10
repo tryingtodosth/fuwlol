@@ -53,6 +53,6 @@ frontend/  src/lib/{api,types,auth}  src/lib/render/{markdown,latex,media}  src/
 deploy/    OVH.md — jak to postawić na hostingu OVH (FTP, Passenger)
 ```
 
-Testy: `cd backend && ../.venv/bin/python manage.py test` (73) · `cd frontend && npm run check && npm run build`
+Testy: `cd backend && ../.venv/bin/python manage.py test` (74) · `cd frontend && npm run check && npm run build`
 · przeglądarkowy smoke test przy działających serwerach: `cd frontend && npm run e2e` (34 kroki).
 Więcej o decyzjach: `DESIGN.md`.

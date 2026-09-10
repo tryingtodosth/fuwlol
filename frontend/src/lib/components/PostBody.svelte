@@ -146,6 +146,7 @@
 		max-width: none;
 		margin: 0;
 		padding: 0;
+		text-align: left; /* a comment or a card is not a typeset page */
 	}
 	.latex-doc :global(.page) {
 		padding: 0;
