@@ -118,7 +118,7 @@
 	.strip {
 		position: sticky;
 		top: 0;
-		z-index: 40;
+		z-index: 20; /* below the header dropdown (40) — the menu must open OVER the strip */
 		margin: 0 calc(50% - 50vw) 14px;
 		width: 100vw;
 		background: var(--green);
