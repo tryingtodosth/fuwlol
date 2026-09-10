@@ -14,6 +14,7 @@
 	let sending = $state(false);
 	let exhausted = $state(false);
 	let showHidden = $state(false);
+	let expanded = $state<Set<number>>(new Set()); // messages shown in full, in place of their excerpt
 
 	let nick = $state('');
 	let body = $state('');
@@ -149,12 +150,14 @@
 						<button type="button" class="linky small" onclick={() => toggleHide(m)}>{m.is_hidden ? 'przywróć' : 'ukryj'}</button>
 					{/if}
 					<div class="text">
-						{#if ex.rest}
+						{#if ex.rest && !expanded.has(m.id)}
 							<MessageBody body={ex.head + '…'} format={m.format} />
-							<details class="spoiler">
-								<summary>pokaż całość ({Array.from(m.body).length} znaków)</summary>
-								<MessageBody body={m.body} format={m.format} />
-							</details>
+							<button type="button" class="spoiler" onclick={() => (expanded = new Set([...expanded, m.id]))}>
+								▸ pokaż całość ({Array.from(m.body).length} znaków)
+							</button>
+						{:else if ex.rest}
+							<MessageBody body={m.body} format={m.format} />
+							<button type="button" class="spoiler" onclick={() => { const s = new Set(expanded); s.delete(m.id); expanded = s; }}>▾ zwiń</button>
 						{:else}
 							<MessageBody body={m.body} format={m.format} />
 						{/if}
@@ -186,7 +189,8 @@
 	.time { color: var(--muted); font-size: 11px; margin-right: 6px; }
 	.nick { color: #222; }
 	.text { margin-top: 2px; }
-	.spoiler summary { cursor: pointer; color: var(--rust); font-size: 11px; }
+	.spoiler { background: none; border: 0; padding: 0; cursor: pointer; color: var(--rust); font-size: 11px; }
+	.spoiler:hover { background: none; text-decoration: underline; }
 	.linky { background: none; border: 0; color: var(--rust); padding: 0 4px; cursor: pointer; }
 	.linky:hover { text-decoration: underline; background: none; }
 </style>
