@@ -26,14 +26,19 @@ class UserSerializer(serializers.ModelSerializer):
     affiliation = serializers.SerializerMethodField()
     pending_verification = serializers.SerializerMethodField()
 
+    reputation = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'is_staff', 'date_joined',
-                  'is_trusted', 'affiliation', 'pending_verification']
+        fields = ['id', 'username', 'email', 'is_staff', 'is_superuser', 'date_joined',
+                  'is_trusted', 'affiliation', 'pending_verification', 'reputation']
         read_only_fields = fields
 
     def get_is_trusted(self, user):
         return is_trusted(user)
+
+    def get_reputation(self, user):
+        return profile_for(user).reputation
 
     def get_affiliation(self, user):
         """The confirmed institution, or null. Shown even if the domain has since been

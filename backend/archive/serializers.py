@@ -265,13 +265,23 @@ class CommentSerializer(serializers.ModelSerializer):
     def to_representation(self, obj):
         """A removed or moderated comment stays in the thread as a placeholder (its id and
         `parent` keep the replies attached) with the content blanked. A trusted reader gets
-        a hidden comment's real body/author back; a nuked one only staff."""
+        a hidden comment's real body/author back; a nuked one only staff.
+
+        Escalation is checked independently of `moderation` — an escalated comment is
+        typically still `moderation='visible'` (escalating never touches that field), so
+        the ordinary hidden/nuked branch below would never catch it on its own."""
         d = super().to_representation(obj)
         req = self.context.get('request')
+        user = req.user if req else None
         if obj.is_removed:
             d['body'] = ''
             d['attachments'] = []
-        elif obj.moderation != 'visible' and not rules.can_see_comment(req.user if req else None, obj):
+        elif rules.is_escalated(obj) and not rules.is_head_admin(user):
+            d['body'] = ''
+            d['author'] = ''
+            d['author_id'] = None
+            d['attachments'] = []
+        elif obj.moderation != 'visible' and not rules.can_see_comment(user, obj):
             d['body'] = ''
             d['author'] = ''
             d['author_id'] = None  # a placeholder names nobody

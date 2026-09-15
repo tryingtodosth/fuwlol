@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     'accounts',
     'archive',
     'board',
+    'escalation',
 ]
 
 FUWLOL_TRUST_PROXY = os.environ.get('FUWLOL_TRUST_PROXY', '0') == '1'
@@ -83,6 +84,10 @@ STATIC_URL = 'static/'
 STATIC_ROOT = os.environ.get('FUWLOL_STATIC_ROOT', BASE_DIR / 'staticfiles')
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.environ.get('FUWLOL_MEDIA_ROOT', BASE_DIR / 'media')
+# Escalation evidence (escalation/evidence.py) — outside MEDIA_ROOT on purpose: nothing here
+# is ever served by path, only streamed through a view that re-checks is_head_admin per
+# request (escalation/views.py). Never point this inside a directory Nginx/whitenoise serves.
+EVIDENCE_ROOT = os.environ.get('FUWLOL_EVIDENCE_ROOT', BASE_DIR / 'evidence')
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Uploads: 25 MB per file, 6 files per post. Checked in archive/validators.py.
@@ -111,6 +116,8 @@ REST_FRAMEWORK = {
         'report': '20/hour',
         'board_anon': '20/hour',
         'board_user': '60/hour',
+        'board_report': '20/hour',
+        'escalate': '10/day',
         'verify': '5/hour',  # institutional-address confirmation mails, per user
     },
 }
@@ -151,3 +158,13 @@ if not DEBUG:
     USE_X_FORWARDED_HOST = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+
+# The escalation app's audit trail (escalation/services.py): every escalate/approve/decline
+# writes an Escalation row AND a line here, so a database-only compromise cannot erase the
+# trail on its own. Deliberately not routed through the 'django' logger's own config.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {'console': {'class': 'logging.StreamHandler'}},
+    'loggers': {'security': {'handlers': ['console'], 'level': 'INFO', 'propagate': False}},
+}

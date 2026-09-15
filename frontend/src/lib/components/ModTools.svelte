@@ -26,6 +26,19 @@
 		} catch (e) { error = e instanceof ApiError ? e.message : String(e); }
 		busy = false;
 	}
+
+	async function escalate() {
+		const reason = prompt('ZGŁOSZENIE DO NASK — treść nielegalna (np. materiały przedstawiające '
+			+ 'wykorzystywanie dzieci). Od tej chwili treść jest niewidoczna dla wszystkich, także dla '
+			+ 'administracji, do decyzji head-admina. Podaj powód (wymagany):') ?? '';
+		if (!reason.trim()) return;
+		busy = true; error = null;
+		try {
+			await api.post(`${base}/escalate/`, { reason });
+			onChanged();
+		} catch (e) { error = e instanceof ApiError ? e.message : String(e); }
+		busy = false;
+	}
 </script>
 
 <span class="modtools">
@@ -38,6 +51,8 @@
 	{:else if auth.isStaff}
 		<button type="button" class="btn btn--sm" disabled={busy} onclick={() => act('restore')}>Przywróć (administracja)</button>
 	{/if}
+	<button type="button" class="btn btn--sm btn--warn" disabled={busy} onclick={escalate}
+		title="Treść nielegalna — zgłoszenie do NASK, wymaga zgody head-admina">🚨 Zgłoś do NASK</button>
 	{#if error}<span class="err">{error}</span>{/if}
 </span>
 

@@ -24,11 +24,14 @@ from django.db import transaction
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import BasePermission
 
+from escalation.visibility import is_escalated, is_head_admin
+
 from .models import ModerationAction
 
 NUKE_NEEDS_REASON = 'Opcja nuklearna wymaga podania powodu.'
 ONLY_STAFF_UNNUKE = 'Treść ukrytą nuklearnie może przywrócić tylko administracja.'
 NOT_TRUSTED = 'Ta czynność wymaga potwierdzonego adresu instytucjonalnego (FUW, UW, PAN).'
+ESCALATED = 'Ta treść czeka na decyzję administracji.'
 
 # The public status a restore may put a post back into. 'hidden' / 'nuked' are never a
 # restore target — see `_restore_target`.
@@ -72,7 +75,12 @@ class IsTrusted(BasePermission):
 # --- who may see what -----------------------------------------------------------------
 
 def can_see_post(user, post):
-    """Full read access to a post. `visible_posts_q` is the queryset twin; keep them in step."""
+    """Full read access to a post. `visible_posts_q` is the queryset twin; keep them in step.
+
+    Escalation is checked FIRST and overrides everything after it, staff included: the one
+    state in this app where `is_staff` stops meaning anything (see escalation/visibility.py)."""
+    if is_escalated(post) and not is_head_admin(user):
+        return False
     if post.status == 'published':
         return True
     if post.status == 'nuked':
@@ -87,23 +95,35 @@ def can_see_post(user, post):
 def visible_posts_q(user):
     """The same rule as `can_see_post`, as a Q for `Post.objects.filter(...)`."""
     from django.db.models import Q
+
+    from escalation.visibility import active_escalation_ids
+    from .models import Post
+
+    if is_head_admin(user):
+        return Q(pk__isnull=False)  # the one caller escalation does not filter away from
     if is_staff(user):
         # NOT a bare Q(): an empty Q OR'd with another Q collapses to the other one in
         # Django (`Q() | Q(status='nuked')` == `Q(status='nuked')`), which would let staff
         # hide only nuked posts. A truthy match-all Q survives every combination.
-        return Q(pk__isnull=False)
-    q = Q(status='published')
-    if is_trusted(user):
-        q |= Q(status='hidden')
-    if user is not None and getattr(user, 'is_authenticated', False):
-        # own posts at any stage — except nuked, which nobody but staff ever reads again
-        q |= Q(submitted_by=user) & ~Q(status='nuked')
-    return q
+        base = Q(pk__isnull=False)
+    else:
+        base = Q(status='published')
+        if is_trusted(user):
+            base |= Q(status='hidden')
+        if user is not None and getattr(user, 'is_authenticated', False):
+            # own posts at any stage — except nuked, which nobody but staff ever reads again
+            base |= Q(submitted_by=user) & ~Q(status='nuked')
+    escalated = active_escalation_ids(Post)
+    if escalated:
+        base &= ~Q(pk__in=escalated)
+    return base
 
 
 def can_see_comment(user, comment):
     """The real body/author of a comment. A comment on a nuked post is staff-only
     regardless of its own state: it belongs to content the reader may not see."""
+    if is_escalated(comment) and not is_head_admin(user):
+        return False
     if is_staff(user):
         return True
     if comment.post.status == 'nuked':
@@ -120,6 +140,16 @@ def can_see_comment(user, comment):
 def _require_trusted(actor):
     if not is_trusted(actor):
         raise PermissionDenied(NOT_TRUSTED)
+
+
+def require_not_escalated(target):
+    """Every normal moderation action (hide/restore/nuke/moderate) refuses outright while
+    an escalation is pending or approved — including for staff. The only way out is
+    `escalation.services.decide_escalation`, so there is exactly one path that ever moves
+    escalated content between states, not two competing ones. Public (no leading
+    underscore): archive/views.py's `moderate` action calls this directly too."""
+    if is_escalated(target):
+        raise PermissionDenied(ESCALATED)
 
 
 def _clean_reason(reason, required=False):
@@ -154,6 +184,7 @@ def _restore_target(post):
 @transaction.atomic
 def hide_post(post, actor, reason=''):
     _require_trusted(actor)
+    require_not_escalated(post)
     if post.status == 'hidden':
         raise ValidationError({'detail': 'Ten wpis jest już ukryty.'})
     if post.status == 'nuked':
@@ -169,6 +200,7 @@ def hide_post(post, actor, reason=''):
 @transaction.atomic
 def nuke_post(post, actor, reason):
     _require_trusted(actor)
+    require_not_escalated(post)
     reason = _clean_reason(reason, required=True)
     if post.status == 'nuked':
         raise ValidationError({'detail': 'Ten wpis jest już ukryty nuklearnie.'})
@@ -183,6 +215,7 @@ def nuke_post(post, actor, reason):
 def restore_post(post, actor):
     """Hidden → back where it was (trusted). Nuked → back where it was (STAFF ONLY)."""
     _require_trusted(actor)
+    require_not_escalated(post)
     if post.status == 'nuked' and not is_staff(actor):
         raise PermissionDenied(ONLY_STAFF_UNNUKE)
     if post.status not in ('hidden', 'nuked'):
@@ -202,6 +235,7 @@ def _comment_target_check(comment, actor):
 @transaction.atomic
 def hide_comment(comment, actor, reason=''):
     _require_trusted(actor)
+    require_not_escalated(comment)
     _comment_target_check(comment, actor)
     if comment.moderation == 'hidden':
         raise ValidationError({'detail': 'Ten komentarz jest już ukryty.'})
@@ -217,6 +251,7 @@ def hide_comment(comment, actor, reason=''):
 @transaction.atomic
 def nuke_comment(comment, actor, reason):
     _require_trusted(actor)
+    require_not_escalated(comment)
     _comment_target_check(comment, actor)
     reason = _clean_reason(reason, required=True)
     if comment.moderation == 'nuked':
@@ -231,6 +266,7 @@ def nuke_comment(comment, actor, reason):
 def restore_comment(comment, actor):
     """A comment has no queue to go back to: a restore always makes it visible again."""
     _require_trusted(actor)
+    require_not_escalated(comment)
     _comment_target_check(comment, actor)
     if comment.moderation == 'nuked' and not is_staff(actor):
         raise PermissionDenied(ONLY_STAFF_UNNUKE)

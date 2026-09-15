@@ -9,14 +9,18 @@ keep its cursor current even when a poll comes back empty.
 from django.db.models import Max
 from django.shortcuts import get_object_or_404
 from rest_framework import status
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from escalation.views import escalate_and_respond
+from escalation.visibility import active_escalation_ids, is_escalated, is_head_admin
+
+from . import moderation as rules
 from .models import Message, hash_ip
-from .serializers import MessageSerializer, MessageWriteSerializer
+from .serializers import MessageSerializer, MessageWriteSerializer, ReportSerializer
 from .trust import can_moderate
 
 DEFAULT_LIMIT = 50
@@ -47,6 +51,12 @@ class BoardView(APIView):
         show_hidden = (params.get('include_hidden') in ('1', 'true', 'True')
                        and can_moderate(request.user))
         stream = Message.objects.all() if show_hidden else Message.objects.filter(is_hidden=False)
+        if params.get('flagged') in ('1', 'true', 'True') and can_moderate(request.user):
+            stream = stream.filter(reports__resolved=False).distinct()
+        if not is_head_admin(request.user):
+            # Escalated — invisible to EVERYONE else, staff included. See
+            # escalation/visibility.py and the design note in board/moderation.py.
+            stream = stream.exclude(pk__in=active_escalation_ids(Message))
 
         limit = _int(params, 'limit') or DEFAULT_LIMIT
         limit = max(1, min(limit, MAX_LIMIT))
@@ -92,7 +102,53 @@ class HideView(APIView):
         if not can_moderate(request.user):
             raise PermissionDenied('Nie możesz moderować czatu.')
         msg = get_object_or_404(Message, pk=pk)
+        # Every normal moderation action refuses outright while an escalation is pending
+        # or approved — including for staff. The only way out is a head-admin decision
+        # (escalation.services.decide_escalation): one path, not two competing ones.
+        if is_escalated(msg):
+            raise PermissionDenied('Ta wiadomość czeka na decyzję administracji.')
         msg.is_hidden = self.hidden
         msg.hidden_by = request.user if self.hidden else None
         msg.save(update_fields=['is_hidden', 'hidden_by'])
+        # Whichever way this went, it is the answer to every open report on the message —
+        # settle them now, so reporters' reputation moves with the moderator's verdict.
+        rules.settle_reports(msg, request.user, upheld=self.hidden)
         return Response(MessageSerializer(msg, context={'request': request}).data)
+
+
+class EscalateMessageView(APIView):
+    """`POST /api/board/<id>/escalate/` — report to NASK. A reason is REQUIRED. From this
+    call on the message is invisible to EVERYONE but head-admin, staff included, until
+    they decide (escalation.services.decide_escalation)."""
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'escalate'
+
+    def post(self, request, pk):
+        if not can_moderate(request.user):
+            raise PermissionDenied('Nie możesz zgłosić wiadomości do administracji.')
+        msg = get_object_or_404(Message, pk=pk)
+        return escalate_and_respond(request, msg)
+
+
+class ReportView(APIView):
+    """`POST /api/board/<id>/report/` — anybody may flag a message; only a report from a
+    signed-in, trusted account can push it over the auto-hide quorum (board/moderation.py)."""
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'board_report'
+
+    def post(self, request, pk):
+        msg = get_object_or_404(Message, pk=pk)
+        s = ReportSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        user = request.user if request.user.is_authenticated else None
+        try:
+            rules.register_report(msg, user, request.META.get('REMOTE_ADDR', ''), **s.validated_data)
+        except rules.SelfReportError:
+            raise PermissionDenied('Nie możesz zgłosić własnej wiadomości.')
+        except rules.DuplicateReportError:
+            raise ValidationError({'detail': 'Już zgłosiłeś/aś tę wiadomość.'})
+        msg.refresh_from_db()
+        return Response(MessageSerializer(msg, context={'request': request}).data,
+                        status=status.HTTP_201_CREATED)

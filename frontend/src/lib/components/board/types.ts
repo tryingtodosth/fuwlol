@@ -1,8 +1,17 @@
 export interface BoardMessage {
 	id: number; nick: string; is_guest: boolean; author_id: number | null; format: 'text' | 'latex';
 	body: string; created_at: string; is_hidden: boolean; can_hide: boolean;
+	open_reports: number | null; // null unless the caller may moderate (server-side hidden otherwise)
 }
 export interface BoardPage { count: number; latest_id: number; results: BoardMessage[] }
+
+export const REPORT_REASONS: { value: string; label: string }[] = [
+	{ value: 'spam', label: 'Spam' },
+	{ value: 'offensive', label: 'Obraźliwe' },
+	{ value: 'illegal', label: 'Niezgodne z prawem' },
+	{ value: 'privacy', label: 'Dotyczy mnie' },
+	{ value: 'other', label: 'Inne' }
+];
 export const MAX_LEN = 2048; // 2^11
 export const PREVIEW_CHARS = 100;
 

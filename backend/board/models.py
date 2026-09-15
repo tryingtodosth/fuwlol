@@ -17,6 +17,7 @@ import hashlib
 
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 
 # 2 ** 11 = 2048 characters. Enforced in the serializer rather than as a model max_length,
 # so going over gives a Polish sentence instead of a silent truncation.
@@ -59,3 +60,39 @@ class Message(models.Model):
         """A message written without an account. The author FK is SET_NULL, so a deleted
         account's old messages honestly become guest messages rather than vanishing."""
         return self.author_id is None
+
+
+class Report(models.Model):
+    """A flag on a message — anybody may send one, but only a report from a signed-in,
+    *trusted* account (`accounts.trust.is_trusted`) ever moves anything: see
+    `board/moderation.py` for the auto-hide quorum and the reputation settlement a
+    moderator's hide/restore triggers afterwards. A guest report is still worth keeping —
+    it is a signal in the moderation queue — it just never counts on its own.
+
+    `upheld` starts `None` (open); a moderator's hide/restore resolves every open report on
+    the message at once and stamps this True/False, which is what board/moderation.py reads
+    to decide who gets +1 / -1 reputation."""
+    REASONS = [('spam', 'Spam'), ('offensive', 'Obraźliwe'), ('illegal', 'Niezgodne z prawem'),
+               ('privacy', 'Dotyczy mnie'), ('other', 'Inne')]
+    message = models.ForeignKey(Message, related_name='reports', on_delete=models.CASCADE)
+    reporter = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                 related_name='board_reports', on_delete=models.SET_NULL)
+    ip_hash = models.CharField(max_length=64, blank=True)
+    reason = models.CharField(max_length=10, choices=REASONS)
+    note = models.TextField(blank=True)
+    resolved = models.BooleanField(default=False)
+    upheld = models.BooleanField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        constraints = [
+            # One report per signed-in reporter per message — not per guest: an IP is not an
+            # identity (NAT, campus wifi), so guests are throttled instead (board/views.py),
+            # not deduplicated.
+            models.UniqueConstraint(fields=['message', 'reporter'], condition=Q(reporter__isnull=False),
+                                    name='board_one_report_per_user'),
+        ]
+
+    def __str__(self):
+        return f'zgłoszenie #{self.message_id} ({self.get_reason_display()})'

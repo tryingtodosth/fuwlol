@@ -10,7 +10,7 @@ import re
 from django.contrib.auth.models import User
 from rest_framework import serializers
 
-from .models import DEFAULT_NICK, FORMAT_CHOICES, MAX_LEN, Message
+from .models import DEFAULT_NICK, FORMAT_CHOICES, MAX_LEN, Message, Report
 from .trust import can_moderate
 
 # Anything that would put a picture in the stream. Markdown images, raw HTML, LaTeX
@@ -28,16 +28,31 @@ class MessageSerializer(serializers.ModelSerializer):
     is_guest = serializers.BooleanField(read_only=True)
     author_id = serializers.IntegerField(read_only=True)
     can_hide = serializers.SerializerMethodField()
+    open_reports = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
         fields = ['id', 'nick', 'is_guest', 'author_id', 'format', 'body',
-                  'created_at', 'is_hidden', 'can_hide']
+                  'created_at', 'is_hidden', 'can_hide', 'open_reports']
         read_only_fields = fields
 
     def get_can_hide(self, obj) -> bool:
         request = self.context.get('request')
         return bool(request and can_moderate(request.user))
+
+    def get_open_reports(self, obj):
+        """The open-report count, but only for whoever may act on it — a guest reporter
+        should not learn from the response how many other people flagged the same message."""
+        request = self.context.get('request')
+        if not (request and can_moderate(request.user)):
+            return None
+        return obj.reports.filter(resolved=False).count()
+
+
+class ReportSerializer(serializers.Serializer):
+    reason = serializers.ChoiceField(choices=[c[0] for c in Report.REASONS],
+                                     error_messages={'invalid_choice': 'Wybierz powód zgłoszenia.'})
+    note = serializers.CharField(required=False, allow_blank=True, trim_whitespace=True, max_length=2000)
 
 
 class MessageWriteSerializer(serializers.Serializer):

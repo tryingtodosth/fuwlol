@@ -4,6 +4,7 @@ __pycache__/
 backend/db.sqlite3
 backend/media/
 backend/cachedata/
+backend/evidence/
 backend/staticfiles/
 frontend/node_modules/
 frontend/.svelte-kit/
