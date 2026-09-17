@@ -11,7 +11,7 @@
 
 	const next = $derived.by(() => {
 		const n = page.url.searchParams.get('next');
-		return n && n.startsWith('/') && !n.startsWith('//') ? n : '/';
+		return n && /^\/(?![/\\])/.test(n) ? n : '/'; // in-app path only: not //host, not /\host
 	});
 	const registerHref = $derived(next === '/' ? '/rejestracja' : `/rejestracja?next=${encodeURIComponent(next)}`);
 

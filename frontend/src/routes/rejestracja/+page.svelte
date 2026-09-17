@@ -15,7 +15,7 @@
 
 	const next = $derived.by(() => {
 		const n = page.url.searchParams.get('next');
-		return n && n.startsWith('/') && !n.startsWith('//') ? n : '/';
+		return n && /^\/(?![/\\])/.test(n) ? n : '/'; // in-app path only: not //host, not /\host
 	});
 	const loginHref = $derived(next === '/' ? '/logowanie' : `/logowanie?next=${encodeURIComponent(next)}`);
 

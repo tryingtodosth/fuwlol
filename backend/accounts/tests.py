@@ -237,9 +237,23 @@ class RealIpMiddlewareTests(APITestCase):
             v.LoginView.post = original
         return seen.get('ip')
 
-    def test_cloudflare_header_wins_then_forwarded_for(self):
-        self.assertEqual(self._ip(HTTP_CF_CONNECTING_IP='203.0.113.9', HTTP_X_FORWARDED_FOR='10.0.0.1'), '203.0.113.9')
-        self.assertEqual(self._ip(HTTP_X_FORWARDED_FOR='198.51.100.7, 10.0.0.1'), '198.51.100.7')
+    def test_forwarded_for_is_read_from_the_right_by_trusted_hops(self):
+        # nginx alone (hops=1): the LAST address is what nginx appended = the real client;
+        # the leftmost is whatever the client sent and must never count
+        with override_settings(FUWLOL_PROXY_HOPS=1):
+            self.assertEqual(self._ip(HTTP_X_FORWARDED_FOR='1.2.3.4, 198.51.100.7'), '198.51.100.7')
+        # Traefik + nginx (hops=2): second from the right
+        with override_settings(FUWLOL_PROXY_HOPS=2):
+            self.assertEqual(self._ip(HTTP_X_FORWARDED_FOR='1.2.3.4, 198.51.100.7, 10.0.0.1'), '198.51.100.7')
+            # a chain shorter than the trusted hop count is not trusted at all: REMOTE_ADDR stays the peer's
+            self.assertEqual(self._ip(HTTP_X_FORWARDED_FOR='198.51.100.7'), '127.0.0.1')
+
+    def test_cloudflare_header_needs_its_own_flag(self):
+        # without FUWLOL_CLOUDFLARE anybody can send CF-Connecting-IP straight to the origin
+        with override_settings(FUWLOL_CLOUDFLARE=False, FUWLOL_PROXY_HOPS=1):
+            self.assertEqual(self._ip(HTTP_CF_CONNECTING_IP='203.0.113.9', HTTP_X_FORWARDED_FOR='198.51.100.7'), '198.51.100.7')
+        with override_settings(FUWLOL_CLOUDFLARE=True):
+            self.assertEqual(self._ip(HTTP_CF_CONNECTING_IP='203.0.113.9', HTTP_X_FORWARDED_FOR='198.51.100.7'), '203.0.113.9')
 
     def test_headers_ignored_without_trust_flag(self):
         from django.test import override_settings

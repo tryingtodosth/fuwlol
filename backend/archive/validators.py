@@ -84,18 +84,24 @@ def strip_image_metadata(f):
     returned untouched (GIF/WebP may be animated and carry nothing sensitive)."""
     name = getattr(f, 'name', '') or ''
     ext = name.rsplit('.', 1)[-1].lower()
-    if ext not in {'jpg', 'jpeg', 'png'}:
+    if ext not in {'jpg', 'jpeg', 'png', 'webp'}:
         return f
     f.seek(0)
     img = Image.open(f)
+    if ext == 'webp' and getattr(img, 'n_frames', 1) > 1:
+        f.seek(0)
+        return f  # animated: a re-save would flatten it; WebP animations carry no EXIF worth stripping
     from PIL import ImageOps
     img = ImageOps.exif_transpose(img)
     out = io.BytesIO()
     if ext == 'png':
         img.save(out, format='PNG', optimize=True)
+    elif ext == 'webp':
+        img.save(out, format='WEBP', quality=90)  # no exif=/icc_profile= → dropped
     else:
         img = img.convert('RGB') if img.mode not in ('RGB', 'L') else img
         img.save(out, format='JPEG', quality=90)
     out.seek(0)
     from django.core.files.uploadedfile import SimpleUploadedFile
-    return SimpleUploadedFile(name, out.read(), content_type=f'image/{"jpeg" if ext != "png" else "png"}')
+    mime = {'png': 'image/png', 'webp': 'image/webp'}.get(ext, 'image/jpeg')
+    return SimpleUploadedFile(name, out.read(), content_type=mime)

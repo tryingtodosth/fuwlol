@@ -26,6 +26,11 @@ services:
       DATABASE_URL: postgres://fuwlol:${POSTGRES_PASSWORD}@db:5432/fuwlol
       FUWLOL_DEBUG: "0"
       FUWLOL_TRUST_PROXY: "1"
+      # X-Forwarded-For hops we run: Traefik (Coolify) + nginx = 2. See backend/config/middleware.py.
+      FUWLOL_PROXY_HOPS: ${FUWLOL_PROXY_HOPS:-2}
+      # 1 ONLY when the origin accepts traffic from Cloudflare alone (deploy/HETZNER.md)
+      FUWLOL_CLOUDFLARE: ${FUWLOL_CLOUDFLARE:-0}
+      FUWLOL_IP_SALT: ${FUWLOL_IP_SALT:-}
       FUWLOL_SECRET_KEY: ${FUWLOL_SECRET_KEY:?set FUWLOL_SECRET_KEY}
       FUWLOL_ALLOWED_HOSTS: ${FUWLOL_DOMAIN:-fuw.lol},www.${FUWLOL_DOMAIN:-fuw.lol},api
       FUWLOL_CSRF_ORIGINS: https://${FUWLOL_DOMAIN:-fuw.lol},https://www.${FUWLOL_DOMAIN:-fuw.lol}
@@ -33,6 +38,7 @@ services:
       FUWLOL_SITE_URL: https://${FUWLOL_DOMAIN:-fuw.lol}
       FUWLOL_MEDIA_ROOT: /app/media
       FUWLOL_CACHE_DIR: /app/cachedata
+      FUWLOL_EVIDENCE_ROOT: /app/evidence
       FUWLOL_EMAIL_HOST: ${FUWLOL_EMAIL_HOST:-}
       FUWLOL_EMAIL_PORT: ${FUWLOL_EMAIL_PORT:-587}
       FUWLOL_EMAIL_USER: ${FUWLOL_EMAIL_USER:-}
@@ -43,6 +49,7 @@ services:
     volumes:
       - media:/app/media
       - cachedata:/app/cachedata
+      - evidence:/app/evidence   # NASK evidence packages + quarantined files — back this up
 
   web:
     build: ./frontend
@@ -58,3 +65,4 @@ volumes:
   pgdata:
   media:
   cachedata:
+  evidence:

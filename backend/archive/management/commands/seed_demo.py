@@ -3,6 +3,9 @@ Every person here is FICTIONAL on purpose — the archive must never ship invent
 claims about real staff. Idempotent; --reset wipes and recreates the demo rows."""
 import io
 import random
+import secrets
+
+from django.conf import settings
 
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
@@ -114,13 +117,24 @@ class Command(BaseCommand):
     def handle(self, *args, **opts):
         if opts['reset']:
             Post.objects.filter(submitted_by__username__in=['dziekan', 'student', 'doktorant']).delete()
-        admin, _ = User.objects.get_or_create(username='dziekan', defaults={'is_staff': True, 'is_superuser': True, 'email': 'dziekan@fuw.lol'})
-        admin.set_password('fuwlol123'); admin.is_staff = True; admin.save()
-        student, _ = User.objects.get_or_create(username='student', defaults={'email': 'student@fuw.lol'})
-        student.set_password('fuwlol123'); student.save()
+        # Passwords: the documented `fuwlol123` ONLY on a debug (local) server. Anywhere
+        # else each demo account gets a random password, printed once here and never
+        # written down — and an account that already exists is never re-passworded, so a
+        # re-seed cannot silently revert a password somebody changed. `dziekan` is a
+        # superuser (= head-admin for escalations), which is exactly why a known password
+        # on it in production would be the worst credential on the box.
+        def account(username, **defaults):
+            u, created = User.objects.get_or_create(username=username, defaults=defaults)
+            if created:
+                pw = 'fuwlol123' if settings.DEBUG else secrets.token_urlsafe(18)
+                u.set_password(pw); u.save()
+                if not settings.DEBUG:
+                    self.stdout.write(f'konto demo {username}: hasło {pw} (zapisz je teraz — nie zostanie pokazane ponownie)')
+            return u
+        admin = account('dziekan', is_staff=True, is_superuser=True, email='dziekan@fuw.lol')
+        student = account('student', email='student@fuw.lol')
         # a TRUSTED demo account: verified fuw.edu.pl affiliation, no staff flag
-        doktorant, _ = User.objects.get_or_create(username='doktorant', defaults={'email': 'doktorant@fuw.lol'})
-        doktorant.set_password('fuwlol123'); doktorant.save()
+        doktorant = account('doktorant', email='doktorant@fuw.lol')
         try:
             from accounts.models import Profile, TrustedDomain
             dom = TrustedDomain.objects.filter(domain='fuw.edu.pl').first()
@@ -188,4 +202,5 @@ class Command(BaseCommand):
         rules.nuke_post(nuked, admin, 'Treść niezgodna z prawem (demo).')
         hc = Comment.objects.create(post=created[0], author=student, body='Ten komentarz został ukryty przez moderację.')
         rules.hide_comment(hc, doktorant, 'Spam.')
-        self.stdout.write(self.style.SUCCESS(f'Seeded {len(created)} published posts. Logins: dziekan (staff) / doktorant (zaufany) / student, hasło fuwlol123'))
+        self.stdout.write(self.style.SUCCESS(f'Seeded {len(created)} published posts. Logins: dziekan (staff, head-admin) / doktorant (zaufany) / student'
+                                             + (', hasło fuwlol123' if settings.DEBUG else ' — hasła wypisane wyżej przy pierwszym utworzeniu')))

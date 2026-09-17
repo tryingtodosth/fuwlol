@@ -6,6 +6,7 @@
  * word that survives parsing as plain text, and is swapped for an <img> afterwards — which
  * also lets `width=0.5\textwidth` become a percentage the browser understands. */
 import DOMPurify from 'dompurify';
+import { hookSanitizer, trackingResolver, withAllowedImages } from './markdown';
 
 export interface LatexResult { html: string; error: string | null; line?: number }
 
@@ -37,9 +38,12 @@ export async function renderLatex(src: string, resolve: (name: string) => string
 	if (options.images === false) {
 		src = src.replace(/\\includegraphics\s*(\[[^\]]*\])?\s*\{[^}]*\}/g, '');
 	}
+	hookSanitizer();
+	const seen = new Set<string>();
+	const track = trackingResolver(resolve, seen);
 	const images: { url?: string; name: string; width: string | null }[] = [];
 	let body = src.replace(/\\includegraphics\s*(\[[^\]]*\])?\s*\{([^}]*)\}/g, (_m, opts, name) => {
-		images.push({ url: resolve(name), name, width: graphicsWidth(opts || '') });
+		images.push({ url: track(name), name, width: graphicsWidth(opts || '') });
 		return ` ${MARK}${images.length - 1}X `;
 	});
 	// LaTeX.js needs a document; a fragment pasted into a comment gets one wrapped around it.
@@ -63,7 +67,14 @@ export async function renderLatex(src: string, resolve: (name: string) => string
 			const style = img.width ? ` style="width:${img.width}"` : '';
 			return `<img class="latex-img" src="${img.url}" alt="${escapeHtml(img.name)}"${style}>`;
 		});
-		html = DOMPurify.sanitize(html, { ADD_ATTR: ['style'], ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|blob:|\/)/i });
+		// LaTeX.js output is classed spans/divs with inline sizes (its scoped stylesheet reads
+		// them) and KaTeX MathML, so the tag list stays DOMPurify's default minus anything
+		// that is a page element rather than content; images follow the same allow-list as
+		// Markdown (withAllowedImages), links get the same rel/target hook.
+		html = withAllowedImages(options.images === false ? [] : seen, () => DOMPurify.sanitize(html, {
+			ADD_ATTR: ['style'], FORBID_TAGS: ['style', 'form', 'input', 'button', 'textarea', 'select', 'iframe', 'object', 'embed'],
+			FORBID_ATTR: ['srcset'], ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|blob:|\/)/i
+		}));
 		return { html, error: null };
 	} catch (e: unknown) {
 		const err = e as { message?: string; location?: { start?: { line?: number } } };
