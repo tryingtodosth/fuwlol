@@ -65,21 +65,23 @@
 	.ph {
 		width: 170px;
 		height: 110px;
-		border: 1px solid var(--line);
-		background: var(--box);
+		border: 1px dashed var(--line);
+		background: #fafafa;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 34px;
-		color: #999;
+		font-size: 30px;
+		opacity: 0.7;
 	}
 	.item__text p {
 		margin: 0;
 	}
 	@media (max-width: 640px) {
 		.ph {
-			width: 100%;
-			height: 90px;
+			display: none;
+		}
+		.item__thumb:has(.ph) {
+			display: none;
 		}
 	}
 </style>

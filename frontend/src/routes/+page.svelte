@@ -46,7 +46,9 @@
 				api.get<Stats>('/posts/stats/')
 			]);
 			featured = f.results.slice(0, 4);
-			latest = l.results.slice(0, 10);
+			// a post already shown under "Wyróżnione" is not news twice on the same page
+			const shown = new Set(featured.map((p) => p.slug));
+			latest = l.results.filter((p) => !shown.has(p.slug)).slice(0, 10);
 			categories = c;
 			stats = s;
 		} catch (e) {

@@ -75,7 +75,7 @@ await p.getByRole('button', { name: 'Wyślij' }).click();
 await p.waitForSelector('.msg', { timeout: 10000 });
 const first = p.locator('.msg').first();
 check('guest message appears with nick and (gość)', (await first.textContent()).includes('Gość Testowy') && (await first.textContent()).includes('(gość)'));
-check('long message is folded after 100 chars with a spoiler', (await first.locator('details.spoiler').count()) === 1);
+check('long message is folded after 100 chars with a spoiler', (await first.locator('button.spoiler').count()) === 1);
 check('math in the chat excerpt is typeset', (await first.locator('.katex').count()) > 0);
 check('link in chat is a nofollow link', (await first.locator('a[rel~="nofollow"]').count()) > 0);
 await p.waitForTimeout(1000);

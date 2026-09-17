@@ -10,7 +10,9 @@
 		"prepare": "svelte-kit sync || echo ''; node scripts/scope-latexjs-css.mjs",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"e2e": "node e2e/smoke.mjs"
+		"e2e": "node e2e/smoke.mjs",
+		"e2e:escalation": "node e2e/escalation.mjs",
+		"survey": "node e2e/survey.mjs"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-static": "^3.0.10",
