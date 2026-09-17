@@ -69,6 +69,46 @@ Every transition writes a `ModerationAction`. A restore returns a post to the st
 one module and every endpoint asks it; the serializers blank what a caller may not see rather
 than trusting views to filter.
 
+## Escalation to NASK (backend/escalation/)
+The one state in which "trusted" and even "staff" mean nothing. A trusted user or a moderator
+presses 🚨 on a post, a comment or a chat message and gives a reason (required; the dialog says
+what is about to happen). From that instant the target is invisible to everybody except a
+head-admin (`is_superuser` — Django's own flag, reused rather than inventing a fourth tier):
+it leaves every list, the RSS feed, the moderation board and the Django admin
+(`escalation/adminmixin.py`), and hide/restore/nuke/moderate refuse with 403/404. The evidence is
+frozen INSIDE the same transaction — manifest (content, author, e-mail, dates) plus copies of the
+files, chmod 400, SHA-256 of the whole package in `evidence_ref` — because the author may delete
+the account and a moderator may restore the message before anybody looks. The live files are
+MOVED out of `/media` into the evidence volume (`quarantine.py`), so a kept URL answers 404; a
+nuke does the same, and a decline or un-nuke moves them back only when nothing else holds them.
+`/eskalacje` shows the head-admin the frozen package and two decisions: approve (the package is
+complete; the human forwards it through Dyżurnet.pl — the app never contacts an institution) or
+decline (back to ordinary moderation). `is_escalated` fails CLOSED. Every step is a row in the
+database and a line in the `security` log. Nothing distinguishes "already escalated" from "does
+not exist" to anybody below head-admin.
+
+## Security posture (after the review of 16.09.2026)
+Uploads are judged by bytes and renamed to UUIDs; JPEG/PNG/WebP lose EXIF. In the browser, both
+renderers (Markdown and LaTeX.js) go through DOMPurify with an image allow-list enforced ON THE
+DOM: an `<img>` survives only if its `src` is one of our attachment URLs (or a preview blob) —
+the older regex over `![](url)` never saw reference-style images or raw tags, and a hot-linked
+picture is a tracking pixel fired at every moderator. `class` is not allowed in user content.
+nginx sends a CSP (img-src self, frame-src web.archive.org, frame-ancestors self), X-Frame-Options,
+Referrer-Policy; `/media` is served with `sandbox` and PDFs as attachments. The client address is
+taken from X-Forwarded-For counted from the RIGHT by `FUWLOL_PROXY_HOPS` (Traefik + nginx = 2) and
+CF-Connecting-IP only with `FUWLOL_CLOUDFLARE=1` — the leftmost entry is the client's own and used
+to drive every per-IP throttle. Per-action throttles on the post ViewSet were a silent no-op
+(`ScopedRateThrottle` reads the scope off the VIEW); `FixedScopeThrottle` makes post_create 30/h,
+comment_create 60/h and escalate 10/day real. Login is limited per username as well as per IP.
+`seed_demo` never resets an existing password and, outside DEBUG, generates random ones; the
+Docker image sets `FUWLOL_DEBUG=0` and settings refuse to start with the default SECRET_KEY.
+Reporters' e-mails and notes are staff-only; a moderator's review note is the author's only.
+Accepted, not forgotten: the token lives in localStorage (CSP is the second line, an httpOnly
+cookie would be a different auth model); one trusted account can escalate — and thereby freeze —
+any content (10/day, fully logged: the price of acting fast on CSAM); throttles count attempts,
+not failures; Cloudflare's cache must be purged by URL after a quarantine; quarantine assumes
+FileSystemStorage on one host.
+
 ## The chat (backend/board/)
 An old-school shoutbox: anyone may write, guests under a nick (never an existing username),
 2048 characters (2^11), links yes, images no, LaTeX yes (the same two renderers with images
@@ -97,7 +137,9 @@ proxied, `/media` from a shared volume). All secrets and hosts come from `FUWLOL
 `FUWLOL_TRUST_PROXY` makes per-IP throttles see the real visitor behind the proxy.
 
 ## Left open
-- No e-mail (password reset, notifications). No real-time anything.
+- No e-mail (password reset, notifications — a head-admin learns about an escalation only by
+  logging in; that mail is the first thing to build, the SMTP for verification already exists).
+  No real-time anything.
 - No syntax highlighting in the LaTeX editor (a textarea with a line gutter, by choice).
 - LaTeX.js covers a subset: no TikZ, no custom packages; the error panel says so.
 - No user profiles, no per-user pages beyond "Moje wpisy".

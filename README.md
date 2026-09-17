@@ -15,7 +15,8 @@ strony. Wygląd celowo kopiuje www.fuw.edu.pl (Tahoma 13 px, zielony pasek `#175
 ./run.sh     # API :8000, front :5173 — Ctrl+C zatrzymuje oba
 ```
 
-Konta demo: `dziekan` (administracja), `doktorant` (zaufany) i `student`, hasło `fuwlol123`.
+Konta demo: `dziekan` (administracja i head-admin), `doktorant` (zaufany) i `student`, hasło `fuwlol123`
+(tylko na serwerze deweloperskim — poza `FUWLOL_DEBUG=1` seed losuje hasła i wypisuje je raz).
 Panel Django: `/admin/`. Mail weryfikacyjny w trybie deweloperskim ląduje w konsoli backendu.
 Porty zajęte? `FUWLOL_CORS_ORIGINS` + `frontend/.env` (`PUBLIC_API_BASE_URL`) sterują adresami.
 
@@ -39,6 +40,14 @@ Porty zajęte? `FUWLOL_CORS_ORIGINS` + `frontend/.env` (`PUBLIC_API_BASE_URL`) s
   moderacji** `/tablica`, widoczną dla wszystkich zaufanych) i opcja nuklearna dla treści
   nielegalnych lub obrzydliwie obraźliwych (wtedy treść widzi już tylko administracja).
   Szczegóły: `backend/MODERATION-API.md`.
+- **Eskalacja do NASK** (`🚨 Zgłoś do NASK` na wpisie, komentarzu i wiadomości na czacie, dla
+  zaufanych i staff): treść znika dla WSZYSTKICH — także dla moderatorów — a jej kopia (treść,
+  autor, pliki, SHA-256) zostaje zamrożona jako pakiet dowodowy; pliki trafiają do kwarantanny
+  poza `/media`. Decyduje **head-admin** (konto `is_superuser`) na `/eskalacje`: zatwierdza
+  (i sam, ręcznie, zgłasza przez Dyżurnet.pl — aplikacja nigdy nie kontaktuje się z instytucją)
+  albo odrzuca (treść wraca pod zwykłą moderację). Zgłoszenia na czacie: każdy może zgłosić
+  wiadomość; trzy zgłoszenia od różnych zaufanych kont ukrywają ją same, a decyzja moderatora
+  potem podnosi lub obniża reputację zgłaszających.
 - **Wehikuł czasu** na stronie głównej: data z życia fuw.lol → archiwum z tego dnia
   (rejestr wersji układu strony w `versions.ts` to grunt pod „jak strona wyglądała”);
   1998–2026 → zrzut fuw.edu.pl z Internet Archive (po animacji Wielkiego Wybuchu);
@@ -48,11 +57,15 @@ Porty zajęte? `FUWLOL_CORS_ORIGINS` + `frontend/.env` (`PUBLIC_API_BASE_URL`) s
 ## Struktura
 
 ```
-backend/   config/ (settings, urls)  accounts/ (rejestracja, logowanie)  archive/ (modele, API, walidacja plików, wayback, seed_demo, testy)
+backend/   config/ (settings, urls, middleware — adres za proxy)  accounts/ (rejestracja, logowanie, zaufani)  archive/ (modele, API, walidacja plików, wayback, seed_demo, testy)
+           board/ (czat, zgłoszenia, reputacja)  escalation/ (eskalacja do NASK: dowody, kwarantanna plików, widoczność, mixin panelu Django)
 frontend/  src/lib/{api,types,auth}  src/lib/render/{markdown,latex,media}  src/lib/components/{editor,timemachine,…}  src/routes/…
 deploy/    HETZNER.md — Hetzner + Coolify + Cloudflare; Dockerfiles w backend/ i frontend/, docker-compose.yml
+docs/      fuwlol-dokumentacja.drawio (+ .pdf, render/NN.png) — dokumentacja techniczna po polsku z prawdziwymi zrzutami,
+           generowana przez build_docs.py + render_docs.mjs; research-brief-gemini.md — brief do researchu rynkowego
 ```
 
-Testy: `cd backend && ../.venv/bin/python manage.py test` (74) · `cd frontend && npm run check && npm run build`
-· przeglądarkowy smoke test przy działających serwerach: `cd frontend && npm run e2e` (34 kroki).
+Testy: `cd backend && ../.venv/bin/python manage.py test` (135) · `cd frontend && npm run check && npm run build`
+· przy działających serwerach: `npm run e2e` (smoke, 34 kroki), `npm run e2e:escalation` (eskalacja od kliknięcia
+do decyzji) i `npm run survey` (zrzuty każdej strony dla 4 ról × 2 szerokości — do oglądania, nie do asercji).
 Więcej o decyzjach: `DESIGN.md`.
