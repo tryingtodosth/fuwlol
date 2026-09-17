@@ -30,6 +30,7 @@
 	let reason = $state('privacy');
 	let note = $state('');
 	let contact = $state('');
+	let goodFaith = $state(false);
 	let sending = $state(false);
 	let reportError = $state('');
 	let reportDone = $state(false);
@@ -71,7 +72,8 @@
 				post: post.slug,
 				reason,
 				note,
-				contact_email: contact
+				contact_email: contact,
+				good_faith: goodFaith
 			});
 			reportDone = true;
 			reportOpen = false;
@@ -204,6 +206,14 @@
 				</p>
 			{/if}
 
+			{#if post.can_edit && (post.status === 'hidden' || post.status === 'rejected')}
+				<div class="reasons small">
+					<strong>{post.status === 'rejected' ? 'Wpis został odrzucony.' : 'Wpis został ukryty przez moderację.'}</strong>
+					{#if post.review_note}Powód: {post.review_note}.{:else}Powód podany jest w „Moich wpisach”, jeśli moderator go zostawił.{/if}
+					Możesz się odwołać w ciągu 14 dni: napisz na adres z „O archiwum”, podając numer {post.catalog_no || 'wpisu'} — odwołanie rozpatruje człowiek.
+				</div>
+			{/if}
+
 			<p class="acts small">
 				{#if post.can_edit}
 					<a href="/edytuj/{post.slug}">Edytuj</a> ·
@@ -233,8 +243,10 @@
 					<label for="r-note">Szczegóły (opcjonalnie)</label>
 					<textarea id="r-note" rows="4" bind:value={note}></textarea>
 
-					<label for="r-mail">E-mail kontaktowy (opcjonalnie)</label>
+					<label for="r-mail">E-mail kontaktowy</label>
 					<input id="r-mail" type="email" bind:value={contact} placeholder="żebyśmy mogli odpisać" />
+					<p class="help">Bez adresu zgłoszenie też trafi do moderacji, ale nie będzie formalnym zawiadomieniem w rozumieniu art. 16 DSA i nie dostaniesz odpowiedzi. Zgłoszenia treści nielegalnych dotyczących dzieci mogą być anonimowe.</p>
+					<label class="check"><input type="checkbox" bind:checked={goodFaith} required /> Oświadczam, że zgłoszenie składam w dobrej wierze, a podane informacje są rzetelne i kompletne.</label>
 
 					{#if reportError}<div class="error">{reportError}</div>{/if}
 
@@ -288,6 +300,9 @@
 		background: none;
 		text-decoration: underline;
 	}
+	.reasons { border: 1px solid #f2b8b8; background: #fff0f0; padding: 6px 9px; margin: 8px 0; }
+	.check { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; margin: 8px 0; }
+	.check input { width: auto; margin-top: 2px; }
 	.report {
 		border: 1px solid var(--line);
 		background: var(--box);

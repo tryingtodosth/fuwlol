@@ -18,7 +18,8 @@ from escalation.views import escalate_and_respond
 from . import moderation as rules
 from .models import (Attachment, Category, Comment, CommentAttachment, ModerationAction, Person, Post,
                      Reaction, Report, Tag)
-from .serializers import (CategorySerializer, CommentSerializer, ModerationPostSerializer,
+from .search import query_parts
+from .serializers import (CategorySerializer, CommentSerializer, MinePostSerializer, ModerationPostSerializer,
                           PersonSerializer, PostDetailSerializer, PostListSerializer,
                           PostWriteSerializer, ReportSerializer, TagSerializer, REACTION_KINDS,
                           board_comment_payload, board_post_payload)
@@ -176,8 +177,10 @@ class PostViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action in ('create', 'update', 'partial_update'):
             return PostWriteSerializer
-        if self.action == 'list' or self.action == 'mine':
+        if self.action == 'list':
             return PostListSerializer
+        if self.action == 'mine':
+            return MinePostSerializer
         if self.action == 'queue':
             return ModerationPostSerializer
         return PostDetailSerializer
@@ -209,8 +212,15 @@ class PostViewSet(viewsets.ModelViewSet):
         p = self.request.query_params
         if p.get('q'):
             q = p['q'].strip()
-            qs = qs.filter(Q(title__icontains=q) | Q(summary__icontains=q) | Q(body__icontains=q)
-                           | Q(tags__name__icontains=q) | Q(people__name__icontains=q)).distinct()
+            # prose is compared folded (no case, no diacritics), formulas canonicalised —
+            # archive/search.py; the raw lookups stay for tag and person names
+            text, math = query_parts(q)
+            cond = Q(tags__name__icontains=q) | Q(people__name__icontains=q) | Q(title__icontains=q)
+            if text:
+                cond |= Q(search_text__icontains=text)
+            if math:
+                cond |= Q(search_math__icontains=math)
+            qs = qs.filter(cond).distinct()
         if p.get('category'):
             qs = qs.filter(category__slug=p['category'])
         if p.get('tag'):

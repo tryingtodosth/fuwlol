@@ -1,0 +1,197 @@
+Architektura bezpiecznego renderowania LaTeX i Markdown w aplikacjach webowych: Wektory ataków, inżynieria potoku i deterministyczny sandboxingPrzetwarzanie i renderowanie niezaufanego kodu matematycznego oraz tekstu formatowanego w środowisku przeglądarki internetowej stawia przed inżynierami oprogramowania wyzwania wykraczające poza standardowe mechanizmy obrony aplikacji webowych. Integracja deklaratywnych silników Markdown, takich jak marked, z wyspecjalizowanymi parserami i kompilatorami notacji matematycznej (KaTeX, MathJax, LaTeX.js) tworzy wysoce złożony system interpretacji danych. W takim ekosystemie spotykają się odmienne paradygmaty: parsowanie gramatyk bezkontekstowych, dynamiczne rozwijanie makr o kompletności w sensie Turinga oraz wielojęzyczne drzewa dokumentów łączące przestrzenie nazw HTML, SVG i MathML.Niewłaściwa integracja tych technologii otwiera szeroką przestrzeń dla ataków odmowy usługi (zarówno w postaci katastrofalnych nawrotów w silnikach wyrażeń regularnych, jak i bomb pamięciowych w ekspanderach makr) oraz zaawansowanych ataków typu Cross-Site Scripting (XSS), w tym mutacyjnego XSS (mXSS) wynikającego z tzw. pomylenia przestrzeni nazw (Namespace Confusion). Zbudowanie bezpiecznego potoku przetwarzania wymaga wielowarstwowej strategii obrony w głąb (Defense-in-Depth), łączącej ścisłą sekwencyjność leksykalną, utwardzoną sanitizację oraz twardą izolację procesową wspieraną przez deterministyczne egzekwowanie budżetu czasu procesora.1. Wektory podatności w parserach matematycznych i silnikach MarkdownPodatności ReDoS w tokenizatorach i parserach formułZjawisko Regular Expression Denial of Service (ReDoS) wynika bezpośrednio z mechaniki algorytmicznej powszechnie stosowanej w silnikach wyrażeń regularnych nowoczesnych środowisk wykonawczych JavaScript, takich jak Irregexp w silniku V8. Silniki te opierają się głównie na symulacji niedeterministycznych automatów skończonych ze stosem nawrotów (Spencer's backtracking NFA). Choć podejście to oferuje wysoką ekspresję i wsparcie dla rozszerzeń gramatycznych, charakteryzuje się pesymistyczną złożonością czasową, która przy wystąpieniu wieloznaczności w strukturze wyrażenia regularnego degraduje się ze stałej lub liniowej do wielomianowej $\mathcal{O}(n^k)$, a w skrajnych przypadkach wykładniczej $\mathcal{O}(2^n)$ względem długości ciągu wejściowego $n$.Podatności te występują regularnie w parserach tekstu formatowanego; biblioteka marked wielokrotnie borykała się z problemami katastrofalnego nawrotu, czego przykładem były luki CVE-2021-21306 oraz CVE-2022-21680 związane ze złożonością wyrażenia block.def. Poważniejsze zagrożenie pojawia się jednak na styku Markdownu i formuł matematycznych, gdzie programiści implementują naiwne wyrażenia regularne do wyodrębniania bloków $...$ lub $$...$$. Wzorzec ze zagnieżdżonymi kwantyfikatorami i alternatywami nakładającymi się leksykalnie (np. próba dopasowania znaków ucieczki obok znaków nielimitowanych) w zderzeniu ze złośliwie spreparowanym, niezbalansowanym ciągiem wejściowym zmusza silnik regex do przeszukania potężnego drzewa permutacji ścieżek dopasowania. W rezultacie pojedynczy ciąg o długości kilkudziesięciu znaków potrafi zawiesić wątek wykonawczy przeglądarki na wiele minut.W przypadku środowiska LaTeX.js wektor ten przyjmuje nieco inny wymiar architektoniczny. Biblioteka opiera się na generatorze parserów PEG.js (Parsing Expression Grammar), który przetwarza gramatykę bez nawrotów wykładniczych dzięki technice memoizacji (algorytm Packrata). Zabezpieczenie przed czasem wykładniczym okupione jest jednak gwarantowaną liniową złożonością pamięciową $\mathcal{O}(n)$ względem rozmiaru wejścia i głębokości reguł. Złożone formuły o ekstremalnym zagnieżdżeniu środowisk matematycznych prowadzą w parserze PEG do wyczerpania stosu wywołań silnika JavaScript (Maximum call stack size exceeded) bądź alokacji gigabajtowych tablic memoizacyjnych, co wywołuje błąd braku pamięci (Out-Of-Memory crash) i awaryjne zamknięcie procesu karty.Manipulacja przestrzeniami nazw i eskalacja uprawnień przez MathML oraz SVGGenerowanie kodu MathML i wektorów SVG w celu prezentacji typografii matematycznej rodzi ryzyko wstrzyknięcia złośliwego kodu JavaScript. Podstawowy wektor stanowią interaktywne elementy i atrybuty zdefiniowane w samych specyfikacjach formatów wizualnych. Format MathML definiuje element <maction>, którego zadaniem jest obsługa dynamicznych akcji, co historycznie pozwalało na uruchamianie skryptów, a atrybuty href oraz xlink:href w MathML i SVG umożliwiają osadzanie pseudo-protokołów javascript: lub data:. Jeżeli parser matematyczny nie zweryfikuje protokołu przekazanego do komendy \href, silnik wygeneruje bezpośrednio klikalny element z aktywnym ładunkiem wykonawczym.Zjawiskiem o znacznie wyższym stopniu złożoności jest mutacyjny XSS (mXSS), wywoływany przez błędy pomylenia przestrzeni nazw (Namespace Confusion). Zgodnie ze standardem parsowania HTML5 węzły w drzewie DOM dziedziczą przestrzeń nazw po rodzicu, jednak elementy <math> oraz <svg> wprowadzają stan obcej zawartości (foreign content). W tej obcej przestrzeni reguły leksemów diametralnie różnią się od reguł HTML; przykładowo znacznik <style> w przestrzeni HTML jest elementem typu rawtext (który nie może posiadać dzieci w drzewie DOM), podczas gdy wewnątrz SVG czy MathML jest traktowany jak standardowy element kontenerowy. Standard przewiduje precyzyjnie zdefiniowane punkty integracji HTML (HTML Integration Points), które przełączają parser z powrotem do przestrzeni HTML. Są to m.in. <svg foreignObject>, <svg desc>, <svg title> oraz <math annotation-xml> pod warunkiem posiadania atrybutu encoding="text/html" lub encoding="application/xhtml+xml". Ponadto istnieją punkty integracji tekstu MathML (<mi>, <mo>, <mn>, <ms>, <mtext>).Atak mXSS wykorzystuje asymetrię między początkowym parsowaniem a ponowną serializacją do tekstu: złośliwy kod wejściowy buduje początkowo drzewo DOM uznawane przez sanitizer za całkowicie bezpieczne (ponieważ złośliwe znaczniki ukryte są np. wewnątrz atrybutów lub w nieszkodliwej przestrzeni obcej). Gdy jednak takie drzewo zostanie zserializowane przez przypisanie do innerHTML, a następnie powtórnie sparsowane przez przeglądarkę, elementy pomocnicze wymuszają ucieczkę z przestrzeni MathML/SVG do przestrzeni HTML. W konsekwencji element uznawany dotąd za ciąg znaków wewnątrz atrybutu zostaje zinterpretowany jako aktywny tag HTML z handlerem zdarzeń, np. <img src=x onerror=alert(1)>.Dodatkowym zagrożeniem są błędy w samych implementacjach silników LaTeX. Biblioteka KaTeX w trybie domyślnym odrzuca polecenia zagrażające bezpieczeństwu, lecz włączenie flagi trust: true bez rygorystycznej funkcji weryfikującej otwiera krytyczne podatności. W podatności CVE-2025-23207 wykazano, że komenda \htmlData nie sprawdzała poprawności nazw atrybutów, co pozwalało na domknięcie cudzysłowu i zdefiniowanie dowolnego handlera zdarzeń w wyjściowym kodzie HTML. Z kolei podatność GHSA-f98w-7cxr-ff2h dotyczyła braku ucieczki znaków w poleceniu \includegraphics, co umożliwiało przełamanie atrybutów znacznika graficznego. Istotnym błędem po stronie aplikacji integrujących jest również bezpośrednie wstrzykiwanie treści obiektów błędów parsera. W KaTeX instancja ParseError zawiera w polu message surowy, niesparsowany fragment wejścia LaTeX. Wstawienie komunikatu o błędzie do drzewa za pomocą właściwości innerHTML zamiast innerText lub textContent skutkuje natychmiastowym wykonaniem zawartego w błędnej formule ładunku XSS.Odmowa usługi przez rekurencję i bomby makrSystem makr wbudowany w standard TeX posiada moc obliczeniową maszyny Turinga, co sprawia, że biblioteki wiernie odwzorowujące te mechanizmy są domyślnie podatne na celowe ataki paraliżujące zasoby obliczeniowe środowiska wykonawczego. Podstawowym wektorem jest rekurencja nieskończona, realizowana przez komendy pokroju \def\x{\x} \x. Silnik pozbawiony restrykcyjnych liczników wywołań wchodzi w pętlę generowania tokenów, doprowadzając do zablokowania jednowątkowej pętli zdarzeń JavaScript lub natychmiastowego przepełnienia stosu wywołań.Groźniejszą formą ataku jest bomba dekompresyjna makr (ang. TeX Macro Expansion Bomb), będąca matematycznym odpowiednikiem ataku Billion Laughs. Poprzez kaskadowe definicje makr, w których każde kolejne wywołuje wielokrotnie definicję poprzednią, napastnik przy minimalnym rozmiarze ładunku wejściowego (poniżej jednego kilobajta) wymusza wykładniczą eksplozję tokenów. Rozwinięcie kilkunastu poziomów zagnieżdżenia generuje miliardy jednostek leksykalnych na stercie pamięci. W bibliotece KaTeX luka GHSA-64fm-8hw2-v72w obnażyła mechanizm, w którym polecenie \edef (rozwinięcie natychmiastowe podczas definicji) pozwalało na obejście wbudowanego limitu maxExpand, prowadząc do załamania procesu przeglądarki na skutek gwałtownej alokacji pamięci.W silniku MathJax analogiczny problem dotyczy nasycenia wewnętrznego bufora wyrażenia (maxBuffer), gdzie rekurencyjne makro z dołączonym stałym ciągiem znaków blokuje pamięć podręczną kompilatora. Ponadto napastnicy mogą wykorzystywać mechanizmy izolacji podwyrażeń – na przykład osadzenie matematyki wewnątrz polecenia \text{$...$} tworzyło w MathJax niezależny kontekst parsowania z odrębną pulą makr, co pozwalało na zresetowanie liczników maxMacros i ominięcie nałożonych ograniczeń. Uzupełnieniem tych zagrożeń jest atak typu Visual Layout DoS: wprowadzenie poleceń definiujących gigantyczne struktury geometryczne (np. \rule{10000em}{10000em}) bez włączonych limitów wymiarów zmusza silnik kompozycji graficznej przeglądarki do przeliczania układu o wielkości milionów pikseli, co skutkuje zamrożeniem procesu renderowania grafiki w systemie operacyjnym.Poniższa tabela zestawia wektory podatności oraz wbudowane parametry mitygacji w głównych silnikach renderujących notację matematyczną:BibliotekaWiodące wektory ataków XSSMechanizmy DoS i eksplozji makrDomyślne limity bezpieczeństwaWymagane twarde ograniczenia konfiguracyjneKaTeX\htmlData (CVE-2025-23207), \includegraphics, odbicie błędu w ParseError[cite: 18, 20, 21]Pętle rekurencyjne makr, pominięcie limitu przez \edef (GHSA-64fm-8hw2-v72w)trust: false, maxExpand: 1000, maxSize: Infinitytrust: false, maxExpand: 50, maxSize: 15, strict: "error", bezpieczny handler błędówMathJax\href z protokołem javascript:, dyrektywy CSS w atrybutach style[cite: 11]Akumulacja bufora (\def\x{\x a}), reset limitów przez \text{$...$}[cite: 24, 26]maxMacros: 10000, maxBuffer: 5120, brak modułu ui/safe w bazowym rdzeniuJawne załadowanie rozszerzenia ui/safe, safeOptions.allow.URLs: 'safe', maxMacros: 100, maxBuffer: 2048LaTeX.jsDowolne wstrzykiwanie struktur DOM za pośrednictwem CustomMacros[cite: 8]Liniowa alokacja pamięci w parserze Packrat (PEG.js), wyczerpanie sterty V8Brak domyślnych limitów czasowych i pamięciowych parsera PEGCałkowity zakaz rejestrowania CustomMacros generujących HTML, izolacja w Web Workerze z twardym terminatoremMarkedLuki w regułach autolinków i zagnieżdżonych odnośników w starych wydaniachKatastrofalne nawroty w wyrażeniach regularnych bloków (ReDoS)Brak limitów czasu przetwarzania dopasowań regexWydzielenie do wątku roboczego, pre-ekstrakcja bloków matematycznych za pomocą unikalnych tokenów zastępczych2. Architektura potoku przetwarzania i integracja z sanitizacją DOMSekwencyjność leksykalna: Wzorzec tokenów zastępczychPrzetwarzanie tekstu zawierającego jednocześnie znaczniki Markdown oraz kod matematyczny LaTeX wymaga wyeliminowania wzajemnej destrukcji struktur leksykalnych. Zastosowanie potoku, w którym Markdown jest kompilowany w pierwszej kolejności, prowadzi do uszkodzenia kodu LaTeX: parser Markdown traktuje znaki podkreślenia (_) w indeksach dolnych oraz gwiazdki (*) w operacjach algebraicznych jako formatowanie kursywy lub pogrubienia. W efekcie wyrażenie $x_i * y_i * z_i$ zostaje przekształcone w $x<em>i * y</em>i * z_i$, co niszczy składnię formuły i powoduje błąd kompilacji matematycznej. Z kolei próba przetworzenia kodu LaTeX na kod HTML/MathML przed kompilacją Markdownu skutkuje tym, że wcięcia i znaki nowej linii w wygenerowanych strukturach XML są interpretowane przez silnik Markdown jako bloki kodu źródłowego (<pre><code>), co destabilizuje strukturę dokumentu i ułatwia wstrzyknięcie zniekształconych ładunków mXSS.Prawidłowa inżynieria potoku wymaga zastosowania wzorca ekstrakcji leksykalnej z kryptograficznymi tokenami zastępczymi (Placeholder Nonce Pattern). W pierwszej fazie potoku surowy tekst wejściowy jest analizowany wyłącznie w celu identyfikacji i wycięcia bloków matematycznych (zarówno blokowych $$...$$, jak i wierszowych $...$). W miejsce wyciętych formuł wstawiane są unikalne, alfanumeryczne ciągi zastępcze (np. TOKENMATHTOKENa8f9c1...), generowane przy użyciu generatora liczb pseudolosowych o wysokiej entropii (crypto.randomUUID()). Tokeny te nie mogą zawierać żadnych znaków zastrzeżonych dla składni Markdown ani sekwencji formatujących.W drugiej fazie zabezpieczony tekst – pozbawiony znaków LaTeX – trafia do parsera marked, który kompiluje strukturę akapitów, list i nagłówków. W fazie trzeciej wyekstrahowane bloki LaTeX są kompilowane w środowisku o zaostrzonych limitach do formatu MathML lub bezpiecznego HTML. Faza czwarta polega na podstawieniu wygenerowanych fragmentów matematycznych w miejsca odpowiadających im tokenów w wyjściowym kodzie HTML. W fazie piątej, stanowiącej ostateczne domknięcie potoku, zrekonstruowany dokument HTML jest przekazywany do biblioteki DOMPurify. Sanitizacja musi bezwzględnie stanowić ostatni krok przed wstrzyknięciem danych do właściwego węzła DOM; jakiekolwiek przetwarzanie łańcuchów znaków po procesie sanitizacji niweczy gwarancje bezpieczeństwa.Konfiguracja i utwardzanie DOMPurify wobec mXSSDomyślna konfiguracja biblioteki DOMPurify dopuszcza znaczniki SVG i MathML, co przy braku odpowiedniego profilowania może narazić aplikację na zniekształcenia parsowania typu Namespace Confusion. Zapewnienie pełnej odporności na ataki mXSS w dokumentach matematycznych wymaga wdrożenia rygorystycznych reguł sanitizacji.Przede wszystkim należy wyeliminować wszelkie elementy działające jako punkty integracji HTML w przestrzeniach obcych. Bezwzględnie blokowany musi być znacznik <foreignObject>, który pozwala na bezpośrednie osadzanie standardowych struktur HTML wewnątrz wektorów SVG. W kontekście MathML konieczne jest wykluczenie znacznika <annotation-xml>, który przy określonych atrybutach kodowania resetuje przestrzeń nazw do standardu HTML, stając się źródłem mutacji w parserach silników przeglądarek. Dodatkowo należy zablokować element <maction> oraz zakazać używania atrybutów xlink:href i href na elementach matematycznych i wektorowych, co eliminuje możliwość wykonania kodu poprzez manipulację odnośnikami.Kolejnym wymogiem jest wymuszenie flagi SAFE_FOR_XML: true. Opcja ta nakłada na sanitizer obowiązek sprawdzania, czy wartości atrybutów nie zawierają ukrytych sekwencji domykających komentarze, sekcje CDATA lub elementy tekstowe, co uniemożliwia rozbicie kontekstu XML podczas ponownego parsowania. Ostatecznie zablokowane muszą zostać atrybuty danych (ALLOW_DATA_ATTR: false), co uniemożliwia nadużywanie komend pokroju \htmlData w bibliotece KaTeX.Poniższy fragment kodu definiuje wzorcowy profil konfiguracyjny biblioteki DOMPurify zoptymalizowany pod kątem bezpiecznego renderowania struktur Markdown-LaTeX:JavaScriptimport DOMPurify from 'dompurify';
+
+const SECURE_MATH_CONFIG = {
+  USE_PROFILES: { html: true, mathMl: true, svg: true },
+  FORBID_TAGS: [
+    'foreignObject',  // Blokada ucieczki z SVG do HTML
+    'annotation-xml', // Blokada punktu integracji MathML do HTML
+    'maction',        // Eliminacja podatnego kontenera akcji MathML
+    'script',
+    'iframe',
+    'object',
+    'embed'
+  ],
+  FORBID_ATTR: [
+    'xlink:href',     // Blokada odnośników w przestrzeni SVG/MathML
+    'href',
+    'actiontype',
+    'onfocus',
+    'onerror',
+    'onload'
+  ],
+  ALLOW_DATA_ATTR: false, // Ochrona przed złośliwymi atrybutami danych
+  SAFE_FOR_XML: true,      // Weryfikacja integralności serializacji XML
+  RETURN_DOM_FRAGMENT: false,
+  RETURN_DOM: false
+};
+3. Architektura izolacji i deterministyczny budżet zasobów CPUOgraniczenia asynchroniczności i wymuszone przerywaniePoważnym wyzwaniem w zapobieganiu atakom DoS w architekturze przeglądarkowej jest jednowątkowa natura środowiska wykonawczego JavaScript, oparta na modelu Run-to-Completion. Jeżeli parser wejdzie w stan katastrofalnego nawrotu wyrażenia regularnego lub głębokiej pętli rozwijania makr, wątek zostaje zablokowany synchronicznie.Popularny mechanizm AbortController i odpowiadający mu obiekt AbortSignal są całkowicie nieskuteczne w walce z tym zjawiskiem. Model działania AbortSignal opiera się na wywłaszczaniu kooperatywnym: wykonywany kod musi w regularnych odstępach czasu odpytywać stan właściwości signal.aborted i dobrowolnie przerwać swoje działanie poprzez zgłoszenie wyjątku. Rdzenne algorytmy wyrażeń regularnych w silniku V8 oraz wewnętrzne pętle kompilatorów KaTeX, MathJax i PEG.js nie implementują sprawdzania flagi przerwania w trakcie synchronicznych operacji dopasowywania tekstu. Wywołanie metody abort() w wątku głównym nie wywiera zatem żadnego wpływu na trwający paraliż procesora.Jedynym deterministycznym mechanizmem wymuszenia twardego budżetu czasu procesora jest przeniesienie operacji parsowania do dedykowanego wątku Web Worker i wykorzystanie metody Worker.prototype.terminate(). Wywołanie terminate() niszczy natychmiast cały kontekst wykonawczy wątku (odpowiadający strukturze V8 Isolate) na poziomie systemowym, natychmiastowo zwalniając rdzeń procesora i alokowaną pamięć operacyjną.Podział odpowiedzialności między Web Worker a wątek głównyWdrożenie wątku roboczego wymaga uwzględnienia ograniczeń środowiska DedicatedWorkerGlobalScope. W kontekście tym nie istnieją obiekty window ani interfejsy drzewa dokumentu (document, HTMLElement), co uniemożliwia bezpośrednie manipulowanie interfejsem użytkownika.Kompilatory KaTeX oraz silnik Markdown marked są w stanie funkcjonować wewnątrz Web Workera w trybie generowania czystych łańcuchów znaków (np. za pośrednictwem metody katex.renderToString()). Z kolei biblioteka DOMPurify do poprawnego działania wymaga dostępu do natywnego parsera drzewa DOM przeglądarki. Uruchomienie DOMPurify wewnątrz Workera wymagałoby dostarczenia emulacji DOM, takiej jak jsdom, co pociąga za sobą drastyczny narzut pamięciowy (kilkanaście megabajtów zależności) oraz znaczną degradację czasu przetwarzania.Optymalny podział ról polega na delegowaniu do Web Workera operacji leksykalnych, wyodrębniania tokenów, kompilacji Markdownu oraz renderowania kodu LaTeX do surowego ciągu HTML/MathML. Tak wygenerowany ciąg tekstowy jest przesyłany z powrotem do wątku głównego, gdzie podlega natychmiastowej sanitizacji przez DOMPurify z wykorzystaniem wysoce zoptymalizowanego, natywnego środowiska przeglądarki.Twarde piaskowanie w izolowanej ramce (Sandboxed iframe)W systemach o podwyższonym profilu bezpieczeństwa – na przykład na platformach edycyjnych renderujących pełne, zdefiniowane przez użytkowników dokumenty przy użyciu LaTeX.js – sanitizacja kodu może okazać się niewystarczająca wobec potencjalnych podatności typu zero-day w silnikach przeglądarek. W takich scenariuszach architekturę należy rozszerzyć o twardy sandboxing za pomocą elementu <iframe>.Bezpieczna implementacja ramki izolującej wymaga spełnienia ściśle określonych warunków:Po pierwsze, element musi posiadać atrybut sandbox="allow-scripts", przy czym bezwzględnie zabronione jest dołączanie flagi allow-same-origin. Brak uprawnienia do wspólnego pochodzenia wymusza traktowanie zawartości ramki jako nieprzeniknionego, unikalnego pochodzenia nieprzezroczystego (origin: null). Uniemożliwia to skryptom wykonującym się wewnątrz ramki dostęp do magazynów localStorage, sessionStorage, ciasteczek (document.cookie) oraz właściwości okna nadrzędnego (window.parent, window.top).Po drugie, dokument wewnątrz ramki musi być chroniony rygorystyczną polityką bezpieczeństwa treści (CSP), definiowaną przez nagłówek HTTP lub znacznik meta:HTTPContent-Security-Policy: default-src 'none'; script-src 'nonce-RANDOM_SEED'; style-src 'unsafe-inline'; font-src data:;
+Taka konfiguracja CSP uniemożliwia ramce nawiązywanie jakichkolwiek połączeń sieciowych wychodzących (connect-src 'none'), blokując eksfiltrację danych nawet w przypadku, gdy napastnik uzyska możliwość wykonania dowolnego kodu JavaScript wewnątrz odizolowanego pochodzenia.Po trzecie, wymiana informacji między oknem głównym a ramką musi odbywać się za pośrednictwem asynchronicznego mechanizmu postMessage. Obie strony komunikacji muszą bezwzględnie weryfikować tożsamość nadawcy: wątek nadrzędny sprawdza właściwość event.source === iframeElement.contentWindow, a przekazywane dane są poddawane walidacji strukturalnej przed jakimkolwiek użyciem w logice aplikacji.4. Implementacja produkcyjna: Watchdog budżetu CPU i silnik renderującyPoniższy kod źródłowy w języku TypeScript przedstawia produkcyjną implementację potoku renderowania. Architektura ta wykorzystuje dedykowany wątek Web Worker do kompilacji, egzekwuje twardy limit czasu procesora (300 ms na wpis) z automatyczną terminacją zablokowanego wątku oraz realizuje sanitizację wyjściową w wątku głównym z wykorzystaniem biblioteki DOMPurify.Kod wątku wykonawczego (render.worker.ts)Wątek roboczy przyjmuje niezaufany ciąg wejściowy, realizuje leksykalną ekstrakcję formuł matematycznych przy użyciu alfanumerycznych tokenów zastępczych, przetwarza Markdown, renderuje formuły LaTeX z zachowaniem restrykcyjnych limitów KaTeX i odsyła wynikowy ciąg tekstowy.TypeScriptimport katex from 'katex';
+import { marked } from 'marked';
+
+interface RenderRequest {
+  id: string;
+  markdownPayload: string;
+}
+
+interface RenderResponse {
+  id: string;
+  html?: string;
+  error?: string;
+}
+
+self.onmessage = (event: MessageEvent<RenderRequest>) => {
+  const { id, markdownPayload } = event.data;
+
+  try {
+    const mathRegistry = new Map<string, { formula: string; isDisplay: boolean }>();
+    let counter = 0;
+
+    // Faza 1: Liniowe wyodrębnienie bloków matematycznych za pomocą unikalnych tokenów
+    const textWithoutDisplayMath = markdownPayload.replace(
+      /\$\$([\s\S]*?)\$\$/g,
+      (_, formula) => {
+        const token = `MATHNONCEDISPLAY${counter++}XYZ`;
+        mathRegistry.set(token, { formula, isDisplay: true });
+        return token;
+      }
+    );
+
+    const safeTextOnly = textWithoutDisplayMath.replace(
+      /\$([^\$\n]+)\$/g,
+      (_, formula) => {
+        const token = `MATHNONCEINLINE${counter++}XYZ`;
+        mathRegistry.set(token, { formula, isDisplay: false });
+        return token;
+      }
+    );
+
+    // Faza 2: Kompilacja struktury Markdown na bezpiecznym ciągu znaków
+    let compiledMarkup = marked.parse(safeTextOnly, { async: false }) as string;
+
+    // Faza 3 i 4: Kompilacja formuł LaTeX z nałożonymi limitami bezpieczeństwa
+    mathRegistry.forEach((spec, token) => {
+      let renderedFormula = '';
+      try {
+        renderedFormula = katex.renderToString(spec.formula, {
+          displayMode: spec.isDisplay,
+          throwOnError: true,
+          trust: false,       // Bezwzględna blokada poleceń URL/HTML (np. \href, \htmlData)
+          maxExpand: 50,      // Ochrona przed bombami dekompresyjnymi makr
+          maxSize: 15,        // Ochrona przed Visual Layout DoS
+          strict: 'error'     // Blokada niestandardowych, podatnych rozszerzeń
+        });
+      } catch {
+        // Zabezpieczenie przed ParseError reflection: błąd nie zawiera kodu wejściowego
+        renderedFormula = '<span class="formula-error">[Błąd renderowania formuły]</span>';
+      }
+      compiledMarkup = compiledMarkup.replace(token, renderedFormula);
+    });
+
+    // Wysłanie surowego ciągu HTML/MathML z powrotem do zarządcy w wątku głównym
+    self.postMessage({ id, html: compiledMarkup } as RenderResponse);
+  } catch (executionError: unknown) {
+    const errorMessage = executionError instanceof Error ? executionError.message : 'Nieznany błąd workera';
+    self.postMessage({ id, error: errorMessage } as RenderResponse);
+  }
+};
+Kod silnika nadrzędnego w wątku głównym (SecureRenderEngine.ts)Klasa SecureRenderEngine zarządza cyklem życia wątku roboczego, monitoruje czas wykonania za pomocą twardego watchdoga zegarowego, niszczy proces V8 Isolate w przypadku przekroczenia budżetu CPU oraz przeprowadza ostateczną sanitizację za pomocą DOMPurify.TypeScriptimport DOMPurify from 'dompurify';
+
+export class SecureRenderEngine {
+  private worker: Worker | null = null;
+  private readonly workerUrl: string;
+
+  constructor(workerUrl: string) {
+    this.workerUrl = workerUrl;
+    this.spawnWorker();
+  }
+
+  private spawnWorker(): void {
+    if (this.worker) {
+      this.worker.terminate();
+    }
+    this.worker = new Worker(this.workerUrl, { type: 'module' });
+  }
+
+  public async renderUntrustedContent(
+    untrustedMarkdown: string,
+    cpuBudgetMs: number = 300
+  ): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const taskId = crypto.randomUUID();
+      let timer: number | null = null;
+
+      const clearExecution = () => {
+        if (timer !== null) {
+          window.clearTimeout(timer);
+          timer = null;
+        }
+        if (this.worker) {
+          this.worker.removeEventListener('message', onMessage);
+          this.worker.removeEventListener('error', onError);
+        }
+      };
+
+      // Twardy watchdog zegarowy egzekwujący budżet CPU
+      timer = window.setTimeout(() => {
+        clearExecution();
+        // Wymuszone zniszczenie wątku paraliżującego procesor (ReDoS / Makro DoS)
+        this.spawnWorker();
+        reject(
+          new Error(
+            `Przekroczono twardy budżet czasu procesora (${cpuBudgetMs} ms). Zadanie unieważnione.`
+          )
+        );
+      }, cpuBudgetMs);
+
+      const onMessage = (event: MessageEvent<{ id: string; html?: string; error?: string }>) => {
+        if (event.data.id !== taskId) return;
+        clearExecution();
+
+        if (event.data.error) {
+          reject(new Error(`Błąd przetwarzania: ${event.data.error}`));
+          return;
+        }
+
+        try {
+          // Faza 5: Ostateczna sanitizacja DOMPurify z blokadą punktów integracji i mXSS
+          const sanitizedOutput = DOMPurify.sanitize(event.data.html || '', {
+            USE_PROFILES: { html: true, mathMl: true, svg: true },
+            FORBID_TAGS: ['foreignObject', 'annotation-xml', 'maction'],
+            FORBID_ATTR: ['xlink:href', 'href', 'actiontype', 'onfocus', 'onerror'],
+            SAFE_FOR_XML: true,
+            ALLOW_DATA_ATTR: false
+          });
+          resolve(sanitizedOutput);
+        } catch (sanitizerError) {
+          reject(sanitizerError);
+        }
+      };
+
+      const onError = (error: ErrorEvent) => {
+        clearExecution();
+        this.spawnWorker();
+        reject(new Error(`Krytyczna awaria środowiska wykonawczego: ${error.message}`));
+      };
+
+      if (!this.worker) {
+        this.spawnWorker();
+      }
+
+      this.worker!.addEventListener('message', onMessage);
+      this.worker!.addEventListener('error', onError);
+
+      this.worker!.postMessage({
+        id: taskId,
+        markdownPayload: untrustedMarkdown
+      });
+    });
+  }
+
+  public destroy(): void {
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
+    }
+  }
+}
+5. Model obrony w głąb (Defense-in-Depth)Zabezpieczenie aplikacji webowej renderującej niesprawdzone formuły matematyczne w powiązaniu z tekstem formatowanym wymaga wyeliminowania pojedynczych punktów awarii w architekturze systemu. Ani reguły filtrowania wejścia, ani izolowane piaskownice, ani biblioteki sanitizujące stosowane pojedynczo nie zapewniają pełnego bezpieczeństwa w obliczu ataków łączących podatności parserów ze złożonością specyfikacji HTML5.Poniższa matryca podsumowuje wielowarstwową architekturę obrony, mapując komponenty ochronne na neutralizowane wektory zagrożeń:Poziom obronyWarstwa technologicznaMechanizm implementacyjnyMitygowany wektor zagrożeniaWarstwa 1Separacja leksykalnaWzorzec kryptograficznych tokenów zastępczych (Placeholder Nonce)Rozbicie składni formuł przez Markdown, uszkodzenia znaczników HTMLWarstwa 2Ograniczenia kompilatorówKaTeX: trust: false, maxExpand: 50, maxSize: 15, strict: 'error'[cite: 19]Bomby dekompresyjne makr (\def, \edef), Visual DoS (\rule), luki \htmlData (CVE-2025-23207)Warstwa 3Izolacja wątkowaDedykowany Web Worker (DedicatedWorkerGlobalScope)Zawieszenie pętli zdarzeń (Event Loop) wątku głównego interfejsuWarstwa 4Deterministyczny budżet CPUWatchdog zegarowy z wymuszeniem Worker.prototype.terminate()[cite: 6]Katastrofalne nawroty ReDoS w parserach regex, nieskończone pętle makrWarstwa 5Sanitizacja strukturalnaDOMPurify z blokadą punktów integracji (foreignObject, annotation-xml)Mutacyjny XSS (mXSS), pomylenie przestrzeni nazw (Namespace Confusion), atrybuty javascript:Warstwa 6Piaskowanie prezentacjiSandboxed <iframe> (sandbox="allow-scripts" bez allow-same-origin) + ścisłe CSPDostęp do danych sesyjnych (localStorage, cookies), eksfiltracja danych przy lukach 0-dayDopiero jednoczesne wdrożenie wszystkich warstw powyższego modelu gwarantuje odporność systemu. Wymuszone przerywanie wątków roboczych rozwiązuje problem podatności DoS i ReDoS na poziomie systemowym, eliminując konieczność tworzenia podatnych, heurystycznych reguł sprawdzających złożoność kodu wejściowego. Z kolei restrykcyjna konfiguracja biblioteki DOMPurify, egzekwowana w wątku głównym na zrekonstruowanym drzewie dokumentu, całkowicie eliminuje wektory XSS ukryte w specyficznych dla MathML i SVG punktach przełączania przestrzeni nazw.

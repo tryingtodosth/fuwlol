@@ -111,6 +111,13 @@ class Post(models.Model):
                                     related_name='+', on_delete=models.SET_NULL)
     featured = models.BooleanField(default=False)
     views = models.PositiveIntegerField(default=0)
+    # The uploader's declaration (regulamin, /o-archiwum): they hold the rights or act within
+    # parody/pastiche (art. 29¹ pr. aut.), and have consent for every recognisable person
+    # (art. 81). Required on create; kept as evidence, never shown to readers.
+    rights_confirmed = models.BooleanField(default=False)
+    # Derived at save time (archive/search.py): folded prose and canonical formulas.
+    search_text = models.TextField(blank=True, editable=False)
+    search_math = models.TextField(blank=True, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     published_at = models.DateTimeField(null=True, blank=True)
 
@@ -129,6 +136,8 @@ class Post(models.Model):
             self.slug = _unique_slug(Post, self.title)
         if self.status == 'published' and self.published_at is None:
             self.published_at = timezone.now()
+        from .search import index_fields
+        self.search_text, self.search_math = index_fields(self.title, self.summary, self.body, self.format)
         super().save(*args, **kwargs)
 
 
@@ -194,6 +203,11 @@ class Report(models.Model):
     contact_email = models.EmailField(blank=True)
     reason = models.CharField(max_length=10, choices=REASONS)
     note = models.TextField(blank=True)
+    # Art. 16 DSA: a notice creates 'actual knowledge' only when it names the reporter,
+    # explains why the content is illegal and carries a good-faith statement. The form asks
+    # for all three; a report without them is still queued (a signal is a signal), and the
+    # moderator sees which ones are formal notices.
+    good_faith = models.BooleanField(default=False)
     resolved = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 

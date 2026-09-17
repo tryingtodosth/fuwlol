@@ -7,6 +7,7 @@
  * also lets `width=0.5\textwidth` become a percentage the browser understands. */
 import DOMPurify from 'dompurify';
 import { hookSanitizer, trackingResolver, withAllowedImages } from './markdown';
+import { checkSource } from './guard';
 
 export interface LatexResult { html: string; error: string | null; line?: number }
 
@@ -34,6 +35,8 @@ function graphicsWidth(opts: string): string | null {
 
 export async function renderLatex(src: string, resolve: (name: string) => string | undefined,
 	options: { images?: boolean } = {}): Promise<LatexResult> {
+	const refused = checkSource(src);
+	if (refused) return { html: '', error: refused };
 	const { parse, HtmlGenerator } = await load();
 	if (options.images === false) {
 		src = src.replace(/\\includegraphics\s*(\[[^\]]*\])?\s*\{[^}]*\}/g, '');
@@ -72,8 +75,14 @@ export async function renderLatex(src: string, resolve: (name: string) => string
 		// that is a page element rather than content; images follow the same allow-list as
 		// Markdown (withAllowedImages), links get the same rel/target hook.
 		html = withAllowedImages(options.images === false ? [] : seen, () => DOMPurify.sanitize(html, {
-			ADD_ATTR: ['style'], FORBID_TAGS: ['style', 'form', 'input', 'button', 'textarea', 'select', 'iframe', 'object', 'embed'],
-			FORBID_ATTR: ['srcset'], ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|blob:|\/)/i
+			ADD_ATTR: ['style'],
+			// LaTeX.js emits MathML (via its bundled KaTeX); the three tags below are the HTML
+			// integration points a mutation-XSS payload uses to break out of the MathML/SVG
+			// namespace on re-serialisation, and none of them ever appears in typeset maths.
+			FORBID_TAGS: ['style', 'form', 'input', 'button', 'textarea', 'select', 'iframe', 'object', 'embed',
+				'foreignObject', 'annotation-xml', 'maction'],
+			FORBID_ATTR: ['srcset', 'xlink:href', 'actiontype'], ALLOW_DATA_ATTR: false, SAFE_FOR_XML: true,
+			ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|blob:|\/)/i
 		}));
 		return { html, error: null };
 	} catch (e: unknown) {

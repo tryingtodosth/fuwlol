@@ -1,0 +1,298 @@
+Strategia odzyskiwania i rekonstrukcji folkloru akademickiego z polskich sieci uniwersyteckich z lat 1995–2010Topografia cyfrowa wczesnego internetu akademickiego w PolsceW latach 1995–2010 polska przestrzeń akademicka stanowiła pionierski poligon wdrażania sieci teleinformatycznych, rozwijanych pod auspicjami NASK oraz miejskich sieci komputerowych MAN, takich jak stołeczny WARMAN, gdański TASK czy krakowski CYFRONET. W ówczesnych realiach technologicznych podstawowym środowiskiem pracy studentów i pracowników naukowych były uniwersyteckie serwery powłokowe bazujące na systemach z rodziny Unix. Użytkownicy uzyskiwali dostęp do kont shellowych, w ramach których katalog domowy udostępniał podkatalog public_html, mapowany przez serwery HTTP na adresy ze znakiem tyldy http://serwer.uczelnia.pl/~login/.Równolegle rozwijały się centralne i wydziałowe serwery studenckie, które z biegiem lat stawały się repozytoriami wiedzy nieformalnej. Na Uniwersytecie Warszawskim kluczową rolę pełniły maszyny studenci.fuw.edu.pl na Wydziale Fizyki oraz historyczny serwer humpty.mimuw.edu.pl (zastąpiony później przez students.mimuw.edu.pl) na Wydziale Matematyki, Informatyki i Mechaniki. Na Politechnice Warszawskiej rolę tę odgrywały domeny student.pw.edu.pl, mini.pw.edu.pl oraz serwer wydziałowego samorządu samorzad.elka.pw.edu.pl na Wydziale Elektroniki i Technik Informacyjnych. Zbliżone struktury organizowano na Politechnice Wrocławskiej, Akademii Górniczo-Hutniczej oraz Uniwersytecie Jagiellońskim.Folklor akademicki tej epoki manifestował się przede wszystkim w kompilacjach tzw. „rodzynków” i kwiatków z wykładów, czyli humorystycznych, wyjętych z kontekstu wypowiedzi profesorów i asystentów, spisach pytań egzaminacyjnych, a także w cyfrowych biuletynach i fanzinach (takich jak ukazujący się na FUW UW periodyk Anyten). Formaty te cechowała efemeryczność. Wraz z profesjonalizacją uniwersyteckiego IT, migracją do zintegrowanych systemów klasy USOS oraz wygaszaniem indywidualnych kont uniksowych, setki tysięcy stron zawierających unikalny zapis obyczajowości studenckiej uległy skasowaniu. Ich rekonstrukcja wymaga synergii metod web scrapingu zasobów archiwalnych Wayback Machine, dekompresji korpusów Usenetu oraz dedykowanych procedur odzyskiwania struktur z uszkodzonego kodu HTML.Architektura pozyskiwania danych z Wayback Machine CDX Server APIInternet Archive stanowi najważniejsze repozytorium utraconych zasobów z domen .edu.pl, jednak próby eksploracji jego zasobów przez interfejs graficzny bądź zawodne Availability API uniemożliwiają systematyczne badania naukowe. Jedynym mechanizmem pozwalającym na masową enumerację i ekstrakcję zawartości historycznych subdomen jest bezpośrednie odpytywanie Capture Index API (CDX Server API).Parametryzacja zapytań indeksującychW celu precyzyjnego zawężenia strumienia danych do interesującego przedziału czasowego i wyeliminowania zbędnych obiektów binarnych, crawler musi komunikować się z punktem końcowym https://web.archive.org/cdx/search/cdx przy użyciu odpowiednich parametrów filtrujących.Parametr CDXRekomendowana wartośćFunkcja w potoku ekstrakcjiurl*.fuw.edu.pl/* / studenci.fuw.edu.pl/*Wzorzec adresu; prefiks wieloznaczny *. wymusza rekurencyjne przeszukiwanie wszystkich subdomen i ścieżek.matchTypedomainTryb dopasowania adresu nadrzędnego wraz ze wszystkimi gałęziami podrzędnymi.from / to19950101 / 20110101Ramy czasowe; granica końcowa jest wyłączająca, stąd zapis 20110101 gwarantuje uwzględnienie pełnego roku 2010.filterstatuscode:200, mimetype:text/htmlSelekcja odpowiedzi pomyślnych i wykluczenie plików binarnych (PDF, JPEG, PostScript), co redukuje transfer o rząd wielkości.collapsedigestAgregacja duplikatów; eliminuje identyczne zrzuty strony na podstawie sumy SHA-1 zarejestrowanej w nagłówku WARC.fltimestamp,original,statuscode,digest,lengthRzutowanie kolumn w strumieniu JSON, redukujące obciążenie parsowania odpowiedzi.outputjsonWymuszenie formatu strukturalnego zamiast domyślnego tekstu rozdzielanego spacjami.showResumeKeytrueAktywacja tokenów paginacji niezbędnych przy pobieraniu zbiorów przekraczających domyślny limit zapytania.Mechanika paginacji strumieniowej i omijanie limitów przepustowościIndeksy starych domen uczelnianych obejmują od kilkudziesięciu do kilkuset tysięcy zarchiwizowanych adresów URL. Wywołanie zapytania bez zdefiniowanego limitu partii skutkuje po stronie serwerów Internet Archive przekroczeniem dopuszczalnego czasu wykonania i błędem HTTP 504 Gateway Timeout. Z kolei starsza paginacja oparta na parametrach page i pageSize bywa niestabilna i pomija najświeższe fragmenty indeksów.Standardem w badaniach historycznych jest stronicowanie oparte na wskaźniku resumeKey. Jeżeli liczba wyników przekracza zdefiniowaną wartość w parametrze limit (np. 5000 rekordów), serwer zwraca na końcu odpowiedzi dwie specyficzne linie kontrolne: wiersz pusty oraz wiersz zawierający zakodowany ciąg kontynuacji. Skrypt przetwarzający musi przechwycić ów token i przekazać go w kolejnym żądaniu GET w parametrze &resumeKey=.... Sekwencja powtarza się aż do momentu, w którym odpowiedź serwera nie zawiera wiersza kontrolnego, co sygnalizuje wyczerpanie zbioru.Dostęp do czystej zawartości za pośrednictwem trybu Raw PlaybackStandardowe pobieranie dokumentu pod adresem https://web.archive.org/web/{timestamp}/{url} zwraca plik ze wstrzykniętym kodem JavaScript paska narzędziowego archiwum (Wayback Toolbar), który zniekształca strukturę dokumentu, modyfikuje znaczniki nagłówkowe i nadpisuje względne adresy hiperłączy. Dla zachowania pełnej autentyczności badawczej i uniknięcia błędów parsowania należy wymusić tryb Raw Playback poprzez dodanie dwuznakowego modyfikatora id_ bezpośrednio po znaczniku czasu: https://web.archive.org/web/{timestamp}id_/{original_url}. Zabieg ten powoduje zwrócenie surowego strumienia bajtów zarejestrowanego przez robota w momencie wykonania migawki.Pythonimport asyncio
+import aiohttp
+import json
+import logging
+from typing import AsyncGenerator, Dict
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("WaybackClient")
+
+CDX_URL = "https://web.archive.org/cdx/search/cdx"
+
+async def fetch_snapshots_manifest(
+    session: aiohttp.ClientSession,
+    target_pattern: str,
+    from_year: str = "1995",
+    to_year: str = "2010"
+) -> AsyncGenerator[Dict[str, str], None]:
+    params = {
+        "url": target_pattern,
+        "matchType": "domain",
+        "output": "json",
+        "fl": "timestamp,original,statuscode,digest,length",
+        "filter": ["statuscode:200", "mimetype:text/html"],
+        "collapse": "digest",
+        "from": f"{from_year}0101",
+        "to": f"{to_year}1231",
+        "limit": "5000",
+        "showResumeKey": "true"
+    }
+    resume_key = None
+
+    while True:
+        req_params = dict(params)
+        if resume_key:
+            req_params["resumeKey"] = resume_key
+
+        try:
+            async with session.get(CDX_URL, params=req_params, timeout=aiohttp.ClientTimeout(total=60)) as resp:
+                if resp.status in (429, 503):
+                    logger.warning("Limit przepustowości CDX (HTTP %s). Pauza 10s...", resp.status)
+                    await asyncio.sleep(10)
+                    continue
+                resp.raise_for_status()
+                payload = await resp.json(content_type=None)
+                if not payload:
+                    break
+
+                headers = payload[0]
+                rows = payload[1:]
+
+                if len(rows) >= 2 and len(rows[-2]) == 0 and len(rows[-1]) == 1:
+                    resume_key = rows[-1][0]
+                    records = rows[:-2]
+                else:
+                    resume_key = None
+                    records = rows
+
+                for row in records:
+                    yield dict(zip(headers, row))
+
+                if not resume_key:
+                    break
+        except Exception as exc:
+            logger.error("Błąd podczas enumeracji CDX: %s", exc)
+            break
+
+async def download_raw_payload(
+    session: aiohttp.ClientSession,
+    timestamp: str,
+    original_url: str,
+    semaphore: asyncio.Semaphore
+) -> bytes:
+    raw_url = f"https://web.archive.org/web/{timestamp}id_/{original_url}"
+    async with semaphore:
+        for attempt in range(4):
+            try:
+                async with session.get(raw_url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                    if resp.status == 200:
+                        return await resp.read()
+                    elif resp.status in (429, 503):
+                        await asyncio.sleep(2 ** attempt)
+            except Exception:
+                await asyncio.sleep(2 ** attempt)
+    return b""
+Przetwarzanie i integracja rozproszonych archiwów UsenetuHierarchia Usenetu pl.* stanowiła w latach 90. i na początku lat 2000. podstawowe forum wymiany myśli akademickiej. Z punktu widzenia folkloru kluczowe znaczenie miały grupy uniwersyteckie, takie jak pl.org.uw czy pl.torun.uniwersytet, dyskusyjne grupy ścisłe, na czele z pl.sci.fizyka, pl.sci.matematyka oraz pl.sci.informatyka, a także grupy dedykowane humorowi, w tym alt.pl.rodzynki i wybrane odnogi pl.hum.*.Podstawowym źródłem zdeponowanym w domenie publicznej jest zbiór usenet-uat-pl w Internet Archive, obejmujący ponad 56 milionów unikalnych artykułów przesłanych do grudnia 2016 roku, z których najstarsze pochodzą z 1995 roku. Zbiór ten został zoptymalizowany za pomocą pakietu programistycznego Usenet Archive Toolkit (wolfpld/usenetarchive), napisanego w standardzie C++17. Narzędzie to rozwiązuje problem brakujących nagłówków powiązań dzięki analizie cytowań w treści wiadomości, eliminuje masowe duplikaty dystrybucyjne (kill-duplicates), odfiltrowuje spam leksykalny (filter-spam) oraz kompresuje dane do formatów LZ4 i Zstandard ze słownikiem obejmującym całe archiwum.W potoku badawczym opartym na języku Python surowe pliki archiwum eksportowane są do standardowych skrzynek pocztowych Unix mbox. Poniższy moduł realizuje zadanie selektywnego parsowania strumienia mbox pod kątem słów kluczowych specyficznych dla folkloru dydaktycznego, normalizuje nagłówki RFC 2047 i rekonstruuje metadane autorów.Pythonimport mailbox
+import re
+from email.header import decode_header
+from typing import Dict, Any, Generator, Optional
+
+KEYWORDS = re.compile(
+    r"(rodzynk|cytat|złote\s+myśli|kwiatki|kwiatuszk|z\s+wykładu|z\s+egzaminu)",
+    re.IGNORECASE
+)
+
+def decode_rfc2047(header_str: Optional[str]) -> str:
+    if not header_str:
+        return ""
+    fragments = []
+    for chunk, encoding in decode_header(header_str):
+        if isinstance(chunk, bytes):
+            enc = encoding.lower() if encoding else "iso-8859-2"
+            try:
+                fragments.append(chunk.decode(enc, errors="replace"))
+            except (LookupError, UnicodeDecodeError):
+                fragments.append(chunk.decode("latin1", errors="replace"))
+        else:
+            fragments.append(chunk)
+    return "".join(fragments)
+
+def scan_usenet_corpus(mbox_file_path: str) -> Generator[Dict[str, Any], None, None]:
+    archive_box = mailbox.mbox(mbox_file_path)
+    for msg in archive_box:
+        subject = decode_rfc2047(msg.get("Subject"))
+        if not KEYWORDS.search(subject):
+            continue
+
+        raw_payload = msg.get_payload(decode=True)
+        if raw_payload is None and msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == "text/plain":
+                    raw_payload = part.get_payload(decode=True)
+                    break
+
+        if not raw_payload:
+            continue
+
+        charset = msg.get_content_charset() or "iso-8859-2"
+        try:
+            body = raw_payload.decode(charset, errors="replace")
+        except (LookupError, UnicodeDecodeError):
+            body = raw_payload.decode("iso-8859-2", errors="replace")
+
+        yield {
+            "message_id": msg.get("Message-ID", "").strip(),
+            "date": msg.get("Date", "").strip(),
+            "from": decode_rfc2047(msg.get("From")),
+            "subject": subject,
+            "references": msg.get("References", "").split(),
+            "body": body
+        }
+Normalizacja archaicznych stron kodowych i obsługa błędów transkodowaniaNajpoważniejszą barierą techniczną w odzyskiwaniu polskich materiałów cyfrowych z lat 1995–2010 jest zjawisko zniekształcenia znaków (tzw. mojibake). W badanym okresie w polskiej przestrzeni cyfrowej toczył się ostry konflikt standardów kodowania znaków narodowych. Środowisko akademickie, uniksowe oraz oficjalne dokumenty standaryzacyjne forsowały normę ISO-8859-2 (Latin-2). Z kolei użytkownicy domowi i pracownie wyposażone w systemy Microsoft Windows generowali treści w stronie kodowej Windows-1250 (CP1250). Sporadycznie, w materiałach pochodzących ze starych edytorów konsolowych, pojawiała się norma DOS Mazovia (CP852).Niezgodność wynikała z faktu, że standardy te umieszczały specyficzne polskie znaki diakrytyczne pod zupełnie różnymi pozycjami w tablicy heksadecymalnej. Sytuację pogarszały serwery Apache i IIS, które często zgłaszały w nagłówkach HTTP domyślną zachodnioeuropejską stronę kodową ISO-8859-1, podczas gdy twórcy stron wstawiali w kodzie HTML sprzeczne tagi <meta http-equiv="Content-Type" content="text/html; charset=windows-1250"> lub w ogóle pomijali deklarację kodowania. W efekcie wielokrotnego, błędnego odczytywania strumieni bajtów tekst podlegał kaskadowej degradacji.W badaniach nad korpusami z tamtych lat biblioteka chardet wykazuje skrajną zawodność, błędnie kwalifikując polskie teksty jednobajtowe jako zachodnioeuropejskie ISO-8859-1 z wysokim wskaźnikiem pewności. Skuteczne rozwiązanie wymaga odrzucenia tradycyjnych tablic wykrywania na rzecz biblioteki charset-normalizer, analizującej koherencję językową i rozkłady prawdopodobieństwa n-gramów, połączonej z biblioteką ftfy (fixes text for you). Pakiet ftfy posiada mechanizmy odwracania deformacji pojedynczych bajtów dzięki implementacji kodeków heurystycznych (m.in. sloppy-windows-1250), co pozwala na przywrócenie właściwych znaków zniekształconych przez konwersję do formatu UTF-8.Znak w języku polskimWartość heksadecymalna w ISO-8859-2Wartość heksadecymalna w Windows-1250Typowy błąd transkodowania (mojibake)ą (małe a z ogonkiem)0xB10xB9Wyświetlane jako ą lub ± przy błędnej interpretacji Latin-1ś (małe s z kreską)0xB60x9CZamiana na znak kontrolny \x9c lub znak zapytania w systemie Windowsź (małe z z kreską)0xBC0x9FZamiana na znak niedrukowalny lub symbol waluty ź w CP1252ł (małe l z kreską)0xB30xB3Identyczny kod w obu normach; służy jako kotwica detekcji polszczyznyKonstrukcja drzewa dokumentu HTML z lat 1995–2010 stanowi równie krytyczne wyzwanie.Ówczesny kod HTML tworzony był w epoce przed wprowadzeniem standardu XHTML i specyfikacji DOM poziomu 2. Cechuje go całkowity brak rygoru syntaktycznego: masowe pomijanie znaczników zamykających akapity (<p>) oraz komórki tabel (<td>, <tr>), zagnieżdżanie znaczników blokowych wewnątrz elementów liniowych oraz powszechne stosowanie zagnieżdżonych tabel (<table>) do celów pozycjonowania graficznego. Użycie w tym środowisku standardowych parserów XML generuje błędy uniemożliwiające dalszą analizę. Jedynym w pełni stabilnym narzędziem jest biblioteka BeautifulSoup współpracująca z parserem html5lib. Silnik html5lib implementuje procedury naprawcze zgodne ze specyfikacją WHATWG HTML5, emulując tolerancję błędów silników przeglądarek takich jak Netscape Communicator czy Internet Explorer 5/6.Pythonimport re
+from typing import Optional
+import charset_normalizer
+import ftfy
+from bs4 import BeautifulSoup
+
+META_REGEX = re.compile(br'<meta[^>]+charset=["\']?([\w\-]+)', re.IGNORECASE)
+POLISH_PROBE = set("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ")
+
+def normalize_academic_html(raw_bytes: bytes) -> BeautifulSoup:
+    if not raw_bytes:
+        return BeautifulSoup("", "html5lib")
+
+    detected_encoding = None
+    meta_match = META_REGEX.search(raw_bytes[:2048])
+    if meta_match:
+        try:
+            detected_encoding = meta_match.group(1).decode("ascii").lower()
+        except UnicodeDecodeError:
+            pass
+
+    decoded_string: Optional[str] = None
+    priority_list = [detected_encoding] if detected_encoding else []
+    priority_list.extend(["utf-8", "iso-8859-2", "windows-1250", "cp852"])
+
+    for enc in priority_list:
+        if not enc:
+            continue
+        try:
+            candidate = raw_bytes.decode(enc)
+            if any(char in POLISH_PROBE for char in candidate):
+                decoded_string = candidate
+                break
+        except (LookupError, UnicodeDecodeError):
+            continue
+
+    if decoded_string is None:
+        best_match = charset_normalizer.from_bytes(raw_bytes).best()
+        if best_match:
+            decoded_string = str(best_match)
+        else:
+            decoded_string = raw_bytes.decode("iso-8859-2", errors="replace")
+
+    repaired_unicode = ftfy.fix_text(
+        decoded_string,
+        normalization="NFC",
+        fix_character_encodings=True
+    )
+
+    return BeautifulSoup(repaired_unicode, "html5lib")
+Ekstrakcja wiedzy i strukturyzacja nieregularnych schematów danychFolklor akademicki publikowany na stronach uniwersyteckich przybierał zróżnicowane, półstrukturalne formy wizualne. Ekstrakcja danych wymaga zmapowania nieregularnych struktur drzewa DOM na spójny model relacyjny, który wyodrębnia tożsamość wykładowcy, okoliczności wygłoszenia wypowiedzi, czas zdarzenia oraz treść sentencji.Schemat metadanych cytatu akademickiegoKażdy zidentyfikowany element folkloru podlega serializacji do zunifikowanego schematu rekordu badawczego, co umożliwia późniejszą agregację w wielodomenowych bazach wiedzy.Identyfikator polaTyp danychDeskrypcja merytorycznaquote_hashString (SHA-256)Niezmienny skrót kryptograficzny wyliczany ze znormalizowanego tekstu i osoby.academic_titleStringRozpoznany stopień lub tytuł naukowy (prof., dr hab., dr, doc., mgr, inż.).speakerStringImię i nazwisko pracownika naukowego lub dydaktyka.contextStringNazwa przedmiotu, rodzaj zajęć (wykład, laboratorium, egzamin ustny) lub dygresja.date_rawStringChronologia w zapisie oryginalnym (np. „sesja zimowa '99”, „październik 2002”).date_isoString (ISO 8601)Znormalizowana data kalendarzowa lub granica dolna semestru (np. 1999-01-15).quote_textStringOczyszczona treść wypowiedzi pozbawiona cudzysłowów i tagów formatujących.source_uriStringPierwotny adres URL z bazy Wayback lub identyfikator Message-ID z Usenetu.capture_tsStringCzternastocyfrowy znacznik czasu archiwizacji (format YYYYMMDDhhmmss).Heurystyki ekstrakcji w języku PythonAnaliza setek historycznych stron studenckich wskazuje na obecność trzech powtarzających się wzorców architektonicznych:Listy definicyjne (<dl>, <dt>, <dd>), w których znacznik <dt> mieścił nazwisko wykładowcy wraz z tytułem, a znacznik <dd> zawierał chronologiczny spis wypowiedzi.Złożone tabele danych (<table>), w których kolumny reprezentowały kolejno: nazwisko prowadzącego, przedmiot, datę oraz treść rodzynka.Spisy paragrafowe (<p>, <li>, bloki tekstu separowane znacznikami <br>), w których autorzy stosowali konwencje typograficzne oparte na myślnikach, cudzysłowach i nawiasach.Poniższy skrypt implementuje hybrydowy silnik ekstrakcji, łączący selektory DOM z biblioteki BeautifulSoup z wyrażeniami regularnymi wyspecjalizowanymi w rozpoznawaniu polskiej nomenklatury akademickiej.Pythonimport re
+import hashlib
+from typing import List, Dict, Any
+from bs4 import BeautifulSoup
+
+ACADEMIC_TITLE_REGEX = r"(?:prof\.(?:\s+dr\s+hab\.)?|dr\s+hab\.|dr|doc\.(?:\s+dr)?|mgr\s+inż\.|mgr|inż\.)"
+NAME_REGEX = r"[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+(?:\s+[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+)+"
+
+SPEAKER_MATCHER = re.compile(rf"^({ACADEMIC_TITLE_REGEX})?\s*({NAME_REGEX})", re.UNICODE)
+
+PATTERNS = [
+    re.compile(
+        r'["„»](?P<quote>[^"”«]{10,})["”«]\s*[-–—]\s*(?P<speaker>[^,(]+?)(?:,\s*(?P<context>[^(]+?))?(?:\s*\((?P<date>[^)]+)\))?$',
+        re.UNICODE
+    ),
+    re.compile(
+        rf'^(?P<speaker>{ACADEMIC_TITLE_REGEX}?\s*{NAME_REGEX})(?:\s*\((?P<context>[^)]+)\))?\s*[:–—\-]\s*["„»]?(?P<quote>[^"”«]{{10,}})["”«]?$',
+        re.UNICODE
+    )
+]
+
+def make_hash(speaker: str, text: str) -> str:
+    raw = f"{speaker.lower().strip()}:{text.lower().strip()}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+def extract_academic_folklore(soup: BeautifulSoup, source_url: str, snapshot_ts: str) -> List[Dict[str, Any]]:
+    results = []
+
+    # Ścieżka 1: Analiza list definicji (<dl>)
+    for dl in soup.find_all("dl"):
+        for dt in dl.find_all("dt"):
+            dd = dt.find_next_sibling("dd")
+            if not dd:
+                continue
+            dt_text = dt.get_text(" ", strip=True)
+            dd_text = dd.get_text(" ", strip=True)
+            speaker_match = SPEAKER_MATCHER.search(dt_text)
+            if speaker_match and len(dd_text) > 10:
+                title, name = speaker_match.groups()
+                rec = {
+                    "quote_hash": make_hash(dt_text, dd_text),
+                    "academic_title": (title or "").strip(),
+                    "speaker": name.strip(),
+                    "context": "",
+                    "date_raw": "",
+                    "quote_text": dd_text,
+                    "source_uri": source_url,
+                    "capture_ts": snapshot_ts,
+                    "engine": "dom_dl"
+                }
+                results.append(rec)
+
+    # Ścieżka 2: Analiza struktur tabelarycznych (<table>)
+    for table in soup.find_all("table"):
+        for tr in table.find_all("tr"):
+            cells = [c.get_text(" ", strip=True) for c in tr.find_all(["td", "th"])]
+            if len(cells) >= 2:
+                joined = " ".join(cells)
+                match = SPEAKER_MATCHER.search(cells[0])
+                if match:
+                    title, name = match.groups()
+                    text = cells[-1]
+                    context = cells[1] if len(cells) >= 3 else ""
+                    if len(text) > 10:
+                        rec = {
+                            "quote_hash": make_hash(cells[0], text),
+                            "academic_title": (title or "").strip(),
+                            "speaker": name.strip(),
+                            "context": context,
+                            "date_raw": "",
+                            "quote_text": text,
+                            "source_uri": source_url,
+                            "capture_ts": snapshot_ts,
+                            "engine": "dom_table"
+                        }
+                        results.append(rec)
+
+    # Ścieżka 3: Analiza bloków tekstowych i list nieuporządkowanych
+    for element in soup.find_all(["p", "li", "div"]):
+        # Pomijanie węzłów, które zawierają w sobie inne kontenery blokowe
+        if element.find(["p", "table", "ul", "dl"]):
+            continue
+        text_line = element.get_text(" ", strip=True)
+        for pattern in PATTERNS:
+            match = pattern.search(text_line)
+            if match:
+                data = match.groupdict()
+                speaker_str = data.get("speaker", "").strip()
+                sp_match = SPEAKER_MATCHER.search(speaker_str)
+                title, name = sp_match.groups() if sp_match else ("", speaker_str)
+                quote_text = data.get("quote", "").strip()
+
+                rec = {
+                    "quote_hash": make_hash(speaker_str, quote_text),
+                    "academic_title": (title or "").strip(),
+                    "speaker": (name or speaker_str).strip(),
+                    "context": (data.get("context") or "").strip(),
+                    "date_raw": (data.get("date") or "").strip(),
+                    "quote_text": quote_text,
+                    "source_uri": source_url,
+                    "capture_ts": snapshot_ts,
+                    "engine": "regex_text"
+                }
+                results.append(rec)
+                break
+
+    return results
+Integracja korpusu, deduplikacja i analiza genealogii tekstówJedną z fundamentalnych cech folkloru studenckiego jest jego wysoka mobilność horyzontalna. Dowcipne powiedzenie pracownika naukowego, zarejestrowane po raz pierwszy na grupie dyskusyjnej pl.sci.fizyka, było w krótkim czasie kopiowane na prywatną stronę domową studenta na serwerze studenci.fuw.edu.pl, następnie przedostawało się do zbiorczego serwisu samorządu student.pw.edu.pl, a po latach trafiało do komercyjnych serwisów rozrywkowych. Taka wędrówka memetyczna prowadziła do powstawania licznych wariantów tekstu, zniekształceń interpunkcyjnych, błędów zapisu nazwisk oraz skrótów redakcyjnych.Prosta deduplikacja oparta na haszowaniu kryptograficznym (MD5, SHA-256) okazuje się w tym przypadku bezużyteczna, gdyż wykrywa wyłącznie duplikaty absolutne. W procesie konsolidacji danych stosuje się algorytmy haszowania wrażliwego na podobieństwo (Locality-Sensitive Hashing – LSH) oparte na metodzie MinHash lub SimHash. Tekst cytatu podlega uprzedniej lematyzacji za pomocą polskojęzycznego modelu NLP (np. Morfeusz lub spaCy z modelem pl_core_news_lg), usunięciu znaków niedeklaratywnych oraz podziałowi na 3-gramy słowne.Przyjęcie progu podobieństwa Jaccarda na poziomie $s \ge 0{,}85$ pozwala na automatyczne scalenie wariantów danej wypowiedzi w jeden obiekt archiwalny. Rekord nadrzędny zachowuje kanoniczną postać cytatu, natomiast metadane poszczególnych wystąpień przekształcane są w dynamiczną listę proweniencji źródłowej. Lista ta dokumentuje trajektorię czasowo-przestrzenną danego wątku w polskiej sieci uniwersyteckiej, umożliwiając badaczom kultury akademickiej precyzyjne odtworzenie dróg transferu memów na przełomie wieków.Uwarunkowania prawno-etyczne eksploracji tekstów i danychRealizacja programu badawczego operującego na historycznych materiałach z polskiego internetu wymaga zbalansowania praw autorskich twórców stron oraz ochrony dóbr osobistych i danych osobowych podmiotów występujących w zebranych materiałach.Reżim dozwolonego użytku w Prawie autorskimKwestię eksploracji danych reguluje znowelizowana Ustawa z dnia 4 lutego 1994 r. o prawie autorskim i prawach pokrewnych (PrAut), implementująca do polskiego porządku prawnego postanowienia dyrektywy Parlamentu Europejskiego i Rady (UE) 2019/790 (Dyrektywa DSM). W kontekście badań akademickich kluczowe znaczenie mają dwa przepisy ustawy:Art. 26(2) PrAut (Eksploracja na rzecz badań naukowych): Przepis ten statuuje wyjątek prawnoautorski pozwalający instytucjom badawczym, uczelniom wyższym oraz instytucjom dziedzictwa kulturowego na zwielokrotnianie utworów w celu prowadzenia eksploracji tekstów i danych (Text and Data Mining – TDM) do celów badań naukowych. Wyjątek ten ma charakter bezwzględny w tym sensie, że uprawniony z tytułu autorskich praw majątkowych nie może zablokować eksploracji za pomocą oświadczeń opt-out ani klauzul umownych. Zwielokrotnione utwory mogą być bezpiecznie przechowywane w repozytoriach instytucjonalnych tak długo, jak jest to konieczne do celów weryfikacji wyników badań.Art. 26(3) PrAut (Eksploracja ogólna): Zezwala na TDM każdemu podmiotowi w odniesieniu do utworów rozpowszechnionych, o ile uprawniony nie wyraził sprzeciwu w sposób wyraźny i maszynowo odczytywalny (np. w pliku robots.txt lub metadanych).Historyczne archiwa z Wayback Machine oraz zdeponowane wiadomości Usenetu posiadają status utworów legalnie rozpowszechnionych w rozumieniu ustawy. Projekt badawczy realizowany przez ośrodek naukowy korzysta z szerokiego immunitetu badawczego wynikającego z art. 26(2) PrAut, co eliminuje ryzyko roszczeń odszkodowawczych za sam fakt pozyskania i przetworzenia historycznych stron domowych studentów i pracowników.Ochrona danych osobowych w świetle rozporządzenia RODOKorpus folkloru akademickiego w naturalny sposób operuje danymi osobowymi: nazwiskami, stopniami naukowymi, nazwami prowadzonych katedr oraz adresami e-mail autorów publikacji i bohaterów anegdot. Prawne zarządzanie tymi zasobami wymaga zróżnicowanego traktowania dwóch grup osób:Pracownicy dydaktyczni i naukowi: Prowadzenie wykładów, seminariów oraz egzaminów w państwowej lub prywatnej szkole wyższej stanowi działalność o charakterze jawnym, związaną bezpośrednio z pełnieniem funkcji publicznej i wykonywaniem zawodu. Przetwarzanie personaliów kadry akademickiej w celach dokumentowania historii instytucjonalnej i obyczajowości uniwersyteckiej znajduje podstawę prawną w art. 6 ust. 1 lit. f RODO (prawnie uzasadniony interes administratora w postaci badań naukowych) oraz art. 89 RODO, który dopuszcza wyłączenia niektórych praw podmiotów danych na rzecz badań naukowych i historycznych.Studenci i osoby prywatne: Adresy poczty elektronicznej widniejące w nagłówkach archiwalnego Usenetu, uniksowe identyfikatory kont (UID/login w ścieżkach URL) oraz nazwiska studentów wymienianych w relacjach z egzaminów podlegają ścisłej zasadzie minimalizacji danych (art. 5 ust. 1 lit. c RODO). W publicznie udostępnianych wersjach korpusu badawczego konieczne jest wdrożenie mechanizmów anonimizacji: zastąpienie studenckich adresów e-mail jednostronnymi skrótami kryptograficznymi z solą oraz usunięcie personaliów osób trzecich, które nie pełniły formalnych ról w strukturze akademickiej.Wnioski i rekomendacje wdrożeniowePrzeprowadzona analiza dowodzi, że odzyskanie i ustrukturyzowanie historycznego folkloru akademickiego z lat 1995–2010 jest w pełni wykonalne przy zastosowaniu wieloetapowego potoku inżynieryjnego, łączącego zaawansowane odpytywanie archiwów sieciowych z analizą semi-strukturalnych danych tekstowych.W sferze operacyjnej realizacja przedsięwzięcia wymaga oparcia pozyskiwania danych o Wayback Machine CDX API z parametrem collapse=digest, modyfikatorem id_ dla trybu Raw Playback oraz obowiązkową obsługą paginacji wskaźnikowej za pomocą tokenu resumeKey, co zapobiega zrywaniu połączeń i utracie rekordów na granicach bloków danych. W obszarze Usenetu optymalnym rozwiązaniem jest przetworzenie zdeponowanego w Internet Archive korpusu usenet-uat-pl za pomocą dedykowanych narzędzi z pakietu wolfpld/usenetarchive, co zapewnia usunięcie spamu i duplikatów przed etapem analizy leksykalnej.W warstwie przetwarzania tekstu kluczowe jest całkowite wyeliminowanie przestarzałych mechanizmów detekcji kodowania na rzecz biblioteki charset-normalizer, zintegrowanej z kaskadą heurystyk naprawczych ftfy z obsługą kodeka sloppy-windows-1250. W połączeniu z tolerancyjnym parserem html5lib gwarantuje to poprawne odtworzenie uszkodzonej składni HTML oraz bezbłędną rekonstrukcję polskich znaków diakrytycznych. Zgromadzony materiał powinien zostać zdeduplikowany przy użyciu algorytmów MinHash/SimHash, co umożliwi nie tylko skonsolidowanie powtarzających się cytatów, lecz także precyzyjne prześledzenie dróg ich dyfuzji w dawnej sieci akademickiej. Zapewnienie zgodności z art. 26(2) polskiego Prawa autorskiego oraz procedurami pseudonimizacji RODO tworzy trwałe, bezpieczne podstawy prawne dla ochrony tego unikalnego segmentu polskiego dziedzictwa cyfrowego.

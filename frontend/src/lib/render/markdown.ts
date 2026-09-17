@@ -46,8 +46,26 @@ export function hookSanitizer() {
 }
 const hookLinks = hookSanitizer;
 
+/** Maths must never pass through the Markdown parser: `$$\sum_i *a*$$` would come out as
+ * `<em>a</em>` inside the formula and `$a*b*c$` as `a<em>b</em>c`, and KaTeX (which runs
+ * over the DOM afterwards) would then typeset the wreckage or nothing. Every formula is
+ * lifted out first, replaced by an alphanumeric token Markdown cannot touch, and spliced
+ * back — HTML-escaped, still in its delimiters — after marked and before DOMPurify, so
+ * the sanitizer still sees everything and KaTeX still finds its delimiters. */
+const MATH_RE = /\$\$([\s\S]*?)\$\$|\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)|\$([^$\n]+?)\$/g;
+function escapeHtml(s: string): string {
+	return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
+}
+function liftMath(src: string): { text: string; put: (html: string) => string } {
+	const stash: string[] = [];
+	const text = src.replace(MATH_RE, (m) => { stash.push(m); return `FUWMATH${stash.length - 1}X`; });
+	return { text, put: (html) => html.replace(/FUWMATH(\d+)X/g, (_m, i) => escapeHtml(stash[Number(i)] ?? '')) };
+}
+
 export function renderMarkdown(src: string, resolve: (name: string) => string | undefined, options: RenderOptions = {}): string {
 	hookLinks();
+	const lifted = liftMath(src);
+	src = lifted.text;
 	if (options.images === false) {
 		// the chat board: no pictures at all — an image becomes its alt text, or nothing
 		src = src.replace(/!\[([^\]]*)\]\([^)]*\)/g, (_m, alt) => (alt ? `(${alt})` : ''));
@@ -59,7 +77,7 @@ export function renderMarkdown(src: string, resolve: (name: string) => string | 
 		const url = track(ref);
 		return url ? `![${alt}](${url})` : `(brak pliku: ${ref})`;
 	});
-	const html = marked.parse(withImages, { async: false }) as string;
+	const html = lifted.put(marked.parse(withImages, { async: false }) as string);
 	// `class` is deliberately not allowed: user content borrowing the app's own classes
 	// (a `pill--amber` "Wyróżnione", a fake moderation notice) is a phishing surface, and
 	// nothing legitimate in Markdown needs one — KaTeX adds its own classes after this.
@@ -87,6 +105,10 @@ export function typeset(el: HTMLElement): Promise<void> {
 				{ left: '$', right: '$', display: false }
 			],
 			throwOnError: false,
+			// KaTeX runs on the main thread: a macro bomb or a \rule{10000em}{10000em} would
+			// freeze the reader's tab. (trust stays at its default, false: no \href/\htmlData.)
+			// auto-render forwards every option to katex.render but its own type omits these two.
+			...({ maxExpand: 1000, maxSize: 25 } as object),
 			ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'a']
 		})
 	);

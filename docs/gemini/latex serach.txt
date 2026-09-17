@@ -1,0 +1,163 @@
+Architektura wyszukiwania pełnotekstowego dla tekstu polskiego i składni LaTeX w środowisku Django REST FrameworkImplementacja systemu wyszukiwania pełnotekstowego w środowisku łączącym wysoko fleksyjny język naturalny z formalnym kodem zapisu matematycznego $\LaTeX$ stawia wyzwania o odmiennej naturze obliczeniowej i lingwistycznej. Przetwarzanie języka polskiego w systemach Information Retrieval (IR) opiera się na redukcji form odmiennych do ich rdzeni lub form hasłowych poprzez zaawansowaną analizę morfologiczną, co wiąże się ze standaryzacją leksykalną oraz ignorowaniem znaków interpunkcyjnych. Z kolei wyrażenia matematyczne w notacji $\LaTeX$ reprezentują sformalizowane drzewa składniowe, w których każdy symbol, nawias klamrowy, ukośnik odwrócony czy operator posiada ścisłe znaczenie strukturalne.W systemach o skromnych zasobach sprzętowych, typowych dla niewielkich serwerów VPS dysponujących 1–2 rdzeniami vCPU oraz 1–2 GB pamięci RAM, architektura wyszukiwania musi zapewniać precyzyjne dopasowanie podwzorów matematycznych oraz trafną lematyzację polszczyzny, nie dopuszczając jednocześnie do wyczerpania dostępnej pamięci operacyjnej. Dobór odpowiedniego silnika — od wbudowanego modułu SQLite FTS5, przez natywne mechanizmy PostgreSQL, aż po dedykowany silnik Meilisearch — determinuje zarówno wydajność środowiska, jak i stopień skomplikowania kodu aplikacyjnego w Django REST Framework.Kolizja semantyczna języka naturalnego i składni technicznej w systemach IRPróba indeksowania dokumentu zawierającego prozę w języku polskim oraz wzory matematyczne w ramach jednego, niesegregowanego strumienia tokenów prowadzi do degradacji jakości wyników wyszukiwania. Język polski, jako język syntetyczny z rozbudowanym systemem deklinacji i koniugacji, wymaga zastosowania algorytmów fleksyjnych, takich jak słowniki Hunspell lub stemmery morfosyntaktyczne, które normalizują formy odmienne, takie jak „całkowaniem”, do leksemów bazowych. Mechanizmy te traktują znaki interpunkcyjne oraz operatory jako separatory leksykalne, co w przypadku formuł $\LaTeX$ niszczy ich spójność semantyczną. Standardowy tokenizator bazodanowy, napotykając wyrażenie ułamka \frac{x}{y}, dzieli je na autonomiczne wyrazy frac, x oraz y, całkowicie gubiąc relację nadrzędności mianownika i licznika oraz usuwając ukośnik definiujący makro.Z kolei notacja $\LaTeX$ charakteryzuje się dużą swobodą zapisu, w której różne konstrukcje składniowe dają identyczny wynik wizualny i tożsamą interpretację semantyczną. Typograficzne warianty komend, takie jak \dfrac definiujące ułamek w trybie eksponowanym czy \tfrac odpowiadające ułamkowi w tekście ciągłym, są z punktu widzenia znaczenia matematycznego równoważne podstawowej instrukcji \frac. Ponadto, zgodnie z regułami składu systemu TeX, białe znaki wewnątrz matematycznych separatorów $ ... $ lub $$...$$ są całkowicie ignorowane podczas renderowania, co sprawia, że ciągi $x+y=z$ oraz $x + y = z$ stanowią dokładnie tę samą formułę.Kolejną barierę stanowi opcjonalność nawiasów klamrowych dla jednoznakowych argumentów. W notacji TeX zapis potęgi x^2 jest traktowany identycznie jak x^{2}, a konstrukcja \frac12 odpowiada zapisowi \frac{1}{2}. Bez przeprowadzenia rygorystycznej kanonizacji na etapie przedindeksacyjnym, zapytanie wprowadzone przez użytkownika poszukującego wzoru x^{2} nie zwróci dokumentu zawierającego zapis x^2, mimo ich matematycznej identyczności.Metodyka normalizacji i kanonizacji wyrażeń matematycznychSkuteczne dopasowanie podwyrażeń (sub-formula matching) wymaga implementacji architektury opartej na podwójnym przetwarzaniu danych wejściowych (dual-stream pipeline). W procesie tym strumień tekstu naturalnego zostaje oddzielony od bloków matematycznych, a każda formuła przechodzi deterministyczny ciąg transformacji redukujących redundancję składniową przed wprowadzeniem do indeksu.Proces normalizacji rozpoczyna się od wyizolowania środowisk matematycznych za pomocą wyrażeń regularnych lub analizatora składniowego. Po wyodrębnieniu formuły poddaje się dekompozycji zgodnej ze standardem Unicode Normalization Form Compatibility Decomposition (NFKD), co pozwala na zamianę pojedynczych znaków alfabetu greckiego lub symboli technicznych wprowadzonych bezpośrednio z klawiatury na ich kanoniczne sekwencje. Następnie dokonywana jest harmonizacja makr, polegająca na podstawieniu uniwersalnych komend bazowych w miejsce ich wizualnych odmian. Wszystkie operatory relacyjne i funkcje przyjmują spójną postać, co niweluje rozbieżności pomiędzy zapisami \le oraz \leq.Równolegle usuwane są wszelkie komendy formatowania typograficznego niemające znaczenia dla struktury formuły, w tym makra regulujące odstępy poziome, takie jak \,, \!, \;, \quad, a także przełączniki stylu pokroju \displaystyle. Kluczowym krokiem strukturalnym jest wprowadzenie wymuszonego nawiasowania argumentów, w którym każdy wykładnik potęgi, indeks dolny oraz argument pierwiastka zostaje jawnie zamknięty w nawiasach klamrowych {}. Końcowy etap obejmuje całkowitą eliminację zbędnych białych znaków, z zastrzeżeniem zachowania minimalnego odstępu za komendami pozbawionymi argumentów w nawiasach klamrowych, co zapobiega zlewaniu się słów kluczowych ze zmiennymi.Surowy zapis LATE​XPostać zkanonizowanaCel transformacji\dfrac{1}{1 + x^2}\frac{1}{1+x^{2}}Zamiana \dfrac na \frac, dodanie klamer do potęgi, usunięcie spacji.a  \le   ba\leq{b}Unifikacja operatora relacyjnego, standaryzacja argumentów.x_i + y_ix_{i}+y_{i}Wymuszenie jawnego nawiasowania indeksów dolnych.\int\limits_{0}^{\infty} f(x)\,dx\int_{0}^{\infty}f(x)dxUsunięcie makra pozycjonowania \limits oraz separatora \,.\frac 1 2\frac{1}{2}Eliminacja spacji i ujednolicenie struktury argumentów ułamka.W ekosystemie języka Python wybór narzędzi do przeprowadzenia powyższego potoku leży pomiędzy analizatorami AST a wyspecjalizowanymi modułami opartymi na wyrażeniach regularnych. Biblioteka pylatexenc.latexwalker dostarcza lekki parser generujący drzewo obiektów reprezentujące makra (LatexMacroNode), grupy (LatexGroupNode) oraz bloki matematyczne (LatexMathNode). Pozwala to na precyzyjną manipulację strukturą formuły w pamięci bez potrzeby posiadania zewnętrznego środowiska dystrybucji TeX. Z kolei narzędzia oparte na systemach algebry komputerowej (CAS), takie jak sympy.parsing.latex, umożliwiają pełne przekształcenia semantyczne i redukcję algebraiczną (np. rozpoznanie równoważności wyrażeń $x+y$ oraz $y+x$), jednak generują narzut procesora i pamięci wykluczający ich zastosowanie w ścieżce zapytania o niskiej latencji na małym serwerze VPS. W środowiskach o restrykcyjnych zasobach optymalną przepustowość zapewnia sekwencja kompilowanych wyrażeń regularnych wspomagana regułami gramatycznymi biblioteki pylatexenc.Zkanonizowany ciąg znaków $\LaTeX$ nie może być jednak wyszukiwany wyłącznie jako atomowa jednostka leksykalna, ponieważ użytkownicy systemów edukacyjnych i naukowych zazwyczaj formułują zapytania dotyczące podwyrażeń, na przykład poszukując mianownika 1+x^{2} wewnątrz ułamka \frac{1}{1+x^{2}}. Aby zapewnić dopasowanie podciągów o dowolnym punkcie startowym, ciąg matematyczny musi zostać poddany n-gramowej tokenizacji znakowej, najczęściej w postaci trigramów. Podział zkanonizowanej formuły na zachodzące na siebie sekwencje trzech znaków pozwala silnikowi bazodanowemu na skonstruowanie odwróconego indeksu trigramowego, który gwarantuje błyskawiczne odnalezienie dowolnego podwzoru z pominięciem ograniczeń klasycznych granic wyrazowych.Ewaluacja silników wyszukiwania na serwerze o skromnych zasobachDobór odpowiedniej technologii wyszukiwawczej determinuje profil zużycia zasobów maszyny wirtualnej, w tym stabilność buforów systemowych i brak ryzyka aktywacji mechanizmu Out-Of-Memory (OOM) Killer.SQLite FTS5Moduł FTS5 funkcjonuje wewnątrz procesu aplikacji internetowej (in-process), co oznacza brak konieczności uruchamiania dodatkowego demona bazodanowego i minimalny pobór pamięci rzędu kilkunastu megabajtów. W FTS5 zaimplementowano kilka wbudowanych tokenizerów: unicode61, ascii, porter oraz trigram. Domyślny tokenizer unicode61 usuwa znaki diakrytyczne i dzieli tekst na tokeny alfanumeryczne, odrzucając backslashe oraz operatory matematyczne, co dyskwalifikuje go w analizie składni $\LaTeX$.W kontekście języka polskiego silnik SQLite nie posiada wbudowanego słownika fleksyjnego ani stemmera. Jedyną metodą uzyskania zadowalającej jakości wyszukiwania w języku polskim przy użyciu SQLite jest realizacja stemmingu po stronie aplikacji w języku Python, przy wykorzystaniu biblioteki pystempel, będącej portem algorytmu Stempel zaimplementowanego w środowisku Apache Lucene. Zredukowane do rdzeni słowa polskie zapisywane są w dedykowanej kolumnie wirtualnej tabeli FTS5.Z kolei dla znormalizowanego kodu $\LaTeX$ kluczową zaletą FTS5 jest natywny tokenizer trigram, który generuje trójznakowe tokeny z kodu matematycznego i umożliwia precyzyjne dopasowanie dowolnych podciągów formuły za pomocą operatora MATCH. Wadą tego rozwiązania pozostaje brak natywnego wsparcia dla tabel wirtualnych FTS5 w Django ORM, co zmusza dewelopera do ręcznego tworzenia tabel w migracjach za pomocą surowego SQL oraz omijania standardowych interfejsów QuerySet.PostgreSQL: tsvector oraz rozszerzenie pg_trgmPostgreSQL dysponuje rozbudowanym, dojrzałym podsystemem wyszukiwania pełnotekstowego, który po zainstalowaniu w systemie operacyjnym pakietu hunspell-pl udostępnia kompletną konfigurację języka polskiego bazującą na szablonie ispell. Analizator ten wykorzystuje pliki afiksów (pl_pl.affix) i słownika (pl_pl.dict), dzięki czemu poprawnie rozpoznaje formy fleksyjne, przekształcając je w jednolite leksemy w strukturze tsvector. Próba przetworzenia kodu $\LaTeX$ za pomocą polskiego parsera to_tsvector('polish', ...) kończy się jednak niepowodzeniem, gdyż parser traktuje ukośniki odwrócone, nawiasy i znaki operacji matematycznych jako separatory.Rozwiązaniem tego problemu w PostgreSQL jest architektura dwukolumnowa. Warstwa tekstu naturalnego w języku polskim indeksowana jest za pomocą wektora tsvector, generowanego automatycznie przez bazę danych i wspieranego przez indeks GIN (Generalized Inverted Index). Z kolei znormalizowany ciąg formuł matematycznych przechowywany jest w odrębnej kolumnie tekstowej, na której tworzony jest indeks GIN oparty na rozszerzeniu pg_trgm z klasą operatorów gin_trgm_ops. Konstrukcja ta umożliwia wykonywanie zapytań o podciągi matematyczne z wykorzystaniem operatora podobieństwa lub dopasowania wzorca, zapewniając przy tym pełną integrację z Django ORM za pośrednictwem modułów django.contrib.postgres.search oraz django.contrib.postgres.indexes.W kontekście serwera o skromnych zasobach, proces serwera PostgreSQL zoptymalizowany pod kątem niskiego zużycia pamięci z parametrem shared_buffers ustawionym na poziomie 128 MB funkcjonuje stabilnie i nie wykazuje nieprzewidywalnych skoków alokacji.MeilisearchMeilisearch jest niezależnym silnikiem wyszukiwania czasu rzeczywistego, stworzonym w języku Rust i opartym na pamięci masowej LMDB. Charakteryzuje się błyskawiczną odpowiedzią na zapytania prefiksowe (search-as-you-type) oraz wbudowaną tolerancją na literówki bazującą na odległości Damerau-Levenshteina. Silnik ten wykorzystuje wielojęzyczny tokenizer Charabia, który radzi sobie z podziałem słów i normalizacją znaków diakrytycznych, jednak nie posiada pełnego modelu morfosyntaktycznego dla języka polskiego, polegając w zamian na heurystykach odległości edycyjnej.Pod kątem indeksowania kodu $\LaTeX$ Meilisearch wykazuje zasadnicze ograniczenie: jego silnik jest zoptymalizowany pod kątem odnajdywania całych tokenów oraz ich prefiksów, nie obsługując natywnego wyszukiwania podciągów wewnętrznych (infix matching). Zdefiniowanie symboli matematycznych jako znaków łączących za pomocą parametru nonSeparatorTokens powoduje, że wieloczłonowe wyrażenia traktowane są jako pojedyncze, niepodzielne leksemy, co uniemożliwia dopasowanie fragmentu wzoru znajdującego się w środku wyrażenia. Ponadto, mechanizm LMDB opiera się na plikach mapowanych do pamięci wirtualnej (mmap).W warunkach małego serwera VPS (1 GB RAM) proces Meilisearch w trakcie intensywnych operacji indeksowania potrafi dynamicznie zaalokować całą dostępną pamięć operacyjną, doprowadzając do awarii procesu wskutek działania jądra systemu Linux. Ustabilizowanie silnika wymaga wymuszenia flagi --experimental-reduce-indexing-memory-usage oraz sztywnego limitowania pamięci parametrem --max-indexing-memory, co drastycznie spowalnia proces zapisu danych. Wdrożenie Meilisearch wymaga także utrzymywania osobnej usługi sieciowej, co podnosi koszt administracyjny całej aplikacji.Kryterium techniczneSQLite FTS5 (z pystempel)PostgreSQL (tsvector + pg_trgm)MeilisearchPobór pamięci RAM w spoczynku$\sim 0 \text{ MB}$ (część procesu aplikacji)$\sim 80 - 150 \text{ MB}$ (demon bazodanowy)$\sim 100 - 200 \text{ MB}$ (niezależny demon HTTP)Ryzyko awarii OOM podczas zapisuBrak (płaska charakterystyka alokacji)Bardzo niskie (deterministyczne bufory pamięci)Wysokie (wymaga restrykcyjnych limitów LMDB)Obsługa fleksji języka polskiegoPośrednia (poprzez stemming w Pythonie)Pełna i natywna (słownik Hunspell pl_pl)Podstawowa (typo tolerance, brak odmiany)Dopasowanie podwzorów $\LaTeX$Pełne (poprzez tokenizer trigram)Pełne (poprzez indeks GIN z gin_trgm_ops)Znacznie ograniczone (brak obsługi podciągów)Integracja z Django ORMNiska (wymagany surowy SQL)Natywna (GeneratedField, GinIndex, ORM)Średnia (wymaga synchronizacji via HTTP API)Narzut operacyjny (DevOps)Zerowy (jeden plik bazy danych)Niski (standardowa usługa PostgreSQL)Średni (zarządzanie procesem, portami i kopiami)Architektura referencyjna w Django REST FrameworkBiorąc pod uwagę stabilność zużycia zasobów, jakość lingwistyczną oraz ergonomię programistyczną, rekomendowanym podejściem jest migracja bazy danych z SQLite na PostgreSQL. W architekturze tej zadania normalizacji i separacji strumieni realizowane są w warstwie aplikacji w Pythonie, natomiast indeksowanie, stemming oraz dopasowanie podciągów przejmuje silnik bazy danych za pośrednictwem wbudowanych struktur Django.                +------------------------------------+
+                |  Wejście: Tekst polski + LaTeX     |
+                +-----------------+------------------+
+                                  |
+                                  v
+                +------------------------------------+
+                |     LatexNormalizer (Python)       |
+                |  - Izolacja wzorów ($...$, $$...$$)|
+                |  - Unifikacja komend (\dfrac->\frac|
+                |  - Nawiasowanie (x^2 -> x^{2})     |
+                |  - Usunięcie białych znaków        |
+                +--------+------------------+--------+
+                         |                  |
+           Tekst polski  |                  | Wzory zkanonizowane
+                         v                  v
+       +-----------------------+      +-----------------------+
+       |   plain_text (Pole)   |      | canonical_math (Pole) |
+       +-----------+-----------+      +-----------+-----------+
+                   |                              |
+                   v                              v
+       +-----------------------+      +-----------------------+
+       | search_vector         |      | GinIndex              |
+       | (GeneratedField)      |      | (opclasses:           |
+       | - Słownik Hunspell PL |      |  gin_trgm_ops)        |
+       | - GinIndex            |      | - Dopasowanie         |
+       | - Wyszukiwanie słów   |      |   podciągów wzoru     |
+       +-----------+-----------+      +-----------+-----------+
+                   |                              |
+                   +--------------+---------------+
+                                  |
+                                  v
+                +------------------------------------+
+                |  SearchAPIView (DRF):              |
+                |  Ranking łączony                   |
+                |  Score = SearchRank + TrigramSim*2 |
+                +------------------------------------+
+Moduł normalizacji i kanonizacji w warstwie aplikacjiModuł normalizatora odpowiada za podział treści wejściowej na oczyszczony tekst polski oraz kanoniczny zbiór formuł $\LaTeX$, zapewniając powtarzalność transformacji zarówno podczas zapisu modelu, jak i w momencie przetwarzania parametrów zapytania w widoku API:Pythonimport re
+
+class LatexNormalizer:
+    MACRO_SYNONYMS = [
+        (re.compile(r'\\dfrac\b'), r'\\frac'),
+        (re.compile(r'\\tfrac\b'), r'\\frac'),
+        (re.compile(r'\\le\b'), r'\\leq'),
+        (re.compile(r'\\ge\b'), r'\\geq'),
+        (re.compile(r'\\ne\b'), r'\\neq'),
+        (re.compile(r'\\cdot'), r'*'),
+    ]
+    
+    SPACING_MACROS = re.compile(r'\\[,;!]|\\quad\b|\\qquad\b|\\displaystyle\b')
+    BRACE_TARGETS = re.compile(r'([\^_])([0-9a-zA-Z])')
+    MATH_BLOCKS = re.compile(r'(\$\$.*?\$\$|\$.*?\$|\\\(.*?\\\)|\\\[.*?\\\])', re.DOTALL)
+
+    @classmethod
+    def canonicalize_formula(cls, formula: str) -> str:
+        clean = cls.SPACING_MACROS.sub('', formula)
+        for pattern, replacement in cls.MACRO_SYNONYMS:
+            clean = pattern.sub(replacement, clean)
+        clean = cls.BRACE_TARGETS.sub(r'\1{\2}', clean)
+        # Usunięcie zbędnych spacji z zachowaniem separatorów po komendach bez klamer
+        clean = re.sub(r'\s+', '', clean)
+        return clean
+
+    @classmethod
+    def transform_payload(cls, text: str) -> tuple[str, str]:
+        math_segments = []
+
+        def match_handler(match):
+            raw_math = match.group(0)
+            canonical = cls.canonicalize_formula(raw_math)
+            math_segments.append(canonical)
+            return ' '
+
+        text_only = cls.MATH_BLOCKS.sub(match_handler, text)
+        text_only = re.sub(r'\s+', ' ', text_only).strip()
+        math_only = ' '.join(math_segments).strip()
+        return text_only, math_only
+Model danych w Django z wykorzystaniem pól generowanychZastosowanie wprowadzonej w Django 5.0 klasy GeneratedField z atrybutem db_persist=True pozwala na oddelegowanie konstrukcji wektora wyszukiwania wprost do bazy PostgreSQL. Baza automatycznie przelicza wektor leksykalny w oparciu o słownik polish przy każdym zapisie i aktualizacji rekordu, eliminując potrzebę pisania sygnałów aplikacji lub asynchronicznych zadań roboczych:Pythonfrom django.db import models
+from django.contrib.postgres.search import SearchVectorField, SearchVector
+from django.contrib.postgres.indexes import GinIndex
+
+class EducationalMaterial(models.Model):
+    title = models.CharField(max_length=255)
+    raw_content = models.TextField()
+    
+    # Rozdzielone strumienie danych
+    prose_content = models.TextField(editable=False)
+    canonical_math = models.TextField(editable=False)
+
+    # Wektor lingwistyczny generowany automatycznie na poziomie silnika PostgreSQL
+    search_vector = models.GeneratedField(
+        expression=SearchVector('title', config='polish', weight='A') +
+                   SearchVector('prose_content', config='polish', weight='B'),
+        output_field=SearchVectorField(),
+        db_persist=True
+    )
+
+    class Meta:
+        indexes = [
+            # Indeks odwrócony pod kątem fleksji języka polskiego
+            GinIndex(fields=['search_vector'], name='mat_search_vec_gin'),
+            # Indeks trigramowy dla operacji wyszukiwania podciągów we wzorach LaTeX
+            GinIndex(
+                fields=['canonical_math'],
+                name='mat_math_trgm_gin',
+                opclasses=['gin_trgm_ops']
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.prose_content, self.canonical_math = LatexNormalizer.transform_payload(self.raw_content)
+        super().save(*args, **kwargs)
+Widok wyszukiwania Django REST FrameworkLogika widoku integruje wyszukiwanie lingwistyczne z dopasowaniem podobieństwa wzorów matematycznych. Złożona ocena trafności (ranking hybrydowy) fuzuje znormalizowany wynik SearchRank z wagą zbieżności trigramowej wyrażenia matematycznego:Pythonfrom rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import serializers, status
+from django.contrib.postgres.search import SearchQuery, SearchRank, TrigramSimilarity
+from django.db.models import F, Value, FloatField
+from .models import EducationalMaterial
+
+class MaterialSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EducationalMaterial
+        fields = ['id', 'title', 'raw_content']
+
+class UnifiedSearchAPIView(APIView):
+    def get(self, request):
+        query_text = request.query_params.get('q', '').strip()
+        if not query_text:
+            return Response([], status=status.HTTP_200_OK)
+
+        text_query, math_query = LatexNormalizer.transform_payload(query_text)
+        queryset = EducationalMaterial.objects.all()
+
+        has_text = bool(text_query)
+        has_math = bool(math_query)
+
+        # Ewaluacja lingwistyczna (język polski)
+        if has_text:
+            polish_query = SearchQuery(text_query, config='polish', search_type='websearch')
+            queryset = queryset.filter(search_vector=polish_query).annotate(
+                text_score=SearchRank(F('search_vector'), polish_query)
+            )
+        else:
+            queryset = queryset.annotate(text_score=Value(0.0, output_field=FloatField()))
+
+        # Ewaluacja matematyczna (podwyrażenia LaTeX)
+        if has_math:
+            queryset = queryset.filter(canonical_math__trigram_similar=math_query).annotate(
+                math_score=TrigramSimilarity('canonical_math', math_query)
+            )
+        else:
+            queryset = queryset.annotate(math_score=Value(0.0, output_field=FloatField()))
+
+        if not has_text and not has_math:
+            return Response([], status=status.HTTP_200_OK)
+
+        # Fuzja rankingów: wyższy priorytet dla precyzyjnego trafienia wzoru
+        queryset = queryset.annotate(
+            final_rank=F('text_score') + (F('math_score') * 2.0)
+        ).order_by('-final_rank')[:30]
+
+        serializer = MaterialSerializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+Podsumowanie i wytyczne wdrożenioweWybór technologii wyszukiwania pełnotekstowego w środowisku o ograniczonych zasobach serwera VPS wymaga kompromisu pomiędzy złożonością operacyjną a precyzją indeksowania danych heterogenicznych.Wdrożenie silnika Meilisearch na maszynie o pojemności 1–2 GB RAM stanowi wysokie ryzyko awarii systemu z uwagi na skłonność silnika LMDB do pochłaniania wolnej pamięci operacyjnej podczas indeksowania, a brak obsługi wyszukiwania dowolnych podciągów wyklucza go w zadaniach dopasowywania zagnieżdżonych fragmentów wzorów $\LaTeX$. Zastosowanie wbudowanego modułu SQLite FTS5 z zewnętrznym stemmerem w Pythonie (pystempel) zapewnia minimalny narzut pamięciowy, lecz wymusza rezygnację z natywnego ORM Django oraz ręczne konstruowanie struktur bazodanowych w surowym SQL.W konsekwencji najkorzystniejszym rozwiązaniem pod względem stabilności, poprawności lingwistycznej oraz czystości architektury jest migracja bazy danych na PostgreSQL. Baza ta, skonfigurowana ze słownikiem Hunspell (pl_pl) oraz rozszerzeniem pg_trgm, z powodzeniem mieści się w budżecie pamięciowym niewielkiego serwera VPS, rozwiązując problem wyszukiwania w fleksyjnym języku polskim oraz umożliwiając precyzyjne odnajdywanie zkanonizowanych podwzorów matematycznych w ramach jednego, zunifikowanego procesu bazodanowego.

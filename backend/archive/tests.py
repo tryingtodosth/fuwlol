@@ -56,7 +56,7 @@ class SubmissionTests(Base):
     def test_text_post_with_image_waits_for_moderation(self):
         self.login(self.user)
         f = SimpleUploadedFile('zdjecie.png', png_bytes(), content_type='image/png')
-        r = self.client.post('/api/posts/', {
+        r = self.client.post('/api/posts/', {'rights_confirmed': 'true', 
             'title': 'Mem o sesji', 'category': 'memy', 'format': 'text', 'body': 'Patrz ![](zdjecie.png)',
             'year': 2020, 'people': 'kwant', 'tags': 'sesja, Pasteura 5', 'files': [f]}, format='multipart')
         self.assertEqual(r.status_code, 201, r.data)
@@ -83,7 +83,7 @@ class SubmissionTests(Base):
         self.login(self.user)
         body = r'\documentclass{article}\begin{document}$E=mc^2$ \includegraphics{a.png}\end{document}'
         f = SimpleUploadedFile('a.png', png_bytes(), content_type='image/png')
-        r = self.client.post('/api/posts/', {'title': 'Zadanie', 'category': 'memy', 'format': 'latex',
+        r = self.client.post('/api/posts/', {'rights_confirmed': 'true', 'title': 'Zadanie', 'category': 'memy', 'format': 'latex',
                                              'body': body, 'files': [f]}, format='multipart')
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data['format'], 'latex')
@@ -91,23 +91,23 @@ class SubmissionTests(Base):
 
     def test_auto_summary_drops_maths_and_syntax(self):
         self.login(self.user)
-        r = self.client.post('/api/posts/', {'title': 'X', 'category': 'memy', 'body': 'Oto **mem** i wzór $\\int_0^1 x\\,dx$. Koniec.'})
+        r = self.client.post('/api/posts/', {'rights_confirmed': 'true', 'title': 'X', 'category': 'memy', 'body': 'Oto **mem** i wzór $\\int_0^1 x\\,dx$. Koniec.'})
         self.assertEqual(r.data['summary'], 'Oto mem i wzór $\\int_0^1 x\\,dx$. Koniec.')
-        r = self.client.post('/api/posts/', {'title': 'Y', 'category': 'memy', 'format': 'latex',
+        r = self.client.post('/api/posts/', {'rights_confirmed': 'true', 'title': 'Y', 'category': 'memy', 'format': 'latex',
                                              'body': '\\section*{Zad} Policz \\[ e^x \\] \\textbf{teraz}.'})
         self.assertEqual(r.data['summary'], 'Zad Policz $e^x$ teraz.')
-        r = self.client.post('/api/posts/', {'title': 'Z', 'category': 'memy', 'body': 'x', 'summary': 'własne'})
+        r = self.client.post('/api/posts/', {'rights_confirmed': 'true', 'title': 'Z', 'category': 'memy', 'body': 'x', 'summary': 'własne'})
         self.assertEqual(r.data['summary'], 'własne')
 
     def test_staff_publish_immediately(self):
         self.login(self.staff)
-        r = self.client.post('/api/posts/', {'title': 'X', 'category': 'memy', 'body': 'y'})
+        r = self.client.post('/api/posts/', {'rights_confirmed': 'true', 'title': 'X', 'category': 'memy', 'body': 'y'})
         self.assertEqual(r.data['status'], 'published')
 
     def test_disguised_executable_rejected(self):
         self.login(self.user)
         f = SimpleUploadedFile('virus.png', b'MZ\x90\x00' + b'\x00' * 100, content_type='image/png')
-        r = self.client.post('/api/posts/', {'title': 'X', 'category': 'memy', 'body': 'y', 'files': [f]}, format='multipart')
+        r = self.client.post('/api/posts/', {'rights_confirmed': 'true', 'title': 'X', 'category': 'memy', 'body': 'y', 'files': [f]}, format='multipart')
         self.assertEqual(r.status_code, 400)
         self.assertIn('files', r.data)
         self.assertEqual(Post.objects.count(), 0)
@@ -116,16 +116,16 @@ class SubmissionTests(Base):
         self.login(self.user)
         for name, data in [('a.exe', b'MZ'), ('a.pdf', b'not a pdf')]:
             f = SimpleUploadedFile(name, data)
-            r = self.client.post('/api/posts/', {'title': 'X', 'category': 'memy', 'body': 'y', 'files': [f]}, format='multipart')
+            r = self.client.post('/api/posts/', {'rights_confirmed': 'true', 'title': 'X', 'category': 'memy', 'body': 'y', 'files': [f]}, format='multipart')
             self.assertEqual(r.status_code, 400, name)
 
     def test_empty_post_rejected(self):
         self.login(self.user)
-        r = self.client.post('/api/posts/', {'title': 'X', 'category': 'memy', 'body': '  '})
+        r = self.client.post('/api/posts/', {'rights_confirmed': 'true', 'title': 'X', 'category': 'memy', 'body': '  '})
         self.assertEqual(r.status_code, 400)
 
     def test_anonymous_cannot_submit(self):
-        r = self.client.post('/api/posts/', {'title': 'X', 'category': 'memy', 'body': 'y'})
+        r = self.client.post('/api/posts/', {'rights_confirmed': 'true', 'title': 'X', 'category': 'memy', 'body': 'y'})
         self.assertEqual(r.status_code, 401)
 
     def test_jpeg_metadata_is_stripped(self):
@@ -136,7 +136,7 @@ class SubmissionTests(Base):
         img.save(buf, format='JPEG', exif=exif)
         self.login(self.user)
         f = SimpleUploadedFile('p.jpg', buf.getvalue(), content_type='image/jpeg')
-        r = self.client.post('/api/posts/', {'title': 'X', 'category': 'memy', 'body': 'y', 'files': [f]}, format='multipart')
+        r = self.client.post('/api/posts/', {'rights_confirmed': 'true', 'title': 'X', 'category': 'memy', 'body': 'y', 'files': [f]}, format='multipart')
         self.assertEqual(r.status_code, 201, r.data)
         stored = Post.objects.get().attachments.get().file
         with stored.open('rb') as fh:

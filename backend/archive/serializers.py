@@ -5,6 +5,7 @@ from django.contrib.auth.models import User
 from rest_framework import serializers
 
 from . import moderation as rules
+from . import latexguard
 from .models import (Attachment, Category, Comment, CommentAttachment, Person, Post,
                      Reaction, Report, Tag, REACTION_CHOICES)
 from .validators import kind_for
@@ -195,11 +196,12 @@ class PostWriteSerializer(serializers.ModelSerializer):
     category = serializers.SlugRelatedField(slug_field='slug', queryset=Category.objects.all())
     people = serializers.CharField(required=False, allow_blank=True, write_only=True)
     tags = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    rights_confirmed = serializers.BooleanField(required=False, write_only=True)
 
     class Meta:
         model = Post
         fields = ['title', 'category', 'format', 'body', 'summary', 'year', 'year_precision',
-                  'date_note', 'source_note', 'source_url', 'people', 'tags']
+                  'date_note', 'source_note', 'source_url', 'people', 'tags', 'rights_confirmed']
 
     @staticmethod
     def _slugs(raw):
@@ -223,6 +225,11 @@ class PostWriteSerializer(serializers.ModelSerializer):
     def validate(self, data):
         if not (data.get('body') or '').strip() and not self.context.get('has_files'):
             raise serializers.ValidationError({'body': 'Wpis musi mieć treść albo plik.'})
+        problem = latexguard.check_source(data.get('body') or '', max_chars=latexguard.MAX_POST_CHARS)
+        if problem:
+            raise serializers.ValidationError({'body': problem})
+        if self.instance is None and not data.get('rights_confirmed'):
+            raise serializers.ValidationError({'rights_confirmed': 'Potwierdź, że masz prawo opublikować tę treść (regulamin w „O archiwum”).'})
         if 'summary' in data and not (data.get('summary') or '').strip():
             data['summary'] = auto_summary(data.get('body') or '', data.get('format') or 'text')
         elif 'summary' not in data and self.instance is None:
@@ -245,11 +252,13 @@ class PostWriteSerializer(serializers.ModelSerializer):
 
     def create(self, data):
         people, tags = data.pop('people', None), data.pop('tags', None)
+        data['rights_confirmed'] = bool(data.get('rights_confirmed'))
         post = Post.objects.create(**data)
         self._apply_m2m(post, {k: v for k, v in [('people', people), ('tags', tags)] if v is not None})
         return post
 
     def update(self, post, data):
+        data.pop('rights_confirmed', None)
         people, tags = data.pop('people', None), data.pop('tags', None)
         for k, v in data.items():
             setattr(post, k, v)
@@ -269,6 +278,12 @@ class CommentSerializer(serializers.ModelSerializer):
         fields = ['id', 'author', 'author_id', 'parent', 'format', 'body', 'attachments', 'is_removed',
                   'moderation', 'created_at']
         read_only_fields = ['is_removed', 'moderation', 'created_at']
+
+    def validate_body(self, value):
+        problem = latexguard.check_source(value or '', max_chars=latexguard.MAX_COMMENT_CHARS)
+        if problem:
+            raise serializers.ValidationError(problem)
+        return value
 
     def get_author(self, obj):
         return '' if obj.is_removed else _display(obj.author)
@@ -313,8 +328,16 @@ class ReportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Report
-        fields = ['id', 'post', 'contact_email', 'reason', 'note', 'created_at']
+        fields = ['id', 'post', 'contact_email', 'reason', 'note', 'good_faith', 'created_at']
         read_only_fields = ['created_at']
+
+
+class MinePostSerializer(PostListSerializer):
+    """/posts/mine/ — the list shape plus the moderator's note to the author, which is the
+    author's own statement of reasons (art. 17 DSA) and nobody else's business."""
+
+    class Meta(PostListSerializer.Meta):
+        fields = PostListSerializer.Meta.fields + ['review_note']
 
 
 class ModerationPostSerializer(PostDetailSerializer):
@@ -330,7 +353,9 @@ class ModerationPostSerializer(PostDetailSerializer):
         req = self.context.get('request')
         staff = rules.is_staff(req.user if req else None)
         return [{'id': r.id, 'reason': r.reason, 'created_at': r.created_at,
-                 'note': r.note if staff else '', 'contact_email': r.contact_email if staff else ''}
+                 'note': r.note if staff else '', 'contact_email': r.contact_email if staff else '',
+                 # a formal notice in the sense of art. 16 DSA: reporter named + good-faith statement
+                 'formal': bool(r.good_faith and (r.contact_email or r.reporter_id))}
                 for r in obj.reports.filter(resolved=False)]
 
 

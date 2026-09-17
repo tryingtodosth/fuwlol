@@ -44,6 +44,7 @@
 	let dateNote = $state(seed?.date_note ?? '');
 	let sourceNote = $state(seed?.source_note ?? '');
 	let sourceUrl = $state(seed?.source_url ?? '');
+	let rightsOk = $state(!!seed); // an edit does not re-ask; a new post must declare
 	let peopleSel = $state<string[]>(seed?.people.map((p) => p.slug) ?? []);
 	let tagsText = $state(seed?.tags.map((t) => t.name).join(', ') ?? '');
 
@@ -456,6 +457,7 @@
 				problems.push('Link źródła jest nieprawidłowy.');
 			}
 		}
+		if (!seed && !rightsOk) problems.push('Potwierdź, że masz prawo opublikować tę treść (pole nad przyciskiem „Zapisz wpis”).');
 		return problems.length ? problems.join('\n') : null;
 	}
 	function buildForm(): FormData {
@@ -474,6 +476,7 @@
 		fd.set('source_url', normalizedUrl());
 		fd.set('people', peopleSel.join(','));
 		fd.set('tags', parsedTags.join(','));
+		fd.set('rights_confirmed', rightsOk ? 'true' : 'false');
 		for (const f of newFiles) fd.append('files', f.file, f.name);
 		fd.set('captions', JSON.stringify(newFiles.map((f) => f.caption.trim().slice(0, 200))));
 		for (const id of removeIds) fd.append('remove_attachments', String(id));
@@ -603,7 +606,7 @@
 					{/each}
 				</div>
 			</div>
-			<p class="help">Brak osoby? Wpisz ją w tagach.</p>
+			<p class="help">Brak osoby? Wpisz ją w tagach. Osoby to postacie folkloru — zdjęcie prawdziwego wykładowcy bez jego zgody to naruszenie wizerunku (art. 81), niezależnie od tego, jak śmieszne.</p>
 
 			<label for="ed-tags">Tagi (po przecinku)</label>
 			<input id="ed-tags" type="text" bind:value={tagsText} placeholder="np. kolokwium, kreda, dziekanat" />
@@ -830,6 +833,13 @@
 		</div>
 	</div>
 
+	{#if !seed}
+		<label class="rights">
+			<input type="checkbox" bind:checked={rightsOk} />
+			<span>Mam prawo opublikować tę treść: jest moja albo mieści się w granicach parodii/pastiszu (art. 29¹ pr. aut.), a każda rozpoznawalna osoba na zdjęciu zgodziła się na publikację (art. 81) — wykładowca nie jest „osobą powszechnie znaną”. Nie ma tu cudzych materiałów z zajęć w całości ani danych studentów (ocen, numerów indeksu). Szczegóły: <a href="/o-archiwum" target="_blank">regulamin</a>.</span>
+		</label>
+	{/if}
+
 	{#if error}<div class="error">{error}</div>{/if}
 
 	<div class="savebar">
@@ -842,6 +852,8 @@
 
 <style>
 	.ed { margin: 0; }
+	.rights { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; margin: 12px 0 4px; }
+	.rights input { width: auto; margin-top: 3px; }
 
 	.draft { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between;
 		border: 1px solid #c98f1e; background: #fffbe8; padding: 6px 9px; margin: 0 0 12px; font-size: 12px; }

@@ -130,6 +130,7 @@
 								{#each p.reports as r (r.id)}
 									<li class="small">
 										<strong>{REASON[r.reason] ?? r.reason}</strong>
+										{#if r.formal}<span class="pill pill--amber" title="Zgłaszający podał kontakt i oświadczył dobrą wiarę — formalne zawiadomienie z art. 16 DSA">formalne (DSA)</span>{/if}
 										{#if r.note} — {r.note}{/if}
 										{#if r.contact_email}
 											<span class="muted">· kontakt: {r.contact_email}</span>

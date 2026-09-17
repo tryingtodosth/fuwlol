@@ -24,7 +24,7 @@ export interface Post extends PostSummary {
 	body: string; source_note: string; source_url: string; attachments: Attachment[];
 	my_reaction: ReactionKind | null; can_edit: boolean; review_note: string;
 	can_moderate?: boolean; moderation_notice?: string | null; moderation?: ModerationBlock | null;
-	reports?: { id: number; reason: string; note: string; contact_email: string; created_at: string }[];
+	reports?: { id: number; reason: string; note: string; contact_email: string; created_at: string; formal?: boolean }[];
 }
 export interface Comment {
 	id: number; author: string; author_id: number; parent: number | null; format: Format; body: string;

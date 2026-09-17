@@ -12,6 +12,7 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"e2e": "node e2e/smoke.mjs",
 		"e2e:escalation": "node e2e/escalation.mjs",
+		"e2e:research": "node e2e/research-followups.mjs",
 		"survey": "node e2e/survey.mjs"
 	},
 	"devDependencies": {

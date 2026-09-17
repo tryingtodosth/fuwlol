@@ -28,11 +28,17 @@ Porty zajęte? `FUWLOL_CORS_ORIGINS` + `frontend/.env` (`PUBLIC_API_BASE_URL`) s
   (obrazy, PDF, audio, wideo, `.txt`/`.tex`, 25 MB). Pliki są sprawdzane po zawartości,
   JPEG/PNG tracą metadane (GPS z telefonu). Nazwa pliku jest jego odnośnikiem w treści.
 - **Moderacja**: wpis czeka na moderatora (staff publikuje od ręki); kolejka w `/moderacja`
-  i w panelu Django; zgłoszenia (także anonimowe: „dotyczy mnie, proszę usunąć”).
+  i w panelu Django; zgłoszenia (także anonimowe: „dotyczy mnie, proszę usunąć”) — z e-mailem i
+  oświadczeniem o dobrej wierze są formalnym zawiadomieniem w rozumieniu art. 16 DSA i tak są
+  oznaczone w kolejce. Autor odrzuconego lub ukrytego wpisu widzi powód i ścieżkę odwołania; nowy
+  wpis wymaga oświadczenia o prawach do treści. Regulamin: `/o-archiwum`. Treść definiująca makra
+  TeX-a (`\def`, rekurencyjny `\newcommand`) jest odrzucana na każdej ścieżce zapisu — taka bomba
+  zawiesiłaby przeglądarkę każdego, kto otworzy wpis.
 - **Społeczność**: reakcje (lol / klasyk / wow / cringe), komentarze wątkowe — też tekst
   lub LaTeX, z obrazami.
 - **Przeglądanie**: kategorie, osoby (postacie folkloru), tagi, oś czasu (lata z niepewnością:
-  dokładnie / około / dekada), szukanie, losowy wpis, sygnatury `FUW-0001`.
+  dokładnie / około / dekada), szukanie (polskie znaki i wielkość liter nie mają znaczenia; wzory są
+  kanonizowane, więc `x^2` znajduje `x^{2}`, a `\frac` znajduje `\dfrac`), losowy wpis, sygnatury `FUW-0001`.
 - **Czat** (`/czat`): stary shoutbox — pisze każdy, także bez konta; linki i wzory tak, obrazki
   nie; 2048 znaków; długie wiadomości zwijają się po 100 znakach; kanał RSS (`/api/board/rss/`).
 - **Zaufani użytkownicy**: potwierdzenie adresu w domenie FUW/UW/PAN (`/konto`) daje wyższe
@@ -63,9 +69,10 @@ frontend/  src/lib/{api,types,auth}  src/lib/render/{markdown,latex,media}  src/
 deploy/    HETZNER.md — Hetzner + Coolify + Cloudflare; Dockerfiles w backend/ i frontend/, docker-compose.yml
 docs/      fuwlol-dokumentacja.drawio (+ .pdf, render/NN.png) — dokumentacja techniczna po polsku z prawdziwymi zrzutami,
            generowana przez build_docs.py + render_docs.mjs; research-brief-gemini.md — brief do researchu rynkowego
+           gemini/ — pięć raportów Gemini Deep Research + note.md (co z nich weszło do kodu, jak ich używać dalej)
 ```
 
 Testy: `cd backend && ../.venv/bin/python manage.py test` (135) · `cd frontend && npm run check && npm run build`
 · przy działających serwerach: `npm run e2e` (smoke, 34 kroki), `npm run e2e:escalation` (eskalacja od kliknięcia
-do decyzji) i `npm run survey` (zrzuty każdej strony dla 4 ról × 2 szerokości — do oglądania, nie do asercji).
+do decyzji), `npm run e2e:research` (wzory w Markdownie, wyszukiwanie LaTeX-a, zgłoszenie DSA, oświadczenie o prawach) i `npm run survey` (zrzuty każdej strony dla 4 ról × 2 szerokości — do oglądania, nie do asercji).
 Więcej o decyzjach: `DESIGN.md`.

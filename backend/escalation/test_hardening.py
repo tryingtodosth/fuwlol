@@ -191,10 +191,10 @@ class ThrottleTests(Base):
         # and therefore never limited anything — a regression test for FixedScopeThrottle
         from rest_framework.throttling import SimpleRateThrottle
         self.as_(self.plain)
-        body = {'title': 'Nowy', 'category': 'memy', 'format': 'text', 'body': 'x'}
+        body = {'title': 'Nowy', 'category': 'memy', 'format': 'text', 'body': 'x', 'rights_confirmed': 'true'}
         with patch.dict(SimpleRateThrottle.THROTTLE_RATES, {'post_create': '1/hour'}):
             self.assertEqual(self.client.post('/api/posts/', body).status_code, 201)
-            self.assertEqual(self.client.post('/api/posts/', {**body, 'title': 'Drugi'}).status_code, 429)
+            self.assertEqual(self.client.post('/api/posts/', {'rights_confirmed': 'true', **body, 'title': 'Drugi'}).status_code, 429)
 
     def test_login_is_also_limited_per_username_across_addresses(self):
         from rest_framework.throttling import SimpleRateThrottle

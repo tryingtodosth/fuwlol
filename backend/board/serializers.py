@@ -11,6 +11,8 @@ import unicodedata
 from django.contrib.auth.models import User
 from rest_framework import serializers
 
+from archive.latexguard import check_source
+
 from .models import DEFAULT_NICK, FORMAT_CHOICES, MAX_LEN, Message, Report
 from .trust import can_moderate
 
@@ -105,6 +107,9 @@ class MessageWriteSerializer(serializers.Serializer):
             raise serializers.ValidationError('Obrazki nie są tu dozwolone — linki tak.')
         if len(URL_RE.findall(body)) > MAX_URLS:
             raise serializers.ValidationError('Za dużo linków.')
+        problem = check_source(body, max_chars=MAX_LEN)
+        if problem:
+            raise serializers.ValidationError(problem)
         return body
 
     def validate(self, data):

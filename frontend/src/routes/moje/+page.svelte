@@ -91,6 +91,9 @@
 								{#if p.review_note}
 									<div class="small note">Uwaga moderatora: {p.review_note}</div>
 								{/if}
+								{#if p.status === 'rejected' || p.status === 'hidden' || p.status === 'nuked'}
+									<div class="small muted">Odwołanie: w ciągu 14 dni na adres z <a href="/o-archiwum">„O archiwum”</a>, z numerem {p.catalog_no || 'wpisu'}; rozpatruje człowiek, nie automat.</div>
+								{/if}
 							</td>
 							<td class="s">
 								<span class="pill {PILL[p.status]}">{LABEL[p.status]}</span>

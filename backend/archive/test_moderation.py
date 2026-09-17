@@ -114,10 +114,10 @@ class ModerationTierTests(APITestCase):
 
     def test_trusted_own_post_publishes_immediately(self):
         self.as_(self.trusted)
-        r = self.client.post('/api/posts/', {'title': 'T', 'category': 'memy', 'body': 'x'})
+        r = self.client.post('/api/posts/', {'rights_confirmed': 'true', 'title': 'T', 'category': 'memy', 'body': 'x'})
         self.assertEqual(r.data['status'], 'published')
         self.as_(self.plain)
-        r = self.client.post('/api/posts/', {'title': 'T2', 'category': 'memy', 'body': 'x'})
+        r = self.client.post('/api/posts/', {'rights_confirmed': 'true', 'title': 'T2', 'category': 'memy', 'body': 'x'})
         self.assertEqual(r.data['status'], 'pending')
 
     def test_comment_hide_placeholder_and_nuke(self):

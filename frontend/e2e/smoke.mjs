@@ -121,6 +121,7 @@ await login(p, 'student');
 await p.goto(`${FRONT}/dodaj`, { waitUntil: 'load' });
 await p.waitForSelector('#ed-title', { timeout: 15000 });
 await p.fill('#ed-title', TITLE);
+await p.locator('.rights input[type=checkbox]').check(); // the rights declaration (regulamin)
 await p.selectOption('#ed-cat', 'memy');
 const imgBytes = await p.evaluate(() => {
 	const c = document.createElement('canvas'); c.width = 64; c.height = 48;
