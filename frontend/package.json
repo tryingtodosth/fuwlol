@@ -13,6 +13,7 @@
 		"e2e": "node e2e/smoke.mjs",
 		"e2e:escalation": "node e2e/escalation.mjs",
 		"e2e:research": "node e2e/research-followups.mjs",
+		"e2e:render-guard": "node e2e/render-guard.mjs",
 		"survey": "node e2e/survey.mjs"
 	},
 	"devDependencies": {

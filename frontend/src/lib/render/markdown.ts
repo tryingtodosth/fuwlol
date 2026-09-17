@@ -1,5 +1,6 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { checkSource, MAX_POST_CHARS } from './guard';
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -91,8 +92,20 @@ export function renderMarkdown(src: string, resolve: (name: string) => string | 
 
 let katexReady: Promise<(el: HTMLElement) => void> | null = null;
 /** KaTeX auto-render (lazy — only pages with content pay for it). `$…$` and `\(…\)` inline,
- * `$$…$$` and `\[…\]` display. Errors render as red text, never throw. */
+ * `$$…$$` and `\[…\]` display. Errors render as red text, never throw.
+ *
+ * `renderLatex` (LaTeX.js) refuses a macro bomb before it ever reaches the parser — but so far
+ * this function did not, even though `$…$`/`$$…$$` math typeset here goes through the SAME
+ * KaTeX engine and KaTeX implements `\def`/`\edef`/`\gdef`/`\let` itself (unconditionally, not
+ * gated by `trust`), the exact vector docs/gemini/latex safety.txt describes. Every submission
+ * path already runs `checkSource` on the whole post/comment body regardless of format
+ * (archive/serializers.py), so this cannot happen through the API — but this is the second,
+ * reader-side layer for content that got in another way (an old row, the Django admin), the same
+ * guarantee `renderLatex` already gives its own format. Checked against the rendered element's
+ * own text, since by the time this runs the math is still present as literal, HTML-escaped `$…$`
+ * text in the DOM (see `liftMath` below) — exactly what KaTeX's auto-render is about to scan. */
 export function typeset(el: HTMLElement): Promise<void> {
+	if (checkSource(el.textContent || '', MAX_POST_CHARS)) return Promise.resolve();
 	katexReady ??= Promise.all([
 		import('katex/contrib/auto-render'),
 		import('katex/dist/katex.min.css')

@@ -72,7 +72,10 @@ docs/      fuwlol-dokumentacja.drawio (+ .pdf, render/NN.png) — dokumentacja t
            gemini/ — pięć raportów Gemini Deep Research + note.md (co z nich weszło do kodu, jak ich używać dalej)
 ```
 
-Testy: `cd backend && ../.venv/bin/python manage.py test` (135) · `cd frontend && npm run check && npm run build`
+Testy: `cd backend && ../.venv/bin/python manage.py test` (149) · `cd frontend && npm run check && npm run build`
 · przy działających serwerach: `npm run e2e` (smoke, 34 kroki), `npm run e2e:escalation` (eskalacja od kliknięcia
-do decyzji), `npm run e2e:research` (wzory w Markdownie, wyszukiwanie LaTeX-a, zgłoszenie DSA, oświadczenie o prawach) i `npm run survey` (zrzuty każdej strony dla 4 ról × 2 szerokości — do oglądania, nie do asercji).
+do decyzji), `npm run e2e:research` (wzory w Markdownie, wyszukiwanie LaTeX-a, zgłoszenie DSA, oświadczenie o prawach),
+`npm run e2e:render-guard` (treść, która ominęła `check_source` inną drogą niż API — np. panel administracyjny —
+nigdy nie wykonuje się w przeglądarce czytelnika) i `npm run survey` (zrzuty każdej strony dla 4 ról × 2 szerokości
+— do oglądania, nie do asercji).
 Więcej o decyzjach: `DESIGN.md`.

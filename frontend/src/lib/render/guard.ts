@@ -6,9 +6,23 @@
 export const MAX_POST_CHARS = 60_000;
 export const MAX_COMMENT_CHARS = 10_000;
 const MAX_ENVIRONMENTS = 400;
+// A few thousand levels of \sqrt{\sqrt{\sqrt{…}}} stays under both caps above while still being
+// real parser work (see latexguard.py for the measurement) — no forbidden primitive involved,
+// so FORBIDDEN never sees it. Picked the same way as the two caps above: far past any real post.
+const MAX_NESTING_DEPTH = 40;
 const FORBIDDEN = /\\(def|edef|gdef|xdef|let|futurelet|csname|expandafter|loop|catcode|noexpand|afterassignment|aftergroup|input|include|write|openout)\b/;
 const NEWCOMMAND = /\\(?:re)?newcommand\*?\s*\{?\\([A-Za-z@]+)\}?/g;
 const NEWENV = /\\(?:re)?newenvironment\*?\s*\{([A-Za-z@*]+)\}/g;
+
+function maxBraceDepth(src: string): number {
+	let depth = 0, deepest = 0;
+	for (let i = 0; i < src.length; i++) {
+		const escaped = i > 0 && src[i - 1] === '\\';
+		if (src[i] === '{' && !escaped) { depth++; if (depth > deepest) deepest = depth; }
+		else if (src[i] === '}' && !escaped) depth = Math.max(0, depth - 1);
+	}
+	return deepest;
+}
 
 function definitionBody(src: string, start: number): string {
 	let i = start;
@@ -43,5 +57,6 @@ export function checkSource(src: string, maxChars = MAX_POST_CHARS): string | nu
 		if (src.slice(m.index + m[0].length, m.index + m[0].length + 2000).includes(`\\begin{${name}}`)) return `Środowisko ${name} odwołuje się do samego siebie.`;
 	}
 	if ((src.match(/\\begin\{/g) || []).length > MAX_ENVIRONMENTS) return `Za dużo środowisk \\begin{…} (limit ${MAX_ENVIRONMENTS}).`;
+	if (maxBraceDepth(src) > MAX_NESTING_DEPTH) return `Za głębokie zagnieżdżenie nawiasów klamrowych (limit ${MAX_NESTING_DEPTH}) — to zawiesiłoby przeglądarkę czytelnika.`;
 	return null;
 }

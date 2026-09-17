@@ -60,6 +60,25 @@ class MacroBombTests(APITestCase):
         self.assertIn('limit', check_source('a' * 61_000))
         self.assertIn('limit', check_source('\\begin{itemize}' * 401))
 
+    def test_deep_nesting_is_refused_without_touching_a_forbidden_primitive(self):
+        # \sqrt{\sqrt{\sqrt{…}}} a few thousand levels deep uses no \def/\newcommand/\begin at
+        # all — FORBIDDEN, NEWCOMMAND and the environment cap all stay silent, so this needs its
+        # own check (docs/gemini/latex safety.txt's "Visual Layout DoS" via a different vector:
+        # not \rule's size, but a parser that recurses once per brace — measured directly
+        # against the KaTeX this project ships: 3000 levels is ~370ms of pure string generation,
+        # ~8000 blows the JS call stack outright, and auto-render only catches a ParseError,
+        # so that crashes the render of every remaining formula on the page too).
+        bomb = 'x'
+        for _ in range(3000):
+            bomb = '\\sqrt{' + bomb + '}'
+        self.assertIn('zagnieżdżenie', check_source(bomb))
+        # a real continued fraction, or a matrix of matrices, nests far less than that —
+        # nothing in the archive's own seed data goes past 2 (docs/gemini/note.md)
+        genuine = '\\frac{1}{1+' * 10 + 'x' + '}' * 10
+        self.assertIsNone(check_source(genuine))
+        # escaped braces are literal text, not grouping, and must never count towards the depth
+        self.assertIsNone(check_source('\\{' * 100 + '\\}' * 100))
+
     def test_a_post_with_a_macro_bomb_is_refused(self):
         r = self.client.post('/api/posts/', {'title': 'B', 'category': 'memy', 'format': 'latex',
                                              'body': '\\def\\x{\\x\\x}\\x', 'rights_confirmed': 'true'})

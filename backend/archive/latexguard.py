@@ -12,12 +12,25 @@ The archive has no legitimate use for `\\def` — a meme is not a macro package 
 cheapest sufficient defence is to refuse the primitives outright and to refuse a
 `\\newcommand` that refers to itself, plus plain size caps. The frontend mirrors these rules
 (`lib/render/guard.ts`) so the editor says no before the upload does; this copy is the one
-that counts."""
+that counts.
+
+A macro bomb is not the only way to burn a reader's CPU without ever touching a forbidden
+primitive: `\\sqrt{\\sqrt{\\sqrt{…}}}` a few thousand levels deep stays under both the character
+cap and the environment cap while still being real work for a parser that recurses once per
+brace — measured directly against the KaTeX version this project ships: 3000 levels is ~370ms
+of pure string generation (before the browser ever lays the DOM out), and ~8000 levels blows
+the JS call stack outright, which is worse than slow — KaTeX's own auto-render only catches a
+`ParseError` and re-throws anything else, so a legitimate-looking formula that merely nests too
+deep crashes the render of every remaining formula on the page, not just its own, with no error
+shown at all. Real content never comes close: every post in this archive's own seed data nests
+at most 2 deep. `MAX_NESTING_DEPTH` is picked with the same "far above any real use, far below
+where damage starts" reasoning as the character and environment caps above."""
 import re
 
 MAX_POST_CHARS = 60_000
 MAX_COMMENT_CHARS = 10_000
 MAX_ENVIRONMENTS = 400
+MAX_NESTING_DEPTH = 40
 
 # TeX primitives that define or manipulate macros / tokens. None of them has a place in a
 # post; LaTeX.js implements \def and KaTeX implements \def/\edef inside maths.
@@ -30,6 +43,22 @@ TOO_LONG = 'Za długa treść (limit {n} znaków).'
 MACRO = 'Makra \\{name} nie są tu obsługiwane — ze względów bezpieczeństwa treść nie może definiować własnych poleceń TeX-a.'
 RECURSIVE = 'Polecenie \\{name} odwołuje się do samego siebie — takie makro zawiesiłoby przeglądarkę czytelnika.'
 TOO_MANY_ENVS = 'Za dużo środowisk \\begin{{…}} (limit {n}).'
+TOO_DEEP = 'Za głębokie zagnieżdżenie nawiasów klamrowych (limit {n}) — to zawiesiłoby przeglądarkę czytelnika.'
+
+
+def _max_brace_depth(src):
+    """The deepest `{…}` nesting anywhere in `src`, ignoring `\\{`/`\\}` (literal braces, not
+    grouping). Unbalanced closing braces never go below 0 — a stray `}` is somebody else's
+    problem (the parser's), not a depth bomb."""
+    depth = deepest = 0
+    for i, ch in enumerate(src):
+        escaped = i > 0 and src[i - 1] == '\\'
+        if ch == '{' and not escaped:
+            depth += 1
+            deepest = max(deepest, depth)
+        elif ch == '}' and not escaped:
+            depth = max(0, depth - 1)
+    return deepest
 
 
 def _definition_body(src, start):
@@ -79,4 +108,6 @@ def check_source(src, *, max_chars=MAX_POST_CHARS):
             return RECURSIVE.format(name='begin{' + name + '}')
     if src.count('\\begin{') > MAX_ENVIRONMENTS:
         return TOO_MANY_ENVS.format(n=MAX_ENVIRONMENTS)
+    if _max_brace_depth(src) > MAX_NESTING_DEPTH:
+        return TOO_DEEP.format(n=MAX_NESTING_DEPTH)
     return None

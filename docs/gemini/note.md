@@ -45,6 +45,47 @@ kodu, czego świadomie nie, i jak używać ich dalej.
   to zamyka bomby makr, ale NIE zamyka patologicznie dużego, legalnego dokumentu — limit 60 000
   znaków i 400 środowisk to kompromis, nie dowód. Jeśli kiedyś przejdziemy na LaTeX.js w workerze
   (wymaga `linkedom`/`jsdom` w bundlu), to jest miejsce, gdzie warto wrócić do tego raportu.
+  **Dwie rzeczy sprawdzone i doprecyzowane 17.09.2026, po ponownym przeczytaniu tego raportu i
+  próbie realnego wykorzystania obu wektorów przeciw wersji KaTeX-a, którą ten projekt naprawdę
+  ma (0.18.7):**
+  - GHSA-64fm-8hw2-v72w (`\edef` omija `maxExpand`) już nie działa — sprawdziłem bezpośrednio
+    (kaskada 30 poziomów `\edef`), rzuca `ParseError` po kilku ms, jak zwykły `\def`. Ta konkretna
+    podatność jest już załatana w bibliotece, nie w naszym kodzie — nic do zrobienia.
+  - **Za to znalazłem realną, wcześniej nieobsłużoną lukę: `lib/render/markdown.ts`'s
+    `typeset()` (ścieżka Markdown + `$…$` przez KaTeX, czyli `format: 'text'`) w ogóle nie
+    wołało `checkSource()` — mimo że komentarz w `latex.ts` explicite obiecywał „the READER
+    refuses to compile one that somehow got stored (an old row, the Django admin)". Ta obietnica
+    była prawdziwa tylko dla `format: 'latex'` (LaTeX.js). KaTeX implementuje `\def`/`\edef`/
+    `\gdef`/`\let` sam, bez bramki `trust` (`node_modules/katex/src/functions/def.ts`) — więc
+    treść, która ominęła bramkę backendu inną drogą niż `/api/posts/`, mogła to wykonać wprost w
+    przeglądarce czytelnika. Naprawione: `typeset()` teraz sprawdza `el.textContent` przez ten
+    sam `checkSource()` zanim w ogóle wywoła `auto-render` — jeśli treść jest odrzucona, po
+    prostu nie typesetuje (surowy tekst zostaje widoczny, nic się nie wykonuje). Sprawdzone, że
+    to bezpieczne dla legalnej treści: `renderMarkdown`/`typeset` działają per CAŁY element (tak
+    samo jak backendowy `check_source` działa na całym `body`), więc post mieszający bombę z
+    dobrą formułą traci typesetting obu naraz — bezpieczny, nie precyzyjny kompromis, nie błąd.
+  - **Druga, osobna, realna luka znaleziona przy okazji: głębokie zagnieżdżenie nie jest bombą
+    makr wcale.** `\sqrt{\sqrt{\sqrt{…}}}` kilka tysięcy poziomów w głąb nie używa żadnego
+    zakazanego prymitywu (`\def` itp.) ani `\begin{}`, więc `FORBIDDEN`/`NEWCOMMAND`/limit
+    środowisk milczały — a to prawdziwa praca dla parsera: zmierzyłem bezpośrednio na tej samej
+    wersji KaTeX-a, 3000 poziomów to ~370ms samej generacji stringa (zanim przeglądarka w ogóle
+    zrobi layout DOM-u), a 8000 poziomów wysadza stos wywołań JS-a — co jest gorsze niż powolne,
+    bo `katex/contrib/auto-render` łapie wyłącznie `ParseError` i rzuca dalej wszystko inne, więc
+    formuła, która tylko za bardzo się zagnieżdża, psuje renderowanie WSZYSTKICH pozostałych
+    formuł na stronie, bez żadnego komunikatu błędu. Dodałem trzeci, niezależny limit —
+    `MAX_NESTING_DEPTH = 40` — licząc maksymalną głębokość `{…}` w całym źródle (ignorując
+    `\{`/`\}`, bo to literalne nawiasy, nie grupowanie), tą samą metodą po obu stronach
+    (`latexguard.py` i `guard.ts`). 40 jest wybrane tak samo jak limit znaków/środowisk: daleko
+    ponad realne użycie (cały istniejący korpus 19 postów nie przekracza głębokości 2), daleko
+    poniżej progu, gdzie zaczyna się realny koszt.
+  - Oba znalezione i naprawione bez podnoszenia wersji żadnej biblioteki — to były luki w NASZYM
+    kodzie (brak wywołania, brak trzeciego limitu), nie w KaTeX-u samym. Testy: `archive/
+    test_content_guards.py`'s `test_deep_nesting_is_refused_without_touching_a_forbidden_primitive`
+    (backend) i `frontend/e2e/render-guard.mjs` (`npm run e2e:render-guard` — tworzy posta
+    bezpośrednio przez ORM, mijając `check_source`, dokładnie symulując scenariusz „an old row,
+    the Django admin", i sprawdza, że strona ładuje się w ograniczonym czasie, formuła-bomba
+    nigdy nie staje się prawdziwym `.katex`, a zwykła formuła na osobnym poście nadal się
+    typesetuje).
 - **latex serach** — solidny i uczciwy o zasobach (Meilisearch na 1 GB RAM to OOM). Rekomendacja
   „przejdź na Postgres + hunspell + pg_trgm” jest właściwa i docelowa; ja zrobiłem połowę, która
   działa na SQLite i Postgresie bez zmiany schematu zapytań. Druga połowa to: `hunspell-pl` w
