@@ -4,8 +4,8 @@ export type ReactionKind = 'lol' | 'classic' | 'wow' | 'cringe';
 
 export interface Affiliation { institution: string; domain: string; email_masked: string; verified_at: string }
 export interface User {
-	id: number; username: string; email: string; is_staff: boolean; date_joined: string;
-	is_trusted?: boolean; affiliation?: Affiliation | null; pending_verification?: string | null;
+	id: number; username: string; email: string; is_staff: boolean; is_superuser?: boolean; date_joined: string;
+	reputation?: number; is_trusted?: boolean; affiliation?: Affiliation | null; pending_verification?: string | null;
 }
 export type ModerationState = 'visible' | 'hidden' | 'nuked';
 export interface ModerationBlock { actor: string; reason: string; at: string | null; action?: string }
@@ -51,4 +51,19 @@ export function yearLabel(p: { year: number | null; year_precision: string }): s
 export function fmtDate(iso: string | null): string {
 	if (!iso) return '';
 	return new Date(iso).toLocaleDateString('pl-PL', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+/** escalation app — head-admin only (is_superuser). See backend/escalation/. */
+export type EscalationStatus = 'pending' | 'approved' | 'declined';
+export interface EvidenceFile { name: string; stored_as: string; sha256: string }
+export interface EvidenceManifest {
+	kind: 'Post' | 'Comment' | 'Message'; pk: number; captured_at: string; created_at: string; files: EvidenceFile[];
+	title?: string; body?: string; format?: Format; status?: string; catalog_no?: string; nick?: string; post_id?: number; ip_hash?: string;
+	submitted_by?: { id: number; username: string; email: string; date_joined: string } | null;
+	author?: { id: number; username: string; email: string; date_joined: string } | null;
+}
+export interface Escalation {
+	id: number; kind: 'post' | 'comment' | 'message'; object_id: number; requested_by: string | null; reason: string;
+	status: EscalationStatus; decided_by: string | null; decision_note: string; evidence_ref: string;
+	created_at: string; decided_at: string | null; evidence?: EvidenceManifest | null;
 }

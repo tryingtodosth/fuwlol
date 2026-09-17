@@ -14,7 +14,7 @@ from rest_framework import serializers, status
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.throttling import ScopedRateThrottle, SimpleRateThrottle
 from rest_framework.views import APIView
 
 from .models import EmailVerification, Profile, TrustedDomain
@@ -26,14 +26,19 @@ class UserSerializer(serializers.ModelSerializer):
     affiliation = serializers.SerializerMethodField()
     pending_verification = serializers.SerializerMethodField()
 
+    reputation = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'is_staff', 'date_joined',
-                  'is_trusted', 'affiliation', 'pending_verification']
+        fields = ['id', 'username', 'email', 'is_staff', 'is_superuser', 'date_joined',
+                  'is_trusted', 'affiliation', 'pending_verification', 'reputation']
         read_only_fields = fields
 
     def get_is_trusted(self, user):
         return is_trusted(user)
+
+    def get_reputation(self, user):
+        return profile_for(user).reputation
 
     def get_affiliation(self, user):
         """The confirmed institution, or null. Shown even if the domain has since been
@@ -91,8 +96,24 @@ class RegisterView(APIView):
         return Response(_payload(s.save()), status=status.HTTP_201_CREATED)
 
 
+class LoginUsernameThrottle(SimpleRateThrottle):
+    """Keyed on the SUBMITTED identifier, not the caller's address: the per-IP `login`
+    rate stops one host hammering the endpoint and does nothing against a leaked list
+    replayed against one account from many hosts. Hashed so the cache never holds a
+    plaintext list of every username anybody has tried. Counts attempts, not failures
+    (DRF has no notion of the outcome) — a correct password still spends the budget."""
+    scope = 'login_user'
+
+    def get_cache_key(self, request, view):
+        import hashlib
+        ident = (request.data.get('username') or '').strip().lower() if hasattr(request.data, 'get') else ''
+        if not ident:
+            return None
+        return self.cache_format % {'scope': self.scope, 'ident': hashlib.sha256(ident.encode()).hexdigest()}
+
+
 class LoginView(APIView):
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ScopedRateThrottle, LoginUsernameThrottle]
     throttle_scope = 'login'
 
     def post(self, request):

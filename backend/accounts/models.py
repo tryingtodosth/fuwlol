@@ -55,6 +55,11 @@ class Profile(models.Model):
     affiliation_domain = models.ForeignKey(TrustedDomain, null=True, blank=True, on_delete=models.SET_NULL,
                                            related_name='profiles')
     verified_at = models.DateTimeField(null=True, blank=True)
+    # A moderator's standing: +1 each time head-admin (well, a moderator resolving a report —
+    # see board/moderation.py) confirms a hide their report contributed to, -1 each time one
+    # is overruled by a restore. Nothing gates on this yet; it exists so a pattern of bad-faith
+    # reporting becomes visible before it becomes a lever (see board/moderation.py's docstring).
+    reputation = models.IntegerField(default=0)
 
     def __str__(self):
         return self.user.username

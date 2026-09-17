@@ -6,11 +6,12 @@ somebody logged in. A logged-in author is always their own username: letting the
 a nick would make impersonation a text field.
 """
 import re
+import unicodedata
 
 from django.contrib.auth.models import User
 from rest_framework import serializers
 
-from .models import DEFAULT_NICK, FORMAT_CHOICES, MAX_LEN, Message
+from .models import DEFAULT_NICK, FORMAT_CHOICES, MAX_LEN, Message, Report
 from .trust import can_moderate
 
 # Anything that would put a picture in the stream. Markdown images, raw HTML, LaTeX
@@ -22,22 +23,60 @@ URL_RE = re.compile(r'(?:https?://|www\.)\S+', re.IGNORECASE)
 NICK_RE = re.compile(r'^[\w .\-]{1,30}$', re.UNICODE)
 
 
+def _fold(s):
+    """NFKC, casefold, separators dropped: 'P.iotr' and 'p_iotr' both fold to 'piotr'."""
+    return re.sub(r'[ ._\-]', '', unicodedata.normalize('NFKC', s)).casefold()
+
+
+def _mixes_scripts(nick):
+    """A nick with letters from more than one script (Latin + Cyrillic, say) is almost
+    always an impersonation ('Pіotr' with a Cyrillic і) — refused outright."""
+    scripts = set()
+    for ch in nick:
+        if ch.isalpha():
+            scripts.add(unicodedata.name(ch, '').split(' ')[0])
+    return len(scripts) > 1
+
+
+def _looks_like_a_username(nick):
+    """A guest may not borrow a registered name by punctuation or case tricks either."""
+    folded = _fold(nick)
+    if not folded:
+        return False
+    return any(_fold(u) == folded for u in User.objects.values_list('username', flat=True).iterator())
+
+
 class MessageSerializer(serializers.ModelSerializer):
     """What the board hands back. `can_hide` is per-caller, so the frontend can show the
     moderation links without a second request asking who it is."""
     is_guest = serializers.BooleanField(read_only=True)
     author_id = serializers.IntegerField(read_only=True)
     can_hide = serializers.SerializerMethodField()
+    open_reports = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
         fields = ['id', 'nick', 'is_guest', 'author_id', 'format', 'body',
-                  'created_at', 'is_hidden', 'can_hide']
+                  'created_at', 'is_hidden', 'can_hide', 'open_reports']
         read_only_fields = fields
 
     def get_can_hide(self, obj) -> bool:
         request = self.context.get('request')
         return bool(request and can_moderate(request.user))
+
+    def get_open_reports(self, obj):
+        """The open-report count, but only for whoever may act on it — a guest reporter
+        should not learn from the response how many other people flagged the same message."""
+        request = self.context.get('request')
+        if not (request and can_moderate(request.user)):
+            return None
+        return obj.reports.filter(resolved=False).count()
+
+
+class ReportSerializer(serializers.Serializer):
+    reason = serializers.ChoiceField(choices=[c[0] for c in Report.REASONS],
+                                     error_messages={'invalid_choice': 'Wybierz powód zgłoszenia.'})
+    note = serializers.CharField(required=False, allow_blank=True, trim_whitespace=True, max_length=2000)
 
 
 class MessageWriteSerializer(serializers.Serializer):
@@ -79,7 +118,9 @@ class MessageWriteSerializer(serializers.Serializer):
         if not NICK_RE.match(nick):
             raise serializers.ValidationError(
                 {'nick': ['Nick: litery, cyfry, spacje oraz . _ - (do 30 znaków).']})
-        if User.objects.filter(username__iexact=nick).exists():
+        if _mixes_scripts(nick):
+            raise serializers.ValidationError({'nick': ['Nick miesza alfabety (np. łacinski i cyrylicę).']})
+        if User.objects.filter(username__iexact=nick).exists() or _looks_like_a_username(nick):
             raise serializers.ValidationError(
                 {'nick': ['Ten nick należy do zarejestrowanego użytkownika']})
         data['nick'] = nick

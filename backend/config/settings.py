@@ -5,8 +5,14 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get('FUWLOL_SECRET_KEY', 'dev-only-insecure-key-change-me')
+_DEV_KEY = 'dev-only-insecure-key-change-me'
+SECRET_KEY = os.environ.get('FUWLOL_SECRET_KEY', _DEV_KEY)
+# On by default for a clone (./run.sh, manage.py runserver); the container image sets
+# FUWLOL_DEBUG=0 (backend/Dockerfile) so a `docker run` is never accidentally a debug server.
 DEBUG = os.environ.get('FUWLOL_DEBUG', '1') == '1'
+if not DEBUG and SECRET_KEY == _DEV_KEY:
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured('FUWLOL_SECRET_KEY must be set when FUWLOL_DEBUG=0.')
 ALLOWED_HOSTS = [h for h in os.environ.get('FUWLOL_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if h]
 
 INSTALLED_APPS = [
@@ -22,9 +28,17 @@ INSTALLED_APPS = [
     'accounts',
     'archive',
     'board',
+    'escalation',
 ]
 
+# See config/middleware.py for what each of these means and when it is safe.
 FUWLOL_TRUST_PROXY = os.environ.get('FUWLOL_TRUST_PROXY', '0') == '1'
+FUWLOL_PROXY_HOPS = int(os.environ.get('FUWLOL_PROXY_HOPS', '1'))
+FUWLOL_CLOUDFLARE = os.environ.get('FUWLOL_CLOUDFLARE', '0') == '1'
+# Salt for the stored hash of a visitor's address (board/models.py). Separate from
+# SECRET_KEY so that rotating the key does not break "same place?" correlation, and so
+# that whoever holds the key does not automatically hold the salt.
+FUWLOL_IP_SALT = os.environ.get('FUWLOL_IP_SALT') or SECRET_KEY
 
 MIDDLEWARE = [
     'config.middleware.RealIpMiddleware',
@@ -72,6 +86,8 @@ else:
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', 'OPTIONS': {'min_length': 8}},
     {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
 ]
 
 LANGUAGE_CODE = 'pl'
@@ -83,6 +99,10 @@ STATIC_URL = 'static/'
 STATIC_ROOT = os.environ.get('FUWLOL_STATIC_ROOT', BASE_DIR / 'staticfiles')
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.environ.get('FUWLOL_MEDIA_ROOT', BASE_DIR / 'media')
+# Escalation evidence (escalation/evidence.py) — outside MEDIA_ROOT on purpose: nothing here
+# is ever served by path, only streamed through a view that re-checks is_head_admin per
+# request (escalation/views.py). Never point this inside a directory Nginx/whitenoise serves.
+EVIDENCE_ROOT = os.environ.get('FUWLOL_EVIDENCE_ROOT', BASE_DIR / 'evidence')
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Uploads: 25 MB per file, 6 files per post. Checked in archive/validators.py.
@@ -107,10 +127,14 @@ REST_FRAMEWORK = {
         'user': '600/min',
         'register': '10/hour',
         'login': '20/min',
+        'login_user': '10/min',  # per submitted username, on top of the per-IP rate
+        'comment_create': '60/hour',
         'post_create': '30/hour',
         'report': '20/hour',
         'board_anon': '20/hour',
         'board_user': '60/hour',
+        'board_report': '20/hour',
+        'escalate': '10/day',
         'verify': '5/hour',  # institutional-address confirmation mails, per user
     },
 }
@@ -151,3 +175,20 @@ if not DEBUG:
     USE_X_FORWARDED_HOST = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_HTTPONLY = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+    # HSTS is set here for the /api and /admin responses gunicorn serves; the SPA's own
+    # headers come from frontend/nginx.conf. Preload is left off on purpose (irreversible).
+    SECURE_HSTS_SECONDS = int(os.environ.get('FUWLOL_HSTS_SECONDS', '31536000'))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+
+# The escalation app's audit trail (escalation/services.py): every escalate/approve/decline
+# writes an Escalation row AND a line here, so a database-only compromise cannot erase the
+# trail on its own. Deliberately not routed through the 'django' logger's own config.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {'console': {'class': 'logging.StreamHandler'}},
+    'loggers': {'security': {'handlers': ['console'], 'level': 'INFO', 'propagate': False}},
+}

@@ -9,6 +9,7 @@ export const auth = {
 	get ready() { return ready; },
 	get isAuthenticated() { return user !== null; },
 	get isStaff() { return !!user?.is_staff; },
+	get isHeadAdmin() { return !!user?.is_superuser; },
 	async init() {
 		if (getToken()) {
 			try { user = await api.get<User>('/auth/me/'); }

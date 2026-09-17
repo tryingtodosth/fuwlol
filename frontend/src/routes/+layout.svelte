@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import Header from '$lib/components/Header.svelte';
 	import Footer from '$lib/components/Footer.svelte';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { auth } from '$lib/auth.svelte';
 
 	let { children } = $props();
@@ -17,3 +18,4 @@
 	{@render children()}
 </main>
 <Footer />
+<ConfirmDialog />

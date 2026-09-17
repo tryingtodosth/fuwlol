@@ -9,6 +9,7 @@
 
 	let categories = $state<Category[]>([]);
 	let pending = $state(0);
+	let escalations = $state(0);
 	let dropOpen = $state(false);
 	let mobileOpen = $state(false);
 
@@ -27,6 +28,14 @@
 		askedForStats = true;
 		api.get<{ pending: number }>('/posts/stats/')
 			.then((s) => (pending = s.pending))
+			.catch(() => {});
+	});
+	let askedForEscalations = false;
+	$effect(() => {
+		if (!auth.isHeadAdmin || askedForEscalations) return;
+		askedForEscalations = true;
+		api.get<unknown[]>('/moderation/escalations/?status=pending')
+			.then((rows) => (escalations = rows.length))
 			.catch(() => {});
 	});
 
@@ -132,6 +141,11 @@
 		{#if auth.isStaff}
 			<li>
 				<a href="/moderacja">Moderacja{pending ? ` (${pending})` : ''}</a>
+			</li>
+		{/if}
+		{#if auth.isHeadAdmin}
+			<li>
+				<a href="/eskalacje" class:nav__alert={escalations > 0}>NASK{escalations ? ` (${escalations})` : ''}</a>
 			</li>
 		{/if}
 		<li><a href="/o-archiwum">O archiwum</a></li>
@@ -265,6 +279,9 @@
 	}
 	.arr {
 		font-size: 10px;
+	}
+	.nav :global(a.nav__alert) {
+		background: var(--rust);
 	}
 	.drop {
 		display: none;

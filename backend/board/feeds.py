@@ -9,6 +9,8 @@ is going to typeset our `$\\int$`. Whoever wants it rendered follows the link.
 from django.conf import settings
 from django.contrib.syndication.views import Feed
 
+from escalation.visibility import active_escalation_ids
+
 from .models import Message
 
 FEED_SIZE = 50
@@ -28,7 +30,10 @@ class BoardFeed(Feed):
         return f'{site_url()}/czat'
 
     def items(self):
-        return Message.objects.filter(is_hidden=False)[:FEED_SIZE]
+        # The feed has no signed-in caller to be a head-admin, so escalated messages are
+        # unconditionally excluded — never surfaced through RSS to anyone.
+        return (Message.objects.filter(is_hidden=False)
+                .exclude(pk__in=active_escalation_ids(Message))[:FEED_SIZE])
 
     def item_title(self, item):
         return f'{item.nick}: {item.body[:70]}'

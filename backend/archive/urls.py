@@ -15,6 +15,7 @@ urlpatterns = router.urls + [
     path('comments/<int:pk>/hide/', views.CommentModerationView.as_view(), {'verb': 'hide'}),
     path('comments/<int:pk>/restore/', views.CommentModerationView.as_view(), {'verb': 'restore'}),
     path('comments/<int:pk>/nuke/', views.CommentModerationView.as_view(), {'verb': 'nuke'}),
+    path('comments/<int:pk>/escalate/', views.CommentModerationView.as_view(), {'verb': 'escalate'}),
     path('moderation/board/', views.ModerationBoardView.as_view()),
     path('wayback/', WaybackView.as_view()),
 ]

@@ -8,12 +8,23 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
+from django.utils import timezone
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.test import APITestCase
 
-from .models import MAX_LEN, Message
+from accounts.models import TrustedDomain
+from .models import MAX_LEN, Message, Report
 
 URL = '/api/board/'
+
+
+def make_trusted(username):
+    u = User.objects.create_user(username, f'{username}@fuw.edu.pl', 'haslo12345')
+    dom, _ = TrustedDomain.objects.get_or_create(domain='fuw.edu.pl', defaults={'institution': 'FUW', 'kind': 'fuw'})
+    p = u.profile
+    p.affiliation_email, p.affiliation_domain, p.verified_at = f'{username}@fuw.edu.pl', dom, timezone.now()
+    p.save()
+    return u
 
 
 class Base(APITestCase):
@@ -245,3 +256,122 @@ class ThrottleTests(Base):
             self.client.force_authenticate(self.user)
             for i in range(3):
                 self.assertEqual(self.post(body=f'zalogowany {i}').status_code, 201)
+
+
+class ReportTests(Base):
+    """Reports: who may send one, when three trusted ones hide a message on their own, and
+    what a moderator's verdict afterwards does to reputation."""
+
+    def setUp(self):
+        super().setUp()
+        self.author = User.objects.create_user('autor', 'a@x.pl', 'haslo12345')
+        self.msg = Message.objects.create(author=self.author, nick='autor', body='coś')
+        self.trusted = [make_trusted(f'zaufany{i}') for i in range(3)]
+
+    def report(self, msg, **data):
+        data.setdefault('reason', 'offensive')
+        return self.client.post(f'{URL}{msg.pk}/report/', data)
+
+    def test_a_guest_may_report(self):
+        r = self.report(self.msg)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(Report.objects.count(), 1)
+        self.assertIsNone(Report.objects.get().reporter)
+
+    def test_an_unknown_reason_is_refused(self):
+        r = self.report(self.msg, reason='sabotaż')
+        self.assertEqual(r.status_code, 400)
+
+    def test_the_author_cannot_report_their_own_message(self):
+        self.client.force_authenticate(self.author)
+        r = self.report(self.msg)
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(Report.objects.count(), 0)
+
+    def test_a_signed_in_user_cannot_report_the_same_message_twice(self):
+        self.client.force_authenticate(self.user)
+        self.assertEqual(self.report(self.msg).status_code, 201)
+        r = self.report(self.msg)
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(Report.objects.count(), 1)
+
+    def test_guest_reports_never_auto_hide_however_many(self):
+        for _ in range(5):
+            self.client.force_authenticate(None)
+            r = self.report(self.msg)
+            self.assertEqual(r.status_code, 201)
+        self.msg.refresh_from_db()
+        self.assertFalse(self.msg.is_hidden)
+
+    def test_untrusted_signed_in_reports_do_not_count_toward_the_quorum(self):
+        for i in range(3):
+            u = User.objects.create_user(f'plain{i}', f'p{i}@x.pl', 'haslo12345')
+            self.client.force_authenticate(u)
+            self.assertEqual(self.report(self.msg).status_code, 201)
+        self.msg.refresh_from_db()
+        self.assertFalse(self.msg.is_hidden)
+
+    def test_three_distinct_trusted_reports_auto_hide(self):
+        for i, u in enumerate(self.trusted[:2]):
+            self.client.force_authenticate(u)
+            self.report(self.msg)
+            self.msg.refresh_from_db()
+            self.assertFalse(self.msg.is_hidden, f'should not hide after {i + 1} trusted reports')
+        self.client.force_authenticate(self.trusted[2])
+        r = self.report(self.msg)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.msg.refresh_from_db()
+        self.assertTrue(self.msg.is_hidden)
+        self.assertIsNone(self.msg.hidden_by)  # the reports did this, not a moderator
+
+    def test_a_moderators_confirm_rewards_the_trusted_reporters_but_not_the_moderator(self):
+        self.client.force_authenticate(self.trusted[0])
+        self.report(self.msg)  # this reporter is ALSO the confirming moderator below
+        for u in self.trusted[1:]:
+            self.client.force_authenticate(u)
+            self.report(self.msg)
+        self.msg.refresh_from_db()
+        self.assertTrue(self.msg.is_hidden)
+
+        self.client.force_authenticate(self.trusted[0])
+        r = self.client.post(f'{URL}{self.msg.pk}/hide/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(Report.objects.filter(message=self.msg).first().resolved)
+        self.assertTrue(all(rep.upheld for rep in Report.objects.filter(message=self.msg)))
+        self.trusted[0].profile.refresh_from_db()
+        self.trusted[1].profile.refresh_from_db()
+        self.trusted[2].profile.refresh_from_db()
+        self.assertEqual(self.trusted[0].profile.reputation, 0)   # excluded: also the actor
+        self.assertEqual(self.trusted[1].profile.reputation, 1)
+        self.assertEqual(self.trusted[2].profile.reputation, 1)
+
+    def test_a_restore_penalises_the_trusted_reporters(self):
+        for u in self.trusted:
+            self.client.force_authenticate(u)
+            self.report(self.msg)
+        self.msg.refresh_from_db()
+        self.assertTrue(self.msg.is_hidden)
+
+        self.client.force_authenticate(self.staff)
+        r = self.client.post(f'{URL}{self.msg.pk}/restore/')
+        self.assertEqual(r.status_code, 200, r.data)
+        for u in self.trusted:
+            u.profile.refresh_from_db()
+            self.assertEqual(u.profile.reputation, -1)
+        self.assertFalse(any(rep.upheld for rep in Report.objects.filter(message=self.msg)))
+
+    def test_flagged_query_param_lists_only_reported_messages_for_moderators(self):
+        other = Message.objects.create(nick='x', body='inna wiadomość')
+        self.report(self.msg)
+        self.client.force_authenticate(self.staff)
+        r = self.client.get(URL + '?flagged=1')
+        ids = [m['id'] for m in r.data['results']]
+        self.assertIn(self.msg.pk, ids)
+        self.assertNotIn(other.pk, ids)
+
+    def test_flagged_is_ignored_for_non_moderators(self):
+        self.report(self.msg)
+        r = self.client.get(URL + '?flagged=1')  # anonymous
+        ids = [m['id'] for m in r.data['results']]
+        self.assertIn(self.msg.pk, ids)  # not filtered — the switch is a moderator's only
+        self.assertIsNone(r.data['results'][0]['open_reports'])  # and the count is hidden too

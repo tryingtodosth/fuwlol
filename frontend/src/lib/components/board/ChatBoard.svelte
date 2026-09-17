@@ -2,8 +2,9 @@
 	import { onMount } from 'svelte';
 	import { api, API_BASE, ApiError } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
+	import { dialog } from '$lib/dialog.svelte';
 	import MessageBody from './MessageBody.svelte';
-	import { excerpt, stamp, MAX_LEN, type BoardMessage, type BoardPage } from './types';
+	import { excerpt, stamp, MAX_LEN, REPORT_REASONS, type BoardMessage, type BoardPage } from './types';
 
 	let messages = $state<BoardMessage[]>([]);
 	let count = $state(0);
@@ -15,6 +16,9 @@
 	let exhausted = $state(false);
 	let showHidden = $state(false);
 	let expanded = $state<Set<number>>(new Set()); // messages shown in full, in place of their excerpt
+	let reporting = $state<number | null>(null); // message whose report-reason picker is open
+	let reportReason = $state('offensive');
+	let reportError = $state<string | null>(null);
 
 	let nick = $state('');
 	let body = $state('');
@@ -86,6 +90,28 @@
 		} catch (err) { error = (err as Error).message; }
 	}
 
+	async function sendReport(m: BoardMessage) {
+		reportError = null;
+		try {
+			const r = await api.post<BoardMessage>(`/board/${m.id}/report/`, { reason: reportReason });
+			messages = messages.map((x) => (x.id === m.id ? r : x));
+			reporting = null;
+		} catch (err) { reportError = err instanceof ApiError ? err.message : String(err); }
+	}
+
+	async function escalate(m: BoardMessage) {
+		const reason = await dialog.ask({
+			title: '🚨 Zgłoszenie do NASK (Dyżurnet.pl)', danger: true,
+			text: 'Wyłącznie treści nielegalne w rozumieniu prawa. Od tej chwili wiadomość jest niewidoczna dla WSZYSTKICH — także dla moderatorów — aż do decyzji head-admina, a jej kopia zostaje zamrożona jako materiał dowodowy.',
+			confirm: 'Zgłoś do NASK', reason: 'required', placeholder: 'co widzisz i dlaczego to sprawa dla NASK — wymagane'
+		});
+		if (!reason) return;
+		try {
+			await api.post(`/board/${m.id}/escalate/`, { reason });
+			messages = messages.filter((x) => x.id !== m.id);
+		} catch (err) { error = err instanceof ApiError ? err.message : String(err); }
+	}
+
 	onMount(() => {
 		try { nick = localStorage.getItem('fuwlol.nick') || ''; } catch { /* ignore */ }
 		load();
@@ -146,8 +172,24 @@
 					<span class="mono time">[{stamp(m.created_at)}]</span>
 					<strong class="nick">{m.nick}</strong>{#if m.is_guest}<span class="muted small"> (gość)</span>{/if}
 					{#if auth.user && m.author_id === auth.user.id}<span class="pill pill--amber">ty</span>{/if}
+					{#if m.open_reports}<span class="pill pill--amber" title="otwarte zgłoszenia">⚑ {m.open_reports}</span>{/if}
 					{#if m.can_hide}
 						<button type="button" class="linky small" onclick={() => toggleHide(m)}>{m.is_hidden ? 'przywróć' : 'ukryj'}</button>
+						<button type="button" class="linky small" onclick={() => escalate(m)}>zgłoś do NASK</button>
+					{:else if !(auth.user && m.author_id === auth.user.id)}
+						<button type="button" class="linky small" onclick={() => (reporting = reporting === m.id ? null : m.id)}>zgłoś</button>
+					{/if}
+					{#if reporting === m.id}
+						<span class="report-picker">
+							<select bind:value={reportReason} aria-label="Powód zgłoszenia">
+								{#each REPORT_REASONS as r (r.value)}
+									<option value={r.value}>{r.label}</option>
+								{/each}
+							</select>
+							<button type="button" class="btn btn--sm" onclick={() => sendReport(m)}>Zgłoś</button>
+							<button type="button" class="btn btn--sm btn--ghost" onclick={() => (reporting = null)}>Anuluj</button>
+							{#if reportError}<span class="err">{reportError}</span>{/if}
+						</span>
 					{/if}
 					<div class="text">
 						{#if ex.rest && !expanded.has(m.id)}
@@ -193,4 +235,6 @@
 	.spoiler:hover { background: none; text-decoration: underline; }
 	.linky { background: none; border: 0; color: var(--rust); padding: 0 4px; cursor: pointer; }
 	.linky:hover { text-decoration: underline; background: none; }
+	.report-picker { display: inline-flex; gap: 4px; align-items: center; margin-left: 6px; }
+	.report-picker .err { color: #b00020; font-size: 11px; }
 </style>

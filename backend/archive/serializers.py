@@ -133,6 +133,7 @@ class PostDetailSerializer(PostListSerializer):
     my_reaction = serializers.SerializerMethodField()
     can_edit = serializers.SerializerMethodField()
     can_moderate = serializers.SerializerMethodField()
+    review_note = serializers.SerializerMethodField()
     moderation_notice = serializers.SerializerMethodField()
     moderation = serializers.SerializerMethodField()
 
@@ -151,6 +152,14 @@ class PostDetailSerializer(PostListSerializer):
 
     def get_can_moderate(self, obj):
         return self._trusted()
+
+    def get_review_note(self, obj):
+        """A moderator's note to the author is for the author (and staff), not the public."""
+        req = self.context.get('request')
+        user = req.user if req else None
+        if user is not None and getattr(user, 'is_authenticated', False) and (user.is_staff or obj.submitted_by_id == user.id):
+            return obj.review_note
+        return ''
 
     def get_moderation_notice(self, obj):
         if obj.status == 'hidden':
@@ -196,7 +205,9 @@ class PostWriteSerializer(serializers.ModelSerializer):
     def _slugs(raw):
         if not raw:
             return []
-        raw = raw.strip()
+        if isinstance(raw, (list, tuple)):  # a JSON body, not multipart
+            return [str(s) for s in raw]
+        raw = str(raw).strip()
         if raw.startswith('['):
             try:
                 return [str(s) for s in json.loads(raw)]
@@ -265,13 +276,23 @@ class CommentSerializer(serializers.ModelSerializer):
     def to_representation(self, obj):
         """A removed or moderated comment stays in the thread as a placeholder (its id and
         `parent` keep the replies attached) with the content blanked. A trusted reader gets
-        a hidden comment's real body/author back; a nuked one only staff."""
+        a hidden comment's real body/author back; a nuked one only staff.
+
+        Escalation is checked independently of `moderation` — an escalated comment is
+        typically still `moderation='visible'` (escalating never touches that field), so
+        the ordinary hidden/nuked branch below would never catch it on its own."""
         d = super().to_representation(obj)
         req = self.context.get('request')
+        user = req.user if req else None
         if obj.is_removed:
             d['body'] = ''
             d['attachments'] = []
-        elif obj.moderation != 'visible' and not rules.can_see_comment(req.user if req else None, obj):
+        elif rules.is_escalated(obj) and not rules.is_head_admin(user):
+            d['body'] = ''
+            d['author'] = ''
+            d['author_id'] = None
+            d['attachments'] = []
+        elif obj.moderation != 'visible' and not rules.can_see_comment(user, obj):
             d['body'] = ''
             d['author'] = ''
             d['author_id'] = None  # a placeholder names nobody
@@ -281,6 +302,14 @@ class CommentSerializer(serializers.ModelSerializer):
 
 class ReportSerializer(serializers.ModelSerializer):
     post = serializers.SlugRelatedField(slug_field='slug', queryset=Post.objects.all())
+
+    def validate_post(self, post):
+        # The same answer whether the slug is unknown, hidden, nuked or escalated — a
+        # report endpoint must not be an oracle for what exists behind the curtain.
+        req = self.context.get('request')
+        if not rules.can_see_post(req.user if req else None, post):
+            raise serializers.ValidationError('Nie znaleziono takiego wpisu.')
+        return post
 
     class Meta:
         model = Report
@@ -295,8 +324,14 @@ class ModerationPostSerializer(PostDetailSerializer):
         fields = PostDetailSerializer.Meta.fields + ['reports']
 
     def get_reports(self, obj):
-        return [{'id': r.id, 'reason': r.reason, 'note': r.note, 'contact_email': r.contact_email,
-                 'created_at': r.created_at} for r in obj.reports.filter(resolved=False)]
+        """Every trusted reader sees THAT a post was reported and why; the reporter's own
+        words and contact address are for staff only — 'trusted' is any confirmed student
+        address, and a 'this is about me, take it down' report names a person."""
+        req = self.context.get('request')
+        staff = rules.is_staff(req.user if req else None)
+        return [{'id': r.id, 'reason': r.reason, 'created_at': r.created_at,
+                 'note': r.note if staff else '', 'contact_email': r.contact_email if staff else ''}
+                for r in obj.reports.filter(resolved=False)]
 
 
 # --- the moderation board --------------------------------------------------------------

@@ -52,6 +52,17 @@ async function request<T>(method: string, path: string, data?: unknown): Promise
 	return parsed as T;
 }
 
+/** A file behind an authenticated view (escalation evidence): fetched with the token and
+ * handed back as a Blob — the browser cannot put an Authorization header on a plain link. */
+export async function downloadBlob(path: string): Promise<Blob> {
+	const headers: Record<string, string> = {};
+	const token = getToken();
+	if (token) headers.Authorization = `Token ${token}`;
+	const res = await fetch(`${API_BASE}${path}`, { headers });
+	if (!res.ok) throw new ApiError(res.status, null);
+	return res.blob();
+}
+
 export const api = {
 	get: <T>(path: string) => request<T>('GET', path),
 	post: <T>(path: string, data?: unknown) => request<T>('POST', path, data),

@@ -1,8 +1,10 @@
 # Trusted tier, moderation board, chat — API
 
 Tiers: **public** (anyone) · **user** (any account) · **trusted** (an account with a confirmed
-institutional e-mail, `is_trusted`) · **staff** (Django `is_staff` — the real administration).
-Staff is always trusted. Auth: `Authorization: Token …`.
+institutional e-mail, `is_trusted`) · **staff** (Django `is_staff` — the real administration) ·
+**head-admin** (Django `is_superuser` — the only tier that sees escalated content). Staff is
+always trusted. Auth: `Authorization: Token …`. `GET /api/auth/me/` carries `is_superuser` and
+`reputation`.
 
 ## Verification (`accounts`)
 
@@ -42,6 +44,31 @@ and `x@gmail.com@fuw.edu.pl` do not match.
   comment's real body, staff a nuked one's.
 - Public lists, search, random, timeline and stats only ever count `published`.
 - Staff-only `POST /api/posts/{slug}/moderate/` gained decisions `hide` and `nuke` (audited).
+- `reports` on a board/hide/nuke payload: every trusted caller gets `{id, reason, created_at}`;
+  `note` and `contact_email` are filled for staff only. `review_note` on a post is returned to
+  its author and staff, `""` to everybody else.
+- Throttles: `post_create` 30/hour, `comment_create` 60/hour (a comment carries up to 3 images),
+  `escalate` 10/day, `login` 20/min per IP **and** `login_user` 10/min per submitted username.
+
+## Escalation to NASK (`escalation`)
+
+| Method & path | Tier | Notes |
+|---|---|---|
+| `POST /api/posts/{slug}/escalate/`, `POST /api/comments/{id}/escalate/`, `POST /api/board/{id}/escalate/` | trusted | `{reason}` — **required**. `201 {ok, escalation_id}`. From now on the target is invisible to everyone but head-admin (lists, detail, RSS, board, Django admin), its files are moved out of `/media` (quarantine), and hide/restore/nuke/moderate/delete answer `403`/`404`. A second attempt is `404`, not "already escalated" — no oracle. |
+| `GET /api/moderation/escalations/?status=pending\|approved\|declined` | head-admin | `[{id, kind: post\|comment\|message, object_id, requested_by, reason, status, decided_by, decision_note, evidence_ref, created_at, decided_at}]`. Everybody else: `403`, before any lookup. |
+| `GET /api/moderation/escalations/{id}/` | head-admin | the row plus `evidence`: the **frozen** manifest (`kind, pk, title/body/nick, format, author/submitted_by {id, username, email}, ip_hash, captured_at, files: [{name, stored_as, sha256}]`) — never the live target. |
+| `GET /api/moderation/escalations/{id}/evidence/{stored_as}` | head-admin | streams one captured file (`Content-Disposition: attachment`); the name must match a file on disk exactly. |
+| `POST /api/moderation/escalations/{id}/decide/` | head-admin | `{decision: approve\|decline, note?}`. `approve`: the package is complete, the human forwards it via Dyżurnet.pl; the content stays invisible and its files stay quarantined. `decline`: ordinary moderation works again and the files return to `/media` (unless the content is also nuked). A decided row cannot be decided again (`400`). |
+
+Every request and decision is written to the `security` logger as well as the database.
+
+## Chat reports (`board`)
+
+| Method & path | Tier | Notes |
+|---|---|---|
+| `POST /api/board/{id}/report/` | public | `{reason: spam\|offensive\|illegal\|privacy\|other, note?}` → `201` with the message. The author cannot report their own message (`403`); a signed-in user only once per message (`400`). Guest reports are stored but never count. **Three distinct trusted accounts** auto-hide a still-visible message (`hidden_by = null`). Throttle `board_report` 20/hour. |
+| `GET /api/board/?flagged=1` | trusted | only messages with open reports (ignored for others). `open_reports` on a message is `null` unless the caller may moderate. |
+| `POST /api/board/{id}/hide/` / `restore/` | trusted | also resolves every open report on the message and moves each **trusted** reporter's `Profile.reputation` by +1 (hide) / −1 (restore) — except the acting moderator's own report. Refused (`403`) while the message is escalated. |
 
 ## Chat (`board`)
 
