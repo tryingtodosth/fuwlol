@@ -13,7 +13,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from PIL import Image, ImageDraw
 
-from archive.models import Attachment, Category, Comment, Person, Post, Reaction, Tag
+from archive.models import Attachment, Category, Comment, Person, Post, Reaction, Subject, Tag
 
 CATEGORIES = [
     ('memy', 'Memy', '🖼️', 'Obrazki, przeróbki, szablony z życia Wydziału.'),
@@ -25,15 +25,36 @@ CATEGORIES = [
     ('folklor', 'Folklor', '🎵', 'Piosenki, tradycje, obrzędy przejścia, otrzęsiny.'),
     ('internet', 'Stare strony i fora', '🌐', 'Zrzuty z dawnych stron kół naukowych, forów i list dyskusyjnych.'),
 ]
+# Shaped like a row of the faculty directory (title, name, unit) — /ludzie copies that page.
+# `aliases` are nicknames: a post tagged with one is this person's post (archive/people.py).
 PEOPLE = [
-    ('kwant-niepewny', 'dr Kwant Niepewny', 'postać fikcyjna — wykładowca mechaniki kwantowej',
-     'Fikcyjny bohater wydziałowych anegdot. Wszelka zbieżność z prawdziwymi osobami jest przypadkowa.'),
-    ('helena-hamiltonian', 'prof. Helena Hamiltonian', 'postać fikcyjna — mechanika klasyczna',
-     'Fikcyjna profesor, słynna z kolokwiów o godzinie 7:30.'),
-    ('pani-z-portierni', 'Pani z portierni', 'postać fikcyjna — instytucja',
-     'Zbiorowa, fikcyjna postać wszystkich portierni Pasteura 5.'),
+    dict(slug='kwant-niepewny', degree='dr', name='Kwant Niepewny', sex='m',
+         role='postać fikcyjna — wykładowca mechaniki kwantowej',
+         unit='Instytut Fizyki Teoretycznej, Zakład Zjawisk Nieoznaczonych (fikcyjny)',
+         bio='Fikcyjny bohater wydziałowych anegdot. Wszelka zbieżność z prawdziwymi osobami jest przypadkowa.',
+         aliases=['Kwant', 'Niepewny']),
+    dict(slug='helena-hamiltonian', degree='prof. dr hab.', name='Helena Hamiltonian', sex='f',
+         role='postać fikcyjna — mechanika klasyczna',
+         unit='Instytut Fizyki Teoretycznej, Katedra Kolokwiów o 7:30 (fikcyjna)',
+         bio='Fikcyjna profesor, słynna z kolokwiów o godzinie 7:30.',
+         aliases=['Hamiltonianka']),
+    dict(slug='pani-z-portierni', degree='', name='Pani z portierni', surname='Portierni', sex='f',
+         role='postać fikcyjna — instytucja',
+         unit='Portiernia główna, Pasteura 5 (etat od zawsze)',
+         bio='Zbiorowa, fikcyjna postać wszystkich portierni Pasteura 5.',
+         aliases=['Portiernia']),
 ]
 TAGS = ['kolokwium', 'egzamin', 'Pasteura 5', 'mechanika', 'kwanty', 'laboratorium', 'sesja', 'otrzesiny', 'stolowka', 'analiza']
+# Which course each demo post happened on. The rows themselves are seeded by migration 0008
+# from the Faculty's own programme, so this only has to name their slugs — and a post with
+# no course is normal (the winda and the hymn happened to everybody, on no subject at all).
+POST_SUBJECTS = {
+    'Energia jest zawsze zachowana. Wasza — niekoniecznie.': ['mechanika', 'mechanika-klasyczna'],
+    'Ja po trzecim kolokwium z analizy': ['analiza-matematyczna-i'],
+    'Kartka z drzwi laboratorium: „Nie dotykać. Serio.”': ['ii-pracownia-fizyczna'],
+    'Zadanie 3 z kolokwium, którego nikt nie rozwiązał': ['mechanika-kwantowa-i'],
+    'Egzamin, na którym odpowiedź brzmiała 42': ['analiza-matematyczna-ii'],
+}
 
 TEXT_POSTS = [
     ('cytaty', 'Energia jest zawsze zachowana. Wasza — niekoniecznie.', 2009, 'approx',
@@ -58,7 +79,7 @@ TEXT_POSTS = [
      "Kartka wisiała trzy lata. Pod spodem ktoś dopisał: „a jak dotknę?”, a pod tym ktoś inny: „to się dowiesz”.",
      [], ['laboratorium']),
     ('memy', 'Ja po trzecim kolokwium z analizy', 2019, 'exact', 'Grupa rocznika 2018.',
-     "Klasyk. Szablon z kotem, podpis wewnątrz obrazka.", [], ['analiza', 'kolokwium']),
+     "Klasyk. Szablon z kotem, podpis wewnątrz obrazka.", [], ['analiza', 'kolokwium', 'Hamiltonianka']),
     ('zdjecia', 'Stołówka o 12:15, zdjęcie archiwalne', 2007, 'approx', 'Aparat cyfrowy, 3 Mpix.',
      "Kolejka sięgała klatki schodowej. Zupa: ogórkowa. Pogoda: nieistotna.", [], ['stolowka']),
 ]
@@ -151,9 +172,13 @@ class Command(BaseCommand):
             pass
         for i, (slug, name, emoji, desc) in enumerate(CATEGORIES):
             Category.objects.update_or_create(slug=slug, defaults={'name': name, 'emoji': emoji, 'description': desc, 'order': i})
-        for slug, name, role, bio in PEOPLE:
-            Person.objects.update_or_create(slug=slug, defaults={'name': name, 'role': role, 'bio': bio})
         from django.utils.text import slugify
+        for spec in PEOPLE:
+            spec = dict(spec)
+            slug, aliases = spec.pop('slug'), spec.pop('aliases', [])
+            person, _ = Person.objects.update_or_create(slug=slug, defaults=spec)
+            for a in aliases:
+                person.aliases.add(Tag.objects.get_or_create(slug=slugify(a), defaults={'name': a})[0])
         for t in TAGS:
             Tag.objects.get_or_create(slug=slugify(t), defaults={'name': t})
         if Post.objects.filter(submitted_by__in=[admin, ai]).exists():
@@ -167,6 +192,7 @@ class Command(BaseCommand):
                                     submitted_by=ai, status='published',
                                     source_note='Zbiory własne archiwum (demo).')
             p.people.set(Person.objects.filter(slug__in=people))
+            p.subjects.set(Subject.objects.filter(slug__in=POST_SUBJECTS.get(title, [])))
             p.tags.set(Tag.objects.filter(slug__in=[slugify(t) for t in tags]))
             created.append(p)
         for cat, title, year, prec, note, body, people, tags in LATEX_POSTS:
@@ -175,6 +201,7 @@ class Command(BaseCommand):
                                     year_precision=prec, date_note=note, submitted_by=ai, status='published',
                                     source_note='Odpis z zeszytu (demo).')
             p.people.set(Person.objects.filter(slug__in=people))
+            p.subjects.set(Subject.objects.filter(slug__in=POST_SUBJECTS.get(title, [])))
             p.tags.set(Tag.objects.filter(slug__in=[slugify(t) for t in tags]))
             created.append(p)
         # pictures on the meme, the photo and the door note
@@ -190,10 +217,21 @@ class Command(BaseCommand):
         c = Comment.objects.create(post=created[-1], author=ai, body='Potwierdzam, byłem tam. Napisałem 41.')
         Comment.objects.create(post=created[-1], author=admin, parent=c, format='latex',
                                body=r'Poprawna odpowiedź: $\frac{\pi^4}{15}$. Pół punktu podtrzymuję.')
-        # one pending submission so the moderation queue has something in it
-        Post.objects.create(title='Propozycja: nowy mem o sesji', category=Category.objects.get(slug='memy'),
-                            format='text', body='Czeka na moderację.', year=2026, year_precision='exact',
-                            submitted_by=ai, status='pending')
+        # one pending submission so the moderation queue has something in it — and it names a
+        # person who does not exist yet, which is the state the queue's newest affordance is
+        # about. Until a moderator publishes this, `hubert-hipoteza` is invisible in /ludzie
+        # to everybody except the account that proposed him (archive/people.visible_people)
+        # and shows up on the moderator's card marked NOWA.
+        waiting = Post.objects.create(title='Propozycja: nowy mem o sesji', category=Category.objects.get(slug='memy'),
+                                      format='text', body='Czeka na moderację. Autor wpisał osobę, której nie było w spisie.',
+                                      year=2026, year_precision='exact', submitted_by=ai, status='pending')
+        proposed, _ = Person.objects.get_or_create(
+            slug='hubert-hipoteza',
+            defaults=dict(name='Hubert Hipoteza', degree='mgr', sex='m', created_by=ai,
+                          role='postać fikcyjna — doktorant, którego nikt nie widział na żywo',
+                          bio='Zaproponowany przy wpisie, jeszcze nieopublikowanym. Fikcyjny, jak wszyscy tutaj.'))
+        waiting.people.add(proposed)
+        waiting.subjects.set(Subject.objects.filter(slug='fizyka-statystyczna'))
         # the moderation board has something on it: one hidden post, one nuked post, one hidden comment
         from archive import moderation as rules
         hidden = Post.objects.create(title='Mem, który był trochę za bardzo', category=Category.objects.get(slug='memy'),

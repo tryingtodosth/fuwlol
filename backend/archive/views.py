@@ -17,15 +17,16 @@ from rest_framework.views import APIView
 from escalation.views import escalate_and_respond
 
 from . import moderation as rules
+from . import people as people_rules
 from . import suggestions as suggestions_mod
 from .models import (Attachment, Category, Comment, CommentAttachment, EditSuggestion,
                      ModerationAction, Person, Post,
-                     Reaction, Report, Tag)
+                     Reaction, Report, Subject, Tag)
 from .search import query_parts
 from .serializers import (CategorySerializer, CommentSerializer, MinePostSerializer, ModerationPostSerializer,
                           PersonSerializer, PostDetailSerializer, PostListSerializer,
-                          PostWriteSerializer, ReportSerializer, TagSerializer, REACTION_KINDS,
-                          board_comment_payload, board_post_payload)
+                          PostWriteSerializer, ReportSerializer, SubjectSerializer, TagSerializer,
+                          REACTION_KINDS, board_comment_payload, board_post_payload)
 from .validators import kind_for, strip_image_metadata, validate_upload
 
 PUBLISHED = Q(status='published')
@@ -110,7 +111,7 @@ def post_queryset(user=None):
     # and it has exactly one exception (head-admin) that the manager must not override, or
     # the person responsible for the material would be unable to look at it.
     return _not_escalated(Post.all_objects.select_related('category', 'submitted_by')
-            .prefetch_related('people', 'tags', 'attachments', 'reactions')
+            .prefetch_related('people', 'people__aliases', 'subjects', 'tags', 'attachments', 'reactions')
             # a moderated comment is a placeholder in the thread, not a comment on the card
             .annotate(comment_count=Count('comments', filter=Q(comments__is_removed=False,
                                                                 comments__moderation='visible')
@@ -146,23 +147,89 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class PersonViewSet(viewsets.ReadOnlyModelViewSet):
+    """The directory (/ludzie) and the profile. Counts and the year range come through
+    `people.annotate_people`, so a post that names the person only by a nickname counts
+    here exactly as it does on the browse page. `?q=` matches name, surname and nickname —
+    the typeahead the editor's pickers use.
+
+    Who is IN the directory is `people.visible_people`, and it is derived rather than
+    flagged: a person somebody named while writing a post appears the moment that post is
+    published, is visible in the meantime only to whoever named them, and never becomes a
+    readable page about a human being on the strength of a submission that was rejected.
+    `retrieve` runs the same filter — a stranger gets 404, which is the honest answer and
+    the safe one, and the same 404 an opted-out person's page gives."""
     serializer_class = PersonSerializer
-
-    def get_queryset(self):
-        return _published_count(Person.objects.filter(is_listed=True))
-
     lookup_field = 'slug'
     pagination_class = None
+
+    def get_queryset(self):
+        qs = people_rules.visible_people(self.request.user)
+        q = (self.request.query_params.get('q') or '').strip()
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(surname__icontains=q) | Q(aliases__name__icontains=q)).distinct()
+        return qs
+
+    @action(detail=True, methods=['post'], permission_classes=[rules.IsTrusted])
+    def aliases(self, request, slug=None):
+        """POST {name} — attach a nickname (trusted tier: the same people who publish without
+        a queue). 201 with the person; 400 malformed, 409 the nickname is somebody else's."""
+        person = self.get_object()
+        people_rules.add_alias(person, request.data.get('name') if hasattr(request.data, 'get') else '', request.user)
+        return Response(self.get_serializer(self.get_queryset().get(pk=person.pk)).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['delete'], url_path=r'aliases/(?P<tag>[^/.]+)', permission_classes=[rules.IsTrusted])
+    def alias_remove(self, request, slug=None, tag=None):
+        person = self.get_object()
+        people_rules.remove_alias(person, tag, request.user)
+        return Response(self.get_serializer(self.get_queryset().get(pk=person.pk)).data)
 
 
 class TagViewSet(viewsets.ReadOnlyModelViewSet):
+    """Tags that something published actually carries — the browse filter's list and the
+    editor's tag typeahead read the same endpoint, so a tag that exists only on a pending
+    post is suggested to nobody. `?q=` narrows it; the picker offers „dodaj” for the rest,
+    which is what makes an unlisted tag reachable without listing it."""
     serializer_class = TagSerializer
 
     def get_queryset(self):
-        return _published_count(Tag.objects.all()).filter(post_count__gt=0)
+        qs = _published_count(Tag.objects.all()).filter(post_count__gt=0)
+        q = (self.request.query_params.get('q') or '').strip()
+        if q:
+            qs = qs.filter(name__icontains=q)
+        return qs
 
     lookup_field = 'slug'
     pagination_class = None
+
+
+class SubjectViewSet(viewsets.ReadOnlyModelViewSet):
+    """/api/subjects/ — the courses a post can be filed under.
+
+    **What the list shows, and why it is not just "the ones with posts".** A seeded row
+    (`created_by IS NULL`) is always listed, even with nothing filed under it: it came from
+    the Faculty's programme and it is an OFFER — the whole point of seeding was that the
+    editor should suggest „Elektrodynamika klasyczna" before anybody has written about it,
+    because otherwise thirty people invent thirty spellings. A row somebody named
+    (`created_by` set) is listed once something published carries it, exactly like a person:
+    until then it is one submitter's guess, and a guess that never got published has no
+    business in a public index.
+
+    **`retrieve` does not narrow.** /przedmioty/<slug> resolves for anything that exists, so
+    a link to a course somebody has just named still opens — there is no privacy interest in
+    a course name, and a detail page that 404s on a shared link is worse than an empty one.
+    """
+    serializer_class = SubjectSerializer
+    lookup_field = 'slug'
+    pagination_class = None
+
+    def get_queryset(self):
+        qs = _published_count(Subject.objects.all())
+        if self.action == 'list':
+            qs = qs.filter(Q(post_count__gt=0) | Q(created_by__isnull=True))
+        q = (self.request.query_params.get('q') or '').strip()
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(short__icontains=q))
+        return qs.order_by('order', 'name')
 
 
 class FixedScopeThrottle(ScopedRateThrottle):
@@ -280,7 +347,8 @@ class PostViewSet(viewsets.ModelViewSet):
             # prose is compared folded (no case, no diacritics), formulas canonicalised —
             # archive/search.py; the raw lookups stay for tag and person names
             text, math = query_parts(q)
-            cond = Q(tags__name__icontains=q) | Q(people__name__icontains=q) | Q(title__icontains=q)
+            cond = (Q(tags__name__icontains=q) | Q(people__name__icontains=q)
+                    | Q(subjects__name__icontains=q) | Q(title__icontains=q))
             if text:
                 cond |= Q(search_text__icontains=text)
             if math:
@@ -290,8 +358,11 @@ class PostViewSet(viewsets.ModelViewSet):
             qs = qs.filter(category__slug=p['category'])
         if p.get('tag'):
             qs = qs.filter(tags__slug=p['tag'])
+        if p.get('subject'):
+            qs = qs.filter(subjects__slug=p['subject'])
         if p.get('person'):
-            qs = qs.filter(people__slug=p['person'])
+            # named directly OR tagged with one of the person's nicknames — archive/people.py
+            qs = qs.filter(people_rules.person_posts_slug_q(p['person'])).distinct()
         if p.get('format') in ('text', 'latex'):
             qs = qs.filter(format=p['format'])
         if p.get('featured'):

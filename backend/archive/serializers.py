@@ -6,8 +6,10 @@ from rest_framework import serializers
 
 from . import moderation as rules
 from . import latexguard
+from . import people as people_rules
+from . import subjects as subject_rules
 from .models import (Attachment, Category, Comment, CommentAttachment, Person, Post,
-                     Reaction, Report, Tag, REACTION_CHOICES)
+                     Reaction, Report, Subject, Tag, REACTION_CHOICES)
 from .validators import kind_for
 
 HIDDEN_NOTICE = 'Ten wpis jest ukryty — widzą go tylko zweryfikowani użytkownicy.'
@@ -58,12 +60,28 @@ class CategorySerializer(serializers.ModelSerializer):
         fields = ['slug', 'name', 'description', 'emoji', 'post_count']
 
 
+class AliasSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tag
+        fields = ['slug', 'name']
+
+
 class PersonSerializer(serializers.ModelSerializer):
+    """One directory row / the profile header. `post_count`, `year_min` and `year_max`
+    come from `people.annotate_people` and are simply absent when a Person is embedded in
+    a post (DRF skips a read-only field the instance does not have). `name` is the bare
+    name; `full_name` carries the title, the way the faculty directory prints it."""
     post_count = serializers.IntegerField(read_only=True)
+    year_min = serializers.IntegerField(read_only=True)
+    year_max = serializers.IntegerField(read_only=True)
+    aliases = AliasSerializer(many=True, read_only=True)
+    letter = serializers.CharField(read_only=True)
+    full_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = Person
-        fields = ['slug', 'name', 'role', 'bio', 'post_count']
+        fields = ['slug', 'name', 'full_name', 'degree', 'surname', 'letter', 'role', 'unit', 'bio', 'sex',
+                  'image_consent', 'aliases', 'post_count', 'year_min', 'year_max']
 
 
 class TagSerializer(serializers.ModelSerializer):
@@ -72,6 +90,18 @@ class TagSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tag
         fields = ['slug', 'name', 'post_count']
+
+
+class SubjectSerializer(serializers.ModelSerializer):
+    """One row of /przedmioty, and the three fields a post carries about its courses.
+    `post_count` comes from `views._published_count` and, exactly like `PersonSerializer`'s,
+    is simply absent when the Subject is embedded in a post — DRF skips a read-only field
+    the instance does not have, so the post payload stays three keys wide."""
+    post_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Subject
+        fields = ['slug', 'name', 'short', 'post_count']
 
 
 class AttachmentSerializer(serializers.ModelSerializer):
@@ -108,6 +138,7 @@ class PostListSerializer(serializers.ModelSerializer):
     category = serializers.SlugRelatedField(slug_field='slug', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     people = PersonSerializer(many=True, read_only=True)
+    subjects = SubjectSerializer(many=True, read_only=True)
     tags = TagSerializer(many=True, read_only=True)
     submitted_by = serializers.SerializerMethodField()
     catalog_no = serializers.CharField(read_only=True)
@@ -118,7 +149,7 @@ class PostListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
         fields = ['id', 'slug', 'catalog_no', 'title', 'summary', 'category', 'category_name', 'format',
-                 'year', 'year_precision', 'date_note', 'people', 'tags', 'submitted_by', 'status',
+                 'year', 'year_precision', 'date_note', 'people', 'subjects', 'tags', 'submitted_by', 'status',
                  'featured', 'views', 'cover', 'reaction_counts', 'comment_count', 'published_at', 'created_at']
 
     def get_submitted_by(self, obj):
@@ -198,32 +229,82 @@ class PostDetailSerializer(PostListSerializer):
         return bool(u and u.is_authenticated and (u.is_staff or obj.submitted_by_id == u.id))
 
 
+class M2MInput(serializers.Field):
+    """A many-to-many payload that keeps its shape until `_items` reads it.
+
+    `CharField` cannot do this job: over multipart the value is a string, but over a JSON
+    body it is a real list — and for `people` a list whose entries may be objects. A
+    `CharField` rejects both with „Not a valid string" before the serializer ever sees them,
+    which is why the JSON shape this class exists for was documented and did not work.
+
+    Nothing is validated here on purpose. What a legal entry IS belongs to the rule modules
+    (`people.resolve_people`, `subjects.resolve_subjects`), which is also where the refusal
+    can say something useful about it; a field that pre-guessed the shape would have to
+    guess it twice."""
+    default_error_messages = {}
+
+    def to_internal_value(self, data):
+        return data
+
+    def to_representation(self, value):  # write_only, so this is never reached
+        return value
+
+
 class PostWriteSerializer(serializers.ModelSerializer):
-    """Multipart-friendly: `people`/`tags` arrive as comma-separated slugs (or a JSON
-    list), `files` as repeated form fields, `captions` as a JSON list aligned to them."""
+    """Multipart-friendly. `people`, `subjects` and `tags` arrive as a JSON list (a JSON
+    *string* over multipart, a real list over a JSON body) or, still, as a comma-separated
+    list of slugs — the shape the editor sent before it had pickers, kept because the API
+    is a public surface and a script somebody wrote against it should not break. `files`
+    are repeated form fields and `captions` a JSON list aligned to them.
+
+    `people` is the one that carries objects as well as strings:
+
+        ["jan-kowalski", {"name": "Anna Nowak", "degree": "dr", "role": "wykładowczyni"}]
+
+    A string is an existing person's slug; an object names somebody who may not exist yet.
+    `people.resolve_people` decides what that means — including that naming a person who
+    already exists reuses them rather than minting a twin — and this serializer does not
+    re-derive any of it."""
     category = serializers.SlugRelatedField(slug_field='slug', queryset=Category.objects.all())
-    people = serializers.CharField(required=False, allow_blank=True, write_only=True)
-    tags = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    people = M2MInput(required=False, write_only=True)
+    subjects = M2MInput(required=False, write_only=True)
+    tags = M2MInput(required=False, write_only=True)
     rights_confirmed = serializers.BooleanField(required=False, write_only=True)
 
     class Meta:
         model = Post
         fields = ['title', 'category', 'format', 'body', 'summary', 'year', 'year_precision',
-                  'date_note', 'source_note', 'source_url', 'people', 'tags', 'rights_confirmed']
+                  'date_note', 'source_note', 'source_url', 'people', 'subjects', 'tags',
+                  'rights_confirmed']
 
     @staticmethod
-    def _slugs(raw):
+    def _items(raw):
+        """The three shapes one many-to-many field can arrive in, as a plain Python list
+        whose entries are strings OR dicts. Kept separate from `_slugs` because only
+        `people` may carry a dict, and flattening one into `str()` is how a new person
+        silently became the slug "{'name': 'Anna Nowak'}"."""
         if not raw:
             return []
         if isinstance(raw, (list, tuple)):  # a JSON body, not multipart
-            return [str(s) for s in raw]
+            return list(raw)
         raw = str(raw).strip()
         if raw.startswith('['):
             try:
-                return [str(s) for s in json.loads(raw)]
+                parsed = json.loads(raw)
             except ValueError:
-                pass
+                parsed = None
+            if isinstance(parsed, list):
+                return parsed
         return [s.strip() for s in raw.split(',') if s.strip()]
+
+    @classmethod
+    def _slugs(cls, raw):
+        """`_items` for the fields that are only ever names/slugs (tags)."""
+        return [str(s) for s in cls._items(raw)]
+
+    def _actor(self):
+        req = self.context.get('request')
+        return getattr(req, 'user', None)
 
     def validate_year(self, v):
         if v is not None and not (1900 <= v <= 2100):
@@ -249,8 +330,15 @@ class PostWriteSerializer(serializers.ModelSerializer):
         return data
 
     def _apply_m2m(self, post, data):
+        """Runs inside the view's `transaction.atomic()`, which is what makes it safe for
+        `resolve_people`/`resolve_subjects` to CREATE rows here rather than in `validate`:
+        a refusal anywhere in this method rolls the new people and subjects back with the
+        post. Doing it in `validate` would leave a proposed person behind every time a
+        later field failed."""
         if 'people' in data:
-            post.people.set(Person.objects.filter(slug__in=self._slugs(data['people'])))
+            post.people.set(people_rules.resolve_people(self._items(data['people']), self._actor()))
+        if 'subjects' in data:
+            post.subjects.set(subject_rules.resolve_subjects(self._items(data['subjects']), self._actor()))
         if 'tags' in data:
             tags = []
             for s in self._slugs(data['tags']):
@@ -262,20 +350,34 @@ class PostWriteSerializer(serializers.ModelSerializer):
                 tags.append(tag)
             post.tags.set(tags)
 
+    M2M_FIELDS = ('people', 'subjects', 'tags')
+
+    def _take_m2m(self, data):
+        """Pull the many-to-many payloads out of `data` (they are not model fields) and hand
+        back only the ones that were actually sent. Absent is not empty: a PATCH that does
+        not mention `subjects` must leave the post's subjects alone, while `subjects=[]`
+        clears them."""
+        sent = {}
+        for field in self.M2M_FIELDS:
+            value = data.pop(field, None)
+            if value is not None:
+                sent[field] = value
+        return sent
+
     def create(self, data):
-        people, tags = data.pop('people', None), data.pop('tags', None)
+        m2m = self._take_m2m(data)
         data['rights_confirmed'] = bool(data.get('rights_confirmed'))
         post = Post.objects.create(**data)
-        self._apply_m2m(post, {k: v for k, v in [('people', people), ('tags', tags)] if v is not None})
+        self._apply_m2m(post, m2m)
         return post
 
     def update(self, post, data):
         data.pop('rights_confirmed', None)
-        people, tags = data.pop('people', None), data.pop('tags', None)
+        m2m = self._take_m2m(data)
         for k, v in data.items():
             setattr(post, k, v)
         post.save()
-        self._apply_m2m(post, {k: v for k, v in [('people', people), ('tags', tags)] if v is not None})
+        self._apply_m2m(post, m2m)
         return post
 
 
@@ -353,10 +455,39 @@ class MinePostSerializer(PostListSerializer):
 
 
 class ModerationPostSerializer(PostDetailSerializer):
+    """The moderator's card. Everything the detail payload has, plus the reports — and, on
+    each person, whether this post is the first published thing that will ever have named
+    them (`is_new`).
+
+    That flag is the moderation half of "a person is created by naming them": a submitter
+    who types „prof. Kwark Dolny" into the editor has proposed a new row in a public index
+    of named human beings, and the person who decides whether that index gets the row is the
+    same person who decides whether the post gets published. Without the mark the two
+    decisions look like one, and the second one is invisible.
+
+    Derived, both halves of it: `created_by_id` says somebody named them rather than staff
+    or the seed, and a recount of their published posts says nobody has yet. No flag, no
+    second lifecycle — publish the post and they stop being new by themselves."""
     reports = serializers.SerializerMethodField()
+    people = serializers.SerializerMethodField()
 
     class Meta(PostDetailSerializer.Meta):
         fields = PostDetailSerializer.Meta.fields + ['reports']
+
+    def get_people(self, obj):
+        rows = list(obj.people.all())
+        data = PersonSerializer(rows, many=True, context=self.context).data
+        proposed = [p for p in rows if p.created_by_id]
+        # One recount, and only when there is something to recount — most posts name nobody
+        # new and pay nothing. `annotate_people` is the same count the directory shows, so
+        # "new here" and "absent from /ludzie" cannot drift apart.
+        counts = {}
+        if proposed:
+            counts = {p.pk: p.post_count for p in
+                      people_rules.annotate_people(Person.objects.filter(pk__in=[p.pk for p in proposed]))}
+        for row, person in zip(data, rows):
+            row['is_new'] = bool(person.created_by_id) and not counts.get(person.pk, 0)
+        return data
 
     def get_reports(self, obj):
         """Every trusted reader sees THAT a post was reported and why; the reporter's own

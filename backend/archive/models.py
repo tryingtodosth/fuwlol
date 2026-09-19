@@ -65,21 +65,79 @@ class Category(models.Model):
         return self.name
 
 
+SEX_CHOICES = [('', 'nie podano'), ('m', 'mężczyzna'), ('f', 'kobieta')]
+# What the person THEMSELF said about their image (art. 81 pr. aut.). 'unknown' is the
+# default and the honest one: the uploader's rights declaration on a post is the uploader's
+# statement, not the person's. The other three are written by the claims flow (a confirmed
+# mailbox, then a staff decision) or by staff in the admin — never by a submitter:
+#   granted    photos of me may be here; the profile shows the badge, a portrait may be uploaded
+#   refused    mention me if you must, but no photos
+#   opted_out  take me out of the archive altogether (goes with is_listed=False)
+IMAGE_CONSENT_CHOICES = [('unknown', 'nieznana'), ('granted', 'wyrażona'),
+                         ('refused', 'odmówiona — bez zdjęć'), ('opted_out', 'wycofana — poza archiwum')]
+
+
 class Person(models.Model):
     """Somebody the folklore is about — a lecturer, a legendary student, a janitor.
-    `is_listed=False` keeps a person out of the index while their posts stay
-    reachable; removal requests come in through `Report`."""
+    `is_listed=False` keeps a person out of the index while their posts stay reachable;
+    removal requests come in through `Report` and, once a person has claimed their entry,
+    through their own consent settings.
+
+    Modelled on the faculty's own directory (fuw.edu.pl/osoby-fuw.html), which is what the
+    /ludzie page copies: a title column, a surname to file under, a unit line under the
+    name, a 130 px photo or a silhouette in its place. `surname` and `sort_key` are filled
+    by archive/people.py at save time — `surname` only when blank, so a correction made in
+    the admin sticks. Nicknames are `aliases`: ordinary Tag rows that make a tagged post
+    the person's post (see archive/people.py)."""
     slug = models.SlugField(unique=True)
-    name = models.CharField(max_length=120)
+    name = models.CharField(max_length=120, help_text='bez tytułu — ten idzie do osobnego pola')
+    degree = models.CharField(max_length=40, blank=True,
+                              help_text='tytuł/stopień, jak w spisie osób: dr, prof. dr hab., mgr inż.')
+    surname = models.CharField(max_length=80, blank=True,
+                               help_text='do sortowania i litery w spisie; puste = ostatni wyraz nazwy')
+    sort_key = models.CharField(max_length=120, blank=True, db_index=True, editable=False)
     role = models.CharField(max_length=120, blank=True)
+    unit = models.CharField(max_length=160, blank=True,
+                            help_text='jednostka, jak w spisie: „Instytut Fizyki Teoretycznej, Katedra…”')
     bio = models.TextField(blank=True)
+    sex = models.CharField(max_length=1, choices=SEX_CHOICES, blank=True, default='',
+                           help_text='tylko po to, by dobrać sylwetkę zastępczą ze spisu osób')
+    image_consent = models.CharField(max_length=10, choices=IMAGE_CONSENT_CHOICES, default='unknown')
+    aliases = models.ManyToManyField('Tag', related_name='alias_of', blank=True,
+                                     help_text='ksywki — wpis otagowany ksywką jest wpisem tej osoby')
+    # The folded bare name, filled at save: what "is this person already here?" is asked
+    # against when somebody names a person in the editor instead of picking one. Folding is
+    # search.normalize_text, so „dr Anna Nowak", „Anna Nowak" and „ANNA NOWAK" are one
+    # person, and a twin cannot be created by typing the same name with a different shift key.
+    name_key = models.CharField(max_length=160, blank=True, db_index=True, editable=False)
     is_listed = models.BooleanField(default=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, related_name='+',
+                                   on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
 
     class Meta:
-        ordering = ['name']
+        ordering = ['sort_key', 'name']
 
     def __str__(self):
-        return self.name
+        return self.full_name
+
+    @property
+    def full_name(self):
+        return f'{self.degree} {self.name}'.strip()
+
+    @property
+    def letter(self):
+        from .people import letter_for
+        return letter_for(self.surname, self.name)
+
+    def save(self, *args, **kwargs):
+        from .search import normalize_text
+        from .people import derive_surname, sort_key_for
+        if not self.surname:
+            self.surname = derive_surname(self.name)
+        self.sort_key = sort_key_for(self.surname, self.name)
+        self.name_key = normalize_text(self.name)[:160]
+        super().save(*args, **kwargs)
 
 
 class Tag(models.Model):
@@ -88,6 +146,46 @@ class Tag(models.Model):
 
     class Meta:
         ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class Subject(models.Model):
+    """A university subject (*przedmiot*) — „Mechanika klasyczna", „II Pracownia fizyczna".
+
+    A third axis next to tags and people, and it exists because the other two answered the
+    question badly. „mechanika" as a free tag is one of forty spellings of itself; a person
+    is who the story is ABOUT, which is not the same as what the story is FROM. A course is
+    the unit a physics student actually remembers things by — you do not recall the year, you
+    recall that it happened on Elektrodynamika.
+
+    The table is seeded from the Faculty's own first- and second-cycle programmes
+    (migration 0008), and anybody with an account may add one by naming it in the editor:
+    `created_by` is NULL for the seeded rows and set for a named one, which is exactly what
+    `/api/subjects/` uses to decide what to list (a named subject appears once it has a
+    published post; a seeded one is always there, because it is an offer, not a claim).
+    Duplicates are expected and are a moderator's merge in the admin — refusing a near-match
+    at submission time would refuse „Mechanika klasyczna R", which is a different course.
+
+    Unlike `Person`, nothing here is about a human being: there is no consent question, no
+    opt-out, and `short` („AM1") is decoration. That is the whole reason it is a separate
+    model rather than another flavour of `Tag` with a flag."""
+    # 120, not the SlugField default of 50: „Elektrodynamika klasyczna z elementami klasycznej
+    # teorii pola" is a real course, and a slug truncated to 50 would silently merge it with
+    # whatever else starts the same way — a get_or_create keyed on a lossy slug is a merge.
+    slug = models.SlugField(unique=True, max_length=120)
+    name = models.CharField(max_length=120)
+    short = models.CharField(max_length=20, blank=True,
+                             help_text='skrót, jakim mówi o przedmiocie rocznik: AM1, MK, II Prac.')
+    order = models.PositiveIntegerField(default=0, help_text='kolejność w spisie; seed numeruje wg roku studiów')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, related_name='+',
+                                   on_delete=models.SET_NULL,
+                                   help_text='puste = przedmiot z programu studiów (seed/admin)')
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+
+    class Meta:
+        ordering = ['order', 'name']
 
     def __str__(self):
         return self.name
@@ -146,6 +244,7 @@ class Post(models.Model):
     source_note = models.CharField(max_length=300, blank=True)
     source_url = models.URLField(blank=True)
     people = models.ManyToManyField(Person, related_name='posts', blank=True)
+    subjects = models.ManyToManyField(Subject, related_name='posts', blank=True)
     tags = models.ManyToManyField(Tag, related_name='posts', blank=True)
     submitted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                      related_name='posts', on_delete=models.SET_NULL)

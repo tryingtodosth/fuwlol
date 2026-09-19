@@ -183,6 +183,9 @@ class TierLeakTests(Base):
         self.assertEqual(self.client.get(f'/api/posts/{self.post.slug}/').data['review_note'], 'popraw tytuł')
 
 
+# An in-memory cache: the throttle counters must start where the test expects them, not where
+# the dev server on the same machine (sharing backend/cachedata/) happens to have left them.
+@override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
 class ThrottleTests(Base):
     def test_comments_have_their_own_rate(self):
         from rest_framework.throttling import SimpleRateThrottle
