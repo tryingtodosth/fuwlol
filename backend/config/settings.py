@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     'archive',
     'board',
     'escalation',
+    'portraits',
 ]
 
 # See config/middleware.py for what each of these means and when it is safe.
@@ -138,6 +139,11 @@ REST_FRAMEWORK = {
         'presign': '60/hour',  # one per file; a six-file post costs six
         'suggest': '20/hour',  # edit suggestions: a real correction is rare, a flood is not
         'verify': '5/hour',  # institutional-address confirmation mails, per user
+        # Portraits (portraits/views.py). An upload is 25 MB of decoded pixels plus a
+        # moderator's attention; a vote is one row, but a gallery voted by a script is
+        # not a vote. Both per IP, like every other scope here.
+        'portrait_upload': '10/hour',
+        'portrait_vote': '60/hour',
     },
 }
 
