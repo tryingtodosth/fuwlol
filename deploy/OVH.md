@@ -199,6 +199,16 @@ IMAGE_TAG=latest docker compose -f docker-compose.prod.yml --env-file .env up -d
 docker compose -f docker-compose.prod.yml exec api python manage.py createsuperuser
 ```
 
+**Before the first start, fix the volume ownership.** The container runs as uid 1000, but
+a freshly created named volume can end up owned by root — and the failure is not at boot,
+it is later, when somebody uploads a file and gets a 500 with
+`PermissionError: '/app/media/attachments'`. Comment attachments still use local storage
+even when R2 is on, so this is not a corner case:
+
+```bash
+for v in media cachedata evidence; do docker run --rm -v "fuwlol_${v}:/v" alpine chown -R 1000:1000 /v; done
+```
+
 `entrypoint.sh` migrates and collects static on every start, so there is no separate
 migrate step. **Do not set `FUWLOL_SEED_DEMO=1` here** — it creates dziekan/doktorant/
 student, and this is not a demo.
