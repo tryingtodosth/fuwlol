@@ -23,6 +23,11 @@ V6_URL=https://www.cloudflare.com/ips-v6
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root" >&2; exit 1; }
 
+# The interface the default route leaves by — the only one the public can arrive on.
+EXT_IF=$(ip route show default | awk '{for(i=1;i<NF;i++) if($i=="dev") print $(i+1); exit}')
+[ -n "$EXT_IF" ] || { echo "could not determine the public interface" >&2; exit 1; }
+echo "public interface: $EXT_IF"
+
 apply() {
   local ipt=$1 url=$2 ranges
   # Fetched fresh, not pinned: Cloudflare adds ranges, and a stale list fails CLOSED —
@@ -39,13 +44,25 @@ apply() {
   done <<< "$ranges"
   $ipt -A "$CHAIN" -j DROP                       # anybody else, on 80/443: gone
 
-  # Hook it in once, idempotently, for the two ports only. Container-to-container traffic
-  # and the SSH port are untouched.
+  # Hook it in for the two ports, INBOUND ON THE PUBLIC INTERFACE ONLY.
+  #
+  # `-i $EXT_IF` is not a refinement, it is the whole correctness of this script. The
+  # DOCKER-USER chain sits in FORWARD, which carries container EGRESS as well as ingress:
+  # without the interface match, a container calling out to R2 or to Brevo on port 443
+  # matches `--dport 443`, is not sourced from a Cloudflare range, and is DROPPED. The
+  # symptom is not an error — it is uploads and mail hanging until something times out.
+  #
+  # Return traffic for container-initiated connections arrives on $EXT_IF with the
+  # EPHEMERAL port as its destination, so it never matches these rules either.
+  #
+  # Old jumps are removed first, so re-running this after editing it cannot leave a
+  # previous version's rule in place beside the new one.
+  $ipt -S DOCKER-USER 2>/dev/null | grep -- "-j $CHAIN" | sed "s/^-A/-D/" | while read -r rule; do
+    $ipt $rule 2>/dev/null || true
+  done
   for port in 80 443; do
-    $ipt -C DOCKER-USER -p tcp --dport "$port" -j "$CHAIN" 2>/dev/null || \
-      $ipt -I DOCKER-USER -p tcp --dport "$port" -j "$CHAIN"
-    $ipt -C DOCKER-USER -p udp --dport "$port" -j "$CHAIN" 2>/dev/null || \
-      $ipt -I DOCKER-USER -p udp --dport "$port" -j "$CHAIN"   # HTTP/3
+    $ipt -I DOCKER-USER -i "$EXT_IF" -p tcp --dport "$port" -j "$CHAIN"
+    $ipt -I DOCKER-USER -i "$EXT_IF" -p udp --dport "$port" -j "$CHAIN"   # HTTP/3
   done
   echo "$ipt: $(wc -l <<< "$ranges") Cloudflare ranges allowed on 80/443"
 }
