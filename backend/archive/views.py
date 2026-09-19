@@ -175,7 +175,7 @@ class PostViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated()]
         if self.action in ('queue', 'moderate'):
             return [IsAdminUser()]
-        if self.action in ('hide', 'restore', 'nuke', 'escalate'):
+        if self.action in ('hide', 'restore', 'nuke', 'escalate', 'feature'):
             return [rules.IsTrusted()]
         return []
 
@@ -199,7 +199,7 @@ class PostViewSet(viewsets.ModelViewSet):
         if self.action in ('retrieve', 'update', 'partial_update', 'destroy', 'moderate', 'comments'):
             # who may read what — the one rule, in archive/moderation.py
             return qs.filter(rules.visible_posts_q(u))
-        if self.action in ('hide', 'restore', 'nuke', 'escalate'):
+        if self.action in ('hide', 'restore', 'nuke', 'escalate', 'feature'):
             # Trusted users (the permission class has already excluded everybody else) may
             # also RESOLVE a nuked post here, so that "restore" on one answers 403 — the
             # rules' honest refusal — instead of pretending it does not exist. They still
@@ -481,8 +481,9 @@ class PostViewSet(viewsets.ModelViewSet):
             post.save(update_fields=['review_note'])
             (rules.hide_post if decision == 'hide' else rules.nuke_post)(post, request.user, note)
         elif decision in ('feature', 'unfeature'):
-            post.featured = decision == 'feature'
-            post.save(update_fields=['featured'])
+            # Through the same rule as the button on the post page, so there is one
+            # definition of "may this be pinned" and one place that writes the audit line.
+            rules.set_featured(post, request.user, decision == 'feature')
         elif decision == 'resolve_reports':
             post.reports.update(resolved=True)
         else:
@@ -494,6 +495,19 @@ class PostViewSet(viewsets.ModelViewSet):
 
     def _reason(self, request):
         return (request.data.get('reason') or '') if hasattr(request.data, 'get') else ''
+
+    @action(detail=True, methods=['post'])
+    def feature(self, request, slug=None):
+        """POST {featured?: bool} — pin or unpin. Omitting `featured` toggles, which is
+        what the button on the post page sends; the moderation board passes it explicitly
+        so two moderators clicking at once cannot flip it twice."""
+        post = self.get_object()
+        data = request.data if hasattr(request.data, 'get') else {}
+        wanted = data.get('featured')
+        wanted = (not post.featured) if wanted is None else bool(wanted)
+        rules.set_featured(post, request.user, wanted)
+        post = self._base().get(pk=post.pk)
+        return Response(PostDetailSerializer(post, context={'request': request}).data)
 
     @action(detail=True, methods=['post'])
     def hide(self, request, slug=None):

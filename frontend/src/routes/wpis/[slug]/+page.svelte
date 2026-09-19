@@ -202,6 +202,7 @@
 					{#if post.moderation?.actor}<span class="muted">({post.moderation.actor}: {post.moderation.reason || 'bez powodu'})</span>{/if}
 					<ModTools kind="post" id={post.slug}
 						status={post.status === 'hidden' ? 'hidden' : post.status === 'nuked' ? 'nuked' : 'visible'}
+						featured={post.featured}
 						onChanged={() => location.reload()} />
 				</p>
 			{/if}

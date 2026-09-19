@@ -42,7 +42,8 @@ COMMENT_MODERATION_CHOICES = [('visible', 'Widoczny'), ('hidden', 'Ukryty'), ('n
 MODERATION_ACTION_CHOICES = [('hide', 'ukrycie'), ('restore', 'przywrócenie'), ('nuke', 'ukrycie nuklearne'),
                              ('unnuke', 'przywrócenie po opcji nuklearnej'), ('publish', 'publikacja'),
                              ('reject', 'odrzucenie'), ('quarantine', 'kwarantanna krytyczna'),
-                             ('purge', 'trwałe usunięcie po zgłoszeniu do NASK')]
+                             ('purge', 'trwałe usunięcie po zgłoszeniu do NASK'),
+                             ('feature', 'wyróżnienie'), ('unfeature', 'cofnięcie wyróżnienia')]
 PRECISION_CHOICES = [('exact', 'dokładnie'), ('approx', 'około'),
                      ('decade', 'dekada'), ('unknown', 'nieznany')]
 REACTION_CHOICES = [('lol', 'lol'), ('classic', 'klasyk'), ('wow', 'wow'), ('cringe', 'cringe')]

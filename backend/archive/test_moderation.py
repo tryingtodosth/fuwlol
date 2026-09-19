@@ -141,3 +141,90 @@ class ModerationTierTests(APITestCase):
         self.assertEqual(self.client.post(f'/api/comments/{c.pk}/restore/').status_code, 200)
         self.as_(self.plain)
         self.assertEqual(self.client.post(f'/api/comments/{c.pk}/hide/').status_code, 403)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class PinningTests(APITestCase):
+    """Pin / unpin from the post page itself. It was staff-only and reachable only from
+    the moderation board, which meant pinning a post required going to find it in a queue."""
+
+    def setUp(self):
+        self.cat = Category.objects.create(slug='memy', name='Memy')
+        self.staff = User.objects.create_user('mod', 'm@x.pl', 'haslo12345', is_staff=True)
+        self.trusted = make_trusted('zaufany')
+        self.plain = User.objects.create_user('ola', 'o@x.pl', 'haslo12345')
+        self.post = Post.objects.create(title='Wpis', category=self.cat, body='t',
+                                        status='published')
+
+    def url(self, post=None):
+        return f'/api/posts/{(post or self.post).slug}/feature/'
+
+    def test_an_anonymous_visitor_cannot_pin(self):
+        self.assertIn(self.client.post(self.url()).status_code, (401, 403))
+
+    def test_a_plain_user_cannot_pin(self):
+        self.client.force_authenticate(self.plain)
+        self.assertEqual(self.client.post(self.url()).status_code, 403)
+        self.post.refresh_from_db()
+        self.assertFalse(self.post.featured)
+
+    def test_a_trusted_moderator_can_pin_and_unpin(self):
+        """The widening: this used to require `is_staff`."""
+        self.client.force_authenticate(self.trusted)
+        r = self.client.post(self.url(), {}, format='json')
+        self.assertEqual(r.status_code, 200)
+        self.post.refresh_from_db()
+        self.assertTrue(self.post.featured)
+
+        r = self.client.post(self.url(), {}, format='json')   # toggles back
+        self.assertEqual(r.status_code, 200)
+        self.post.refresh_from_db()
+        self.assertFalse(self.post.featured)
+
+    def test_it_is_audited_like_every_other_moderation_act(self):
+        """Who put this on the front page is a question that gets asked."""
+        self.client.force_authenticate(self.trusted)
+        self.client.post(self.url(), {}, format='json')
+        a = ModerationAction.objects.filter(post=self.post).first()
+        self.assertEqual(a.action, 'feature')
+        self.assertEqual(a.actor, self.trusted)
+
+    def test_an_explicit_state_beats_a_toggle(self):
+        """Two moderators clicking at once must not flip it twice — the board sends the
+        state it wants rather than 'the opposite of what I last saw'."""
+        self.client.force_authenticate(self.trusted)
+        self.client.post(self.url(), {'featured': True}, format='json')
+        r = self.client.post(self.url(), {'featured': True}, format='json')
+        self.assertEqual(r.status_code, 400)          # already in that state
+        self.post.refresh_from_db()
+        self.assertTrue(self.post.featured)
+
+    def test_only_a_published_post_can_be_pinned(self):
+        """Pinning something pending would queue it to appear on the homepage the moment
+        it went live, which is not a decision anybody made.
+
+        Tested as STAFF, not as a trusted moderator: a pending post is not in a trusted
+        user's queryset at all, so they get 404 — the queue's own scoping answering first,
+        which is right. Staff can see it, so staff is who the rule has to refuse."""
+        draft = Post.objects.create(title='Szkic', category=self.cat, body='t', status='pending')
+        self.client.force_authenticate(self.staff)
+        r = self.client.post(self.url(draft), {'featured': True}, format='json')
+        self.assertEqual(r.status_code, 400)
+        draft.refresh_from_db()
+        self.assertFalse(draft.featured)
+
+    def test_a_trusted_moderator_cannot_even_see_a_pending_post(self):
+        draft = Post.objects.create(title='Szkic', category=self.cat, body='t', status='pending')
+        self.client.force_authenticate(self.trusted)
+        self.assertEqual(self.client.post(self.url(draft), {'featured': True}, format='json').status_code, 404)
+
+    def test_a_pinned_post_that_gets_hidden_can_still_be_unpinned(self):
+        self.post.featured = True
+        self.post.save(update_fields=['featured'])
+        self.post.status = 'hidden'
+        self.post.save(update_fields=['status'])
+        self.client.force_authenticate(self.trusted)
+        r = self.client.post(self.url(), {'featured': False}, format='json')
+        self.assertEqual(r.status_code, 200)
+        self.post.refresh_from_db()
+        self.assertFalse(self.post.featured)

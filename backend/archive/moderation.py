@@ -315,3 +315,28 @@ def action_block(obj, status):
         return {'status': status, 'action': None, 'actor': None, 'reason': '', 'at': None, 'previous_status': ''}
     return {'status': status, 'action': a.action, 'actor': a.actor.username if a.actor_id else None,
             'reason': a.reason, 'at': a.created_at, 'previous_status': a.previous_status}
+
+
+@transaction.atomic
+def set_featured(post, actor, featured: bool):
+    """Pin / unpin — the trusted tier, same as hide and restore.
+
+    It is not a moderation state and gets no `status` of its own: `featured` is one
+    boolean that decides whether a post appears in the homepage strip. It IS audited,
+    though, because it changes what every reader sees first, and "who put this on the
+    front page" is a question that gets asked.
+
+    Only a published post can be pinned. Pinning something hidden, pending or rejected
+    would queue it to appear on the homepage the moment it went live, which is not a
+    decision anybody made deliberately. Unpinning is always allowed — including on a post
+    that has since been hidden, so a pin can always be undone."""
+    _require_trusted(actor)
+    require_not_escalated(post)
+    if featured and post.status != 'published':
+        raise ValidationError({'detail': 'Wyróżnić można tylko opublikowany wpis.'})
+    if post.featured == featured:
+        raise ValidationError({'detail': 'Ten wpis już jest w tym stanie.'})
+    post.featured = featured
+    post.save(update_fields=['featured'])
+    return record('feature' if featured else 'unfeature', actor, post=post,
+                  previous_status=post.status)

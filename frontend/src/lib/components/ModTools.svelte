@@ -9,8 +9,12 @@
 	import { dialog } from '$lib/dialog.svelte';
 	import type { ModerationState } from '$lib/types';
 
-	let { kind, id, status, onChanged }: {
-		kind: 'post' | 'comment'; id: string | number; status: ModerationState; onChanged: () => void;
+	let { kind, id, status, featured = null, onChanged }: {
+		kind: 'post' | 'comment'; id: string | number; status: ModerationState;
+		/** Posts only, and only when the caller knows the current state — null hides the
+		 * pin button entirely rather than guessing and drawing the wrong label. */
+		featured?: boolean | null;
+		onChanged: () => void;
 	} = $props();
 	let busy = $state(false);
 	let error = $state<string | null>(null);
@@ -46,6 +50,18 @@
 		});
 		if (reason) await send('nuke', reason);
 	}
+	async function togglePin() {
+		// No confirm dialog: pinning is reversible with the same click, changes nothing
+		// about who can read what, and the dialog exists for actions that take content
+		// away from people. Asking here would train people to dismiss it everywhere.
+		busy = true; error = null;
+		try {
+			await api.post(`${base}/feature/`, { featured: !featured });
+			onChanged();
+		} catch (e) { error = e instanceof ApiError ? e.message : String(e); }
+		busy = false;
+	}
+
 	async function escalate() {
 		const reason = await dialog.ask({
 			title: '🚨 Zgłoszenie do NASK (Dyżurnet.pl)', danger: true,
@@ -66,6 +82,13 @@
 	{:else if auth.isStaff}
 		<button type="button" class="btn btn--sm" disabled={busy} onclick={restore}>Przywróć (administracja)</button>
 	{/if}
+	{#if kind === 'post' && featured !== null}
+		<button type="button" class="btn btn--sm" class:pinned={featured} disabled={busy}
+			onclick={togglePin}
+			title={featured ? 'Zdejmij wpis ze strony głównej' : 'Pokaż wpis w pasku wyróżnionych na stronie głównej'}>
+			{featured ? '📌 Odepnij' : '📌 Przypnij'}
+		</button>
+	{/if}
 	<span class="sep" aria-hidden="true">·</span>
 	<button type="button" class="btn btn--sm nask" disabled={busy} onclick={escalate}
 		title="Treść nielegalna — zgłoszenie do NASK, decyduje head-admin">🚨 Zgłoś do NASK</button>
@@ -76,6 +99,7 @@
 	.modtools { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; }
 	.err { color: #b00020; font-size: 11px; }
 	.sep { color: var(--muted); padding: 0 2px; }
+	.pinned { background: #fff8e1; border-color: #c89a00; color: #6b5200; }
 	.nask { background: #fff; color: #7a2f02; border: 1px dashed #7a2f02; }
 	.nask:hover { background: #fff0f0; }
 </style>
