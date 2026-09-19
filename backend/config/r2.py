@@ -40,9 +40,21 @@ from django.conf import settings
 
 logger = logging.getLogger('security')
 
-# Prefixes inside the one bucket. `public/` is what the site serves and what Cloudflare is
-# allowed to cache; `held/` is where an escalated or nuked object is moved so that every
-# URL that was ever handed out stops resolving (quarantine.py's job, for R2-backed files).
+# `public/` is what the site serves and what Cloudflare is allowed to cache; `held/` is
+# where an escalated or nuked object goes so that every URL ever handed out stops
+# resolving (quarantine.py's job, for R2-backed files).
+#
+# THE HELD OBJECTS BELONG IN A DIFFERENT BUCKET, and that is not a refinement. An R2
+# custom domain publishes the WHOLE bucket, so with one bucket `pliki.fuw.lol/held/<key>`
+# is as public as `pliki.fuw.lol/public/<key>` — and since the old code derived the held
+# key by swapping the prefix, anyone who had kept an attachment's URL could fetch it after
+# it was quarantined by editing one word. That is exactly the reader quarantine exists to
+# stop, and it was measured against the live bucket (HTTP 200) rather than reasoned about.
+#
+# So: R2_QUARANTINE_BUCKET is a private bucket with no custom domain. Unset, this falls
+# back to the held/ prefix in the same bucket and says so in the security log every time —
+# the fallback keeps escalation working on a half-configured deployment, because refusing
+# to quarantine is worse than quarantining imperfectly, but it is never silent.
 PUBLIC_PREFIX = 'public/'
 HELD_PREFIX = 'held/'
 
@@ -103,6 +115,20 @@ def bucket() -> str:
     return getattr(settings, 'R2_BUCKET', '')
 
 
+def quarantine_bucket() -> str:
+    """The private bucket held objects live in, or '' when none is configured."""
+    return getattr(settings, 'R2_QUARANTINE_BUCKET', '') or ''
+
+
+def bucket_for(key: str) -> str:
+    """Which bucket a key lives in. Every operation below routes through this, so a held
+    object is read, previewed and deleted in the right place without any caller having to
+    know there are two buckets."""
+    if is_held(key) and quarantine_bucket():
+        return quarantine_bucket()
+    return bucket()
+
+
 # --- keys ------------------------------------------------------------------------------
 
 def new_key(original_name: str) -> str:
@@ -115,7 +141,20 @@ def new_key(original_name: str) -> str:
 
 
 def held_key(key: str) -> str:
-    return key.replace(PUBLIC_PREFIX, HELD_PREFIX, 1) if key.startswith(PUBLIC_PREFIX) else key
+    """A NEW random name under `held/`, not the public key with its prefix rewritten.
+
+    Renaming matters even with a separate bucket, and matters enormously without one: a
+    derivable held key means the quarantined object's address is known to everybody who
+    ever saw the public one. The extension is kept so a head-admin's preview still renders."""
+    ext = key.rsplit('.', 1)[-1] if '.' in key.rsplit('/', 1)[-1] else 'bin'
+    return f'{HELD_PREFIX}{uuid.uuid4().hex}.{ext}'
+
+
+def public_key(key: str) -> str:
+    """The reverse, for a release: also a fresh name, because the old public URL may sit
+    in somebody's cache or history and should not come back to life."""
+    ext = key.rsplit('.', 1)[-1] if '.' in key.rsplit('/', 1)[-1] else 'bin'
+    return f'{PUBLIC_PREFIX}attachments/{uuid.uuid4().hex}.{ext}'
 
 
 def is_held(key: str) -> bool:
@@ -169,7 +208,7 @@ def presign_get(key: str, *, ttl: int = PREVIEW_TTL_SECONDS, filename: str = '')
     it past that. The link is a bearer capability: anyone holding it can fetch the object
     until it expires, which is the reason it is minutes rather than hours."""
     ttl = max(30, min(int(ttl), PREVIEW_TTL_SECONDS))
-    params = {'Bucket': bucket(), 'Key': key}
+    params = {'Bucket': bucket_for(key), 'Key': key}
     if filename:
         params['ResponseContentDisposition'] = f'attachment; filename="{os.path.basename(filename)}"'
     return client().generate_presigned_url('get_object', Params=params, ExpiresIn=ttl)
@@ -180,7 +219,7 @@ def head_object(key: str) -> dict:
     of the checksum we signed, or '' if the object carries none. Returns {} if the key does
     not exist, which is how the upload-completion check tells "never uploaded" from "there"."""
     try:
-        r = client().head_object(Bucket=bucket(), Key=key, ChecksumMode='ENABLED')
+        r = client().head_object(Bucket=bucket_for(key), Key=key, ChecksumMode='ENABLED')
     except Exception as exc:  # botocore raises ClientError for 404 as well
         if _is_not_found(exc):
             return {}
@@ -201,10 +240,14 @@ def move_to_held(key: str) -> str:
     if is_held(key):
         return key
     dest = held_key(key)
+    target = quarantine_bucket() or bucket()
+    if not quarantine_bucket():
+        logger.error('r2.held NO QUARANTINE BUCKET — %s stays in the publicly served '
+                     'bucket under a random name; set FUWLOL_R2_QUARANTINE_BUCKET', dest)
     c = client()
-    c.copy_object(Bucket=bucket(), Key=dest, CopySource={'Bucket': bucket(), 'Key': key})
+    c.copy_object(Bucket=target, Key=dest, CopySource={'Bucket': bucket(), 'Key': key})
     c.delete_object(Bucket=bucket(), Key=key)
-    logger.info('r2.held key=%s -> %s', key, dest)
+    logger.info('r2.held %s/%s -> %s/%s', bucket(), key, target, dest)
     return dest
 
 
@@ -212,10 +255,12 @@ def move_to_public(key: str) -> str:
     """The reverse, for a declined escalation or an un-nuke."""
     if not is_held(key):
         return key
-    dest = key.replace(HELD_PREFIX, PUBLIC_PREFIX, 1)
+    dest = public_key(key)
+    src = bucket_for(key)
     c = client()
-    c.copy_object(Bucket=bucket(), Key=dest, CopySource={'Bucket': bucket(), 'Key': key})
-    c.delete_object(Bucket=bucket(), Key=key)
+    c.copy_object(Bucket=bucket(), Key=dest, CopySource={'Bucket': src, 'Key': key})
+    c.delete_object(Bucket=src, Key=key)
+    logger.info('r2.released %s/%s -> %s/%s', src, key, bucket(), dest)
     return dest
 
 
@@ -224,8 +269,8 @@ def delete_object(key: str) -> None:
     copy, or this is a lie — `.env.example` says so where somebody creating the bucket will
     read it. Raises on failure; a shred that cannot prove the delete happened must not be
     recorded as one."""
-    client().delete_object(Bucket=bucket(), Key=key)
-    logger.warning('r2.deleted key=%s', key)
+    client().delete_object(Bucket=bucket_for(key), Key=key)
+    logger.warning('r2.deleted bucket=%s key=%s', bucket_for(key), key)
 
 
 def exists(key: str) -> bool:

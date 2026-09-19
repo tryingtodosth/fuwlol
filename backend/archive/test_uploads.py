@@ -110,7 +110,7 @@ class ClaimTests(APITestCase):
         self.data = png_bytes()
         self.sha = hashlib.sha256(self.data).hexdigest()
         self.key = 'public/attachments/abc123.png'
-        self.fake.put_object('x', self.key, self.data, 'image/png')
+        self.fake.put_object('fuwlol-test', self.key, self.data, 'image/png')
 
     def test_a_claimed_upload_becomes_an_attachment_with_a_verified_hash(self):
         claim_uploads(self.post, [{'key': self.key, 'filename': 'mem.png', 'sha256': self.sha}])
@@ -145,7 +145,7 @@ class ClaimTests(APITestCase):
         that never passed through Django: a .png whose bytes are not a PNG is refused."""
         from rest_framework.exceptions import ValidationError
         key = 'public/attachments/klamstwo.png'
-        self.fake.put_object('x', key, b'MZ\x90\x00to jest plik wykonywalny', 'image/png')
+        self.fake.put_object('fuwlol-test', key, b'MZ\x90\x00to jest plik wykonywalny', 'image/png')
         with self.assertRaises(ValidationError):
             claim_uploads(self.post, [{'key': key, 'filename': 'klamstwo.png',
                                        'sha256': hashlib.sha256(b'MZ\x90\x00to jest plik wykonywalny').hexdigest()}])
@@ -161,7 +161,7 @@ class ClaimTests(APITestCase):
         img.save(out, format='JPEG', exif=Image.Exif().tobytes())
         original = out.getvalue()
         key = 'public/attachments/zdjecie.jpg'
-        self.fake.put_object('x', key, original, 'image/jpeg')
+        self.fake.put_object('fuwlol-test', key, original, 'image/jpeg')
 
         claim_uploads(self.post, [{'key': key, 'filename': 'zdjecie.jpg',
                                    'sha256': hashlib.sha256(original).hexdigest()}])

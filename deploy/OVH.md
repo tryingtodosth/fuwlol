@@ -80,6 +80,11 @@ gamble that.
    see DESIGN.md "The two takedowns"). Add a custom domain `pliki.fuw.lol` for the public
    prefix. Create an API token: Object Read & Write, scoped to this bucket.
 
+   **And a second bucket, `fuwlol-quarantine`, with NO custom domain.** A custom domain
+   publishes the whole bucket, so an escalated attachment moved to a `held/` prefix in
+   the public bucket is still served — measured, not assumed: the held URL answered
+   HTTP 200. The token needs access to both buckets.
+
 4. **Brevo.** Verify `fuw.lol`, add their SPF and DKIM records, create an SMTP key.
 
 5. **GitHub → Settings → Secrets and variables → Actions:** `DEPLOY_SSH_KEY`,

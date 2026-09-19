@@ -31,7 +31,8 @@ from .tests import Base
 
 R2_SETTINGS = dict(R2_BUCKET='fuwlol-test', R2_ENDPOINT_URL='https://example.r2.cloudflarestorage.com',
                    R2_ACCESS_KEY_ID='key', R2_SECRET_ACCESS_KEY='secret',
-                   R2_PUBLIC_BASE_URL='https://pliki.fuw.lol')
+                   R2_PUBLIC_BASE_URL='https://pliki.fuw.lol',
+                   R2_QUARANTINE_BUCKET='fuwlol-test-quarantine')
 
 
 class NotFound(Exception):
@@ -51,13 +52,15 @@ class FakeR2:
     def put_object(self, Bucket, Key, Body, ContentType='', **kw):
         import hashlib
         data = Body if isinstance(Body, bytes) else Body.read()
-        self.objects[Key] = {'body': data, 'content_type': ContentType,
+        self.objects[Key] = {'body': data, 'content_type': ContentType, 'bucket': Bucket,
                              'sha256': hashlib.sha256(data).hexdigest()}
         return {}
 
     def head_object(self, Bucket, Key, **kw):
         o = self.objects.get(Key)
-        if o is None:
+        # The bucket is checked, not ignored: a double that answers for any bucket would
+        # hide a routing bug, and routing is the whole point of the quarantine bucket.
+        if o is None or o['bucket'] != Bucket:
             raise NotFound()
         import base64
         import binascii
@@ -66,6 +69,8 @@ class FakeR2:
 
     def get_object(self, Bucket, Key, Range=None, **kw):
         o = self.objects[Key]
+        if o['bucket'] != Bucket:
+            raise NotFound()
         body = o['body']
         if Range:
             end = int(Range.split('-')[1]) + 1
@@ -73,15 +78,24 @@ class FakeR2:
         return {'Body': io.BytesIO(body)}
 
     def copy_object(self, Bucket, Key, CopySource, **kw):
-        self.objects[Key] = dict(self.objects[CopySource['Key']])
+        src = self.objects[CopySource['Key']]
+        if src['bucket'] != CopySource['Bucket']:
+            raise NotFound()
+        self.objects[Key] = dict(src, bucket=Bucket)
         return {}
 
     def delete_object(self, Bucket, Key, **kw):
         if self.fail_delete:
             raise RuntimeError('R2 niedostępne')
+        o = self.objects.get(Key)
+        if o is not None and o['bucket'] != Bucket:
+            raise NotFound()
         self.deleted.append(Key)
         self.objects.pop(Key, None)
         return {}
+
+    def bucket_of(self, key):
+        return self.objects[key]['bucket']
 
     def generate_presigned_url(self, op, Params, ExpiresIn):
         return f'https://example.r2/{Params["Key"]}?op={op}&exp={ExpiresIn}'
@@ -164,12 +178,37 @@ class NobodyElseCanSeeItTests(R2Base):
         self.assertEqual(self.client.get('/api/moderation/escalations/').status_code, 200)
         self.assertFalse(second.is_superuser)
 
-    def test_the_object_leaves_the_public_prefix(self):
+    def test_the_object_leaves_the_public_bucket_entirely(self):
+        """An R2 custom domain publishes the WHOLE bucket, so moving an object to a
+        `held/` prefix inside the same bucket hides it from nobody. Measured against the
+        real bucket before this was fixed: the held URL answered HTTP 200."""
         self.escalate()
         self.att.refresh_from_db()
         self.assertTrue(self.att.storage_key.startswith('held/'))
-        self.assertNotIn(self.key, self.fake.objects)
+        self.assertNotIn(self.key, self.fake.objects)            # gone from where it was
+        self.assertEqual(self.fake.bucket_of(self.att.storage_key), 'fuwlol-test-quarantine')
         self.assertEqual(self.att.public_url, '')
+
+    def test_the_held_key_cannot_be_derived_from_the_public_one(self):
+        """The old code swapped the prefix, so anyone who had kept an attachment's URL
+        could reach the quarantined object by editing one word of it."""
+        self.escalate()
+        self.att.refresh_from_db()
+        uuid_part = self.key.rsplit('/', 1)[-1]
+        self.assertNotIn(uuid_part, self.att.storage_key)
+        self.assertNotEqual(self.att.storage_key, self.key.replace('public/', 'held/', 1))
+
+    def test_a_release_gives_the_object_a_new_public_name(self):
+        """Not the name it had before: the old URL may sit in a cache or somebody's
+        history, and releasing content should not resurrect an address that was handed
+        out while the content was under review."""
+        esc = self.escalate()
+        old_key = self.key
+        decide_escalation(esc, self.superuser, 'decline')
+        self.att.refresh_from_db()
+        self.assertTrue(self.att.storage_key.startswith('public/'))
+        self.assertNotEqual(self.att.storage_key, old_key)
+        self.assertEqual(self.fake.bucket_of(self.att.storage_key), 'fuwlol-test')
 
     def test_a_decline_puts_everything_back(self):
         esc = self.escalate()
@@ -179,6 +218,7 @@ class NobodyElseCanSeeItTests(R2Base):
         self.assertEqual(self.post.status, 'published')
         self.assertTrue(self.att.storage_key.startswith('public/'))
         self.assertTrue(Post.objects.filter(pk=self.post.pk).exists())
+        self.assertTrue(self.att.public_url.startswith('https://pliki.fuw.lol/'))
 
 
 class PurgeRefusalTests(R2Base):
@@ -327,13 +367,16 @@ class FailSafeTests(R2Base):
         esc.refresh_from_db()
         self.assertEqual(esc.status, 'purged')
 
-    @override_settings(R2_BUCKET='', R2_ENDPOINT_URL='')
     def test_an_unconfigured_bucket_refuses_rather_than_pretending(self):
+        """R2 goes away between the escalation and the purge — a plausible order, and the
+        only one worth testing: breaking it BEFORE the escalation would be testing a
+        deployment that could never have stored the file in the first place."""
         esc = self.approved()
-        r2.set_client_for_tests(None)
         self.as_(self.superuser)
-        r = self.client.post(f'/api/moderation/escalations/{esc.pk}/purge/',
-                             {'confirmed_dispatch': True}, format='json')
+        with override_settings(R2_BUCKET='', R2_ENDPOINT_URL=''):
+            r2.set_client_for_tests(None)
+            r = self.client.post(f'/api/moderation/escalations/{esc.pk}/purge/',
+                                 {'confirmed_dispatch': True}, format='json')
         self.assertEqual(r.status_code, 409)
         esc.refresh_from_db()
         self.assertEqual(esc.status, 'approved')

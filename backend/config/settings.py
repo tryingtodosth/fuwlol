@@ -191,6 +191,10 @@ R2_ACCESS_KEY_ID = os.environ.get('FUWLOL_R2_ACCESS_KEY_ID', '')
 R2_SECRET_ACCESS_KEY = os.environ.get('FUWLOL_R2_SECRET_ACCESS_KEY', '')
 # The hostname Cloudflare serves the public prefix from (a custom domain on the bucket).
 R2_PUBLIC_BASE_URL = os.environ.get('FUWLOL_R2_PUBLIC_BASE_URL', '').rstrip('/')
+# A SEPARATE, PRIVATE bucket for quarantined objects — no custom domain, no public access.
+# An R2 custom domain serves the whole bucket, so a quarantined object left in the public
+# one stays fetchable by anyone who knows its key. See config/r2.py.
+R2_QUARANTINE_BUCKET = os.environ.get('FUWLOL_R2_QUARANTINE_BUCKET', '')
 
 # Cache purge for a quarantined object (escalation/cdn.py). Without these an escalation
 # still hides the content everywhere this origin controls, and logs that the edge copy was
