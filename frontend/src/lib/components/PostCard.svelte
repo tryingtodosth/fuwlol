@@ -50,8 +50,15 @@
 				· {yearLabel(post)}
 				{#if post.people.length}
 					·
-					{#each post.people as p, i (p.slug)}<a href="/ludzie/{p.slug}">{p.name}</a>{#if i < post.people.length - 1},
-						{/if}{/each}
+					{#each post.people as p, i (p.slug)}<a href="/ludzie/{p.slug}">{p.name}</a>{#if i < post.people.length - 1}{', '}{/if}{/each}
+				{/if}
+				{#if post.subjects?.length}
+					·
+					<!-- `{', '}` rather than a comma typed into the markup: Svelte trims the
+					     whitespace that follows one, and „Mech.,MK” is not a list. -->
+					{#each post.subjects as s, i (s.slug)}<a href="/przedmioty/{s.slug}" title={s.name}
+						>{s.short || s.name}</a
+						>{#if i < post.subjects.length - 1}{', '}{/if}{/each}
 				{/if}
 				{#if reactions}· {reactions} reakcji{/if}
 				{#if post.comment_count}· {post.comment_count} kom.{/if}

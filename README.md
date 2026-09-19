@@ -26,7 +26,9 @@ Porty zajęte? `FUWLOL_CORS_ORIGINS` + `frontend/.env` (`PUBLIC_API_BASE_URL`) s
   (edytor w stylu Overleafa: źródło z numerami linii, podgląd kompilowany w przeglądarce,
   panel błędów, lista plików z wstawianiem `\includegraphics`). Do 6 plików na wpis
   (obrazy, PDF, audio, wideo, `.txt`/`.tex`, 25 MB). Pliki są sprawdzane po zawartości,
-  JPEG/PNG tracą metadane (GPS z telefonu). Nazwa pliku jest jego odnośnikiem w treści.
+  JPEG/PNG tracą metadane (GPS z telefonu). Nazwa pliku jest jego odnośnikiem w treści. Osoby, przedmioty i tagi
+  wybiera się w trzech podpowiadajkach; osobę, której nie ma w spisie, dodaje się wpisując jej nazwisko — pojawi
+  się w `/ludzie`, gdy wpis zostanie opublikowany (moderator widzi ją na karcie wpisu jako NOWĄ).
 - **Moderacja**: wpis czeka na moderatora (staff publikuje od ręki); kolejka w `/moderacja`
   i w panelu Django; zgłoszenia (także anonimowe: „dotyczy mnie, proszę usunąć”) — z e-mailem i
   oświadczeniem o dobrej wierze są formalnym zawiadomieniem w rozumieniu art. 16 DSA i tak są
@@ -36,11 +38,22 @@ Porty zajęte? `FUWLOL_CORS_ORIGINS` + `frontend/.env` (`PUBLIC_API_BASE_URL`) s
   zawiesiłaby przeglądarkę każdego, kto otworzy wpis.
 - **Społeczność**: reakcje (lol / klasyk / wow / cringe), komentarze wątkowe — też tekst
   lub LaTeX, z obrazami.
-- **Przeglądanie**: kategorie, osoby (postacie folkloru), tagi, oś czasu (lata z niepewnością:
+- **Przeglądanie**: kategorie, **osoby** (`/ludzie` — spis jak na fuw.edu.pl: tytuł, nazwisko, litera,
+  a zamiast pokoju i telefonu **ksywki**, czyli alternatywne tagi: wpis otagowany ksywką jest wpisem tej
+  osoby; profil jak na stronie wydziału, z sylwetką zastępczą albo zdjęciem wybranym w głosowaniu),
+  **przedmioty** (`/przedmioty` — zajęcia z programu studiów Wydziału, od „Fizyki elementarnej” po „Kwantową
+  teorię pola”; brakujący przedmiot dopisuje się przy wpisie), tagi, oś czasu (lata z niepewnością:
   dokładnie / około / dekada), szukanie (polskie znaki i wielkość liter nie mają znaczenia; wzory są
   kanonizowane, więc `x^2` znajduje `x^{2}`, a `\frac` znajduje `\dfrac`), losowy wpis, sygnatury `FUW-0001`.
 - **Czat** (`/czat`): stary shoutbox — pisze każdy, także bez konta; linki i wzory tak, obrazki
   nie; 2048 znaków; długie wiadomości zwijają się po 100 znakach; kanał RSS (`/api/board/rss/`).
+- **Zgoda na wizerunek** (`/ludzie/zgoda`): osoba, której dotyczą wpisy, potwierdza ze swojej skrzynki jedną
+  z trzech opcji — zdjęcia mogą być / wzmianki tak, zdjęć nie / nie chcę być w archiwum. Prośby o ukrycie
+  z adresu uczelnianego działają od razu, zgoda na zdjęcia dopiero po sprawdzeniu przez administrację
+  (`/moderacja/zgody`); zatwierdzony wniosek zostaje jako dowód zgody (art. 81 pr. aut., art. 7 RODO),
+  cofnięcie idzie jednym linkiem na tę samą skrzynkę. Odznaka ✓ przy nazwisku to właśnie to.
+- **Portrety**: przy potwierdzonej zgodzie każdy zalogowany może dodać zdjęcie osoby, a zdjęcie profilowe
+  wybiera głosowanie (jeden głos na osobę, można przenieść); kolejka moderacji w `/moderacja/portrety`.
 - **Zaufani użytkownicy**: potwierdzenie adresu w domenie FUW/UW/PAN (`/konto`) daje wyższe
   uprawnienia — wpisy bez kolejki, ukrywanie treści jednym kliknięciem (trafiają na **tablicę
   moderacji** `/tablica`, widoczną dla wszystkich zaufanych) i opcja nuklearna dla treści
@@ -65,6 +78,7 @@ Porty zajęte? `FUWLOL_CORS_ORIGINS` + `frontend/.env` (`PUBLIC_API_BASE_URL`) s
 ```
 backend/   config/ (settings, urls, middleware — adres za proxy)  accounts/ (rejestracja, logowanie, zaufani)  archive/ (modele, API, walidacja plików, wayback, seed_demo, testy)
            board/ (czat, zgłoszenia, reputacja)  escalation/ (eskalacja do NASK: dowody, kwarantanna plików, widoczność, mixin panelu Django)
+           consent/ (zgoda na wizerunek: wnioski osób, kolejka, dowód zgody)  portraits/ (zdjęcia osób i głosowanie na zdjęcie profilowe)
 frontend/  src/lib/{api,types,auth}  src/lib/render/{markdown,latex,media}  src/lib/components/{editor,timemachine,…}  src/routes/…
 deploy/    HETZNER.md — Hetzner + Coolify + Cloudflare; Dockerfiles w backend/ i frontend/, docker-compose.yml
 docs/      fuwlol-dokumentacja.drawio (+ .pdf, render/NN.png) — dokumentacja techniczna po polsku z prawdziwymi zrzutami,

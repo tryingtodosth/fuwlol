@@ -6,7 +6,9 @@
 // this is how the duplicated featured posts and the grey phone placeholders were found.
 import { chromium } from 'playwright-core';
 import fs from 'node:fs';
-const FRONT = 'http://localhost:5173', API = 'http://localhost:8000/api';
+// E2E_FRONT / E2E_API override the defaults — on a machine where :5173/:8000 belong to another project
+// (it happened: the survey photographed somebody else's 404 page) run fuw.lol on other ports and say so.
+const FRONT = process.env.E2E_FRONT || 'http://localhost:5173', API = process.env.E2E_API || 'http://localhost:8000/api';
 const OUT = process.argv[2] || '/tmp/fuwlol-survey';
 fs.mkdirSync(OUT, { recursive: true });
 const errors = [];
@@ -23,13 +25,16 @@ const people = await (await fetch(`${API}/people/`)).json();
 const person = (people.results || people)[0].slug;
 const browser = await chromium.launch();
 const pages = {
-  anon: ['/', '/przegladaj', `/przegladaj?category=legendarne-zadania`, '/os-czasu', '/ludzie', `/ludzie/${person}`, `/wpis/${slug}`, `/wpis/${latex}`, '/czat', '/o-archiwum', '/logowanie', '/rejestracja', '/losowe', '/dodaj', '/moderacja'],
-  student: ['/', `/wpis/${slug}`, '/dodaj', '/moje', '/konto', '/czat'],
-  doktorant: ['/', `/wpis/${slug}`, '/tablica', '/konto', '/czat', '/moderacja'],
-  dziekan: ['/', `/wpis/${slug}`, '/moderacja', '/tablica', '/czat', '/konto', `/edytuj/${slug}`],
+  anon: ['/', '/przegladaj', `/przegladaj?category=legendarne-zadania`, '/os-czasu', '/ludzie', `/ludzie/${person}`, '/ludzie/zgoda', '/przedmioty', `/wpis/${slug}`, `/wpis/${latex}`, '/czat', '/o-archiwum', '/logowanie', '/rejestracja', '/losowe', '/dodaj', '/moderacja'],
+  student: ['/', `/wpis/${slug}`, `/ludzie/${person}`, '/dodaj', '/moje', '/konto', '/czat'],
+  doktorant: ['/', `/wpis/${slug}`, `/ludzie/${person}`, '/tablica', '/moderacja/portrety', '/konto', '/czat', '/moderacja'],
+  dziekan: ['/', `/wpis/${slug}`, '/moderacja', '/moderacja/portrety', '/moderacja/zgody', '/tablica', '/czat', '/konto', `/edytuj/${slug}`],
 };
+// the plain demo account is `claude-slop` since the seed started naming its author honestly;
+// the role keeps its old name so the screenshot filenames stay comparable across runs
+const LOGIN = { student: 'claude-slop', doktorant: 'doktorant', dziekan: 'dziekan' };
 for (const [role, urls] of Object.entries(pages)) {
-  const tok = role === 'anon' ? null : await token(role);
+  const tok = role === 'anon' ? null : await token(LOGIN[role] || role);
   for (const vp of [{ name: 'desk', width: 1280, height: 900 }, { name: 'phone', width: 390, height: 844 }]) {
     if (vp.name === 'phone' && role !== 'anon') continue; // phone only for anonymous pages
     const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, locale: 'pl-PL', deviceScaleFactor: vp.name === 'phone' ? 2 : 1 });

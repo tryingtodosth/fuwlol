@@ -102,3 +102,53 @@ button:disabled { opacity: .55; cursor: default; }
 	.item__thumb { flex-basis: auto; }
 	.item__thumb img { width: 100%; height: auto; max-height: 220px; }
 }
+
+/* /ludzie — the people directory and the profile, copied from fuw.edu.pl/osoby-fuw.html on
+   purpose: the breadcrumb, the orange-barred h1, the alphabet strip, the search form, the
+   `table.employers` with a title column and alternating rows, and the `single_record` profile
+   table with a 130 px photo. Measured from the live site (Sept 2026). */
+.osoby .mod_breadcrumb { margin: 0 0 4px; padding: 0 3px 7px; font-size: 12px; }
+.osoby .mod_breadcrumb a { color: #5e6a94; }
+.osoby .mod_breadcrumb a:hover { color: #858fb3; }
+.osoby .mod_breadcrumb .active { color: var(--text); }
+.osoby h1.ce_headline { margin: 12px 0; padding: 0 0 0 5px; border-left: 10px solid var(--orange); line-height: 1.3; font-weight: normal; font-size: 16px; color: var(--text); }
+.osoby .ce_text p { margin: 0 0 12px; text-align: justify; }
+.osoby .letters { text-align: center; font-size: 12px; margin: 0 0 10px; }
+.osoby .letters a { color: var(--rust); }
+.osoby .letters span { color: #aaa; }
+.osoby .list_search { margin: 0 0 14px; }
+.osoby .list_search .formbody { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.osoby .list_search select, .osoby .list_search input[type=text] { width: auto; font-size: 12px; padding: 2px 4px; border: 1px solid #999; color: var(--text); }
+.osoby .list_search input[type=text] { width: 180px; }
+.osoby .list_search input[type=submit] { font-size: 12px; padding: 3px 9px; }
+table.employers { width: 595px; max-width: 100%; font-size: 12px; border-collapse: collapse; }
+table.employers td { padding: 0 8px 0 0; vertical-align: top; }
+table.employers tr.head { background: #ddd; }
+table.employers tr.even { background: #eee; }
+table.employers tr.odd { background: #fff; }
+table.employers td.deg { text-align: right; width: 72px; white-space: nowrap; }
+table.employers td.nm { padding-left: 7px; width: 205px; }
+table.employers td.cnt { text-align: center; width: 48px; padding-right: 0; }
+table.employers a.letter { color: var(--text); text-decoration: none; }
+table.single_record { border-collapse: separate; border-spacing: 20px; margin: 0 -20px; }
+table.single_record table.single_record { border-spacing: 0; margin: 0; }
+table.single_record td.img { padding: 10px 0 0; vertical-align: bottom; width: 146px; }
+table.single_record td.img img, table.single_record td.img .nophoto { width: 130px; max-width: none; height: 130px; margin-right: 16px; display: block; object-fit: cover; }
+table.single_record td.img .nophoto { background: #eee; border: 1px solid var(--line); color: #999; font-size: 11px; display: flex; align-items: center; justify-content: center; text-align: center; }
+table.single_record td.name { font-size: 15px; font-weight: bold; color: #0a0a00; padding-top: 8px; }
+table.single_record td.header { padding: 0 0 10px; }
+table.single_record td.label { width: 100px; padding: 1px 8px 1px 0; vertical-align: top; white-space: nowrap; }
+table.single_record td.value { padding: 1px 0; }
+@media (max-width: 850px) {
+	table.employers { width: auto; }
+	table.employers td.nm { width: auto; }
+	.osoby .list_search input[type=text] { width: 140px; }
+}
+@media (max-width: 480px) {
+	/* the faculty keeps photo and details side by side on a phone; so do we — with a smaller
+	   photo and tighter spacing, because our value column carries sentences, not room numbers */
+	table.single_record { border-spacing: 10px; margin: 0 -10px; }
+	table.single_record td.img img, table.single_record td.img .nophoto { width: 100px; height: 100px; margin-right: 0; }
+	table.single_record > tbody > tr > td.img { vertical-align: top; padding-top: 4px; width: 100px; }
+	table.single_record td.label { width: 96px; white-space: normal; }
+}

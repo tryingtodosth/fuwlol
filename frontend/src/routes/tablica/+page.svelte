@@ -6,6 +6,8 @@
 	import { fmtDate } from '$lib/types';
 	import ModTools from '$lib/components/ModTools.svelte';
 	import PostBody from '$lib/components/PostBody.svelte';
+	import { loadPortraitQueue } from '$lib/portraits';
+	import { queueSize } from '$lib/queues';
 
 	// A nuked row for a non-staff reader is a STUB: no title/body. `title?: undefined` /
 	// `body?: undefined` make the stub distinguishable from the full row for TypeScript.
@@ -46,6 +48,15 @@
 		load();
 	});
 	onMount(() => { document.title = 'Tablica moderacji — fuw.lol'; });
+
+	// portraits waiting for a trusted decision live in their own queue (portraits app)
+	let portraitCount = $state<number | null>(null);
+	let askedPortraits = false; // plain let: once
+	$effect(() => {
+		if (!auth.ready || !allowed || askedPortraits) return;
+		askedPortraits = true;
+		loadPortraitQueue({ limit: 1 }).then((r) => (portraitCount = queueSize(r))).catch(() => (portraitCount = null));
+	});
 	function toggle(id: number) { const s = new Set(open); s.has(id) ? s.delete(id) : s.add(id); open = s; }
 	const when = (b: ModerationBlock) => (b.at ? fmtDate(b.at) : '');
 	function reload() { loadedFor = ''; load(); }
@@ -65,6 +76,8 @@
 			<p class="small">Tu leży wszystko, co zniknęło ze strony publicznej. Treści <strong>ukryte</strong> widzi każdy zaufany i może je
 				przywrócić. Treści po <strong>opcji nuklearnej</strong> (nielegalne, obrzydliwie obraźliwe) widzi tylko administracja — reszta
 				widzi jedynie, że coś takiego było, kto to zrobił i dlaczego.</p>
+			<p class="small">Osobna kolejka: <a href="/moderacja/portrety">Portrety osób{portraitCount == null ? '' : ` (${portraitCount})`}</a>
+				— zdjęcia czekające na publikację (osoba zgodziła się na wizerunek; zdjęcie i tak ogląda człowiek).</p>
 			<div class="row">
 				<label>Status
 					<select bind:value={status} onchange={() => (pageNo = 1)}>

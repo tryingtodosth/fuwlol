@@ -154,8 +154,20 @@
 						<tr>
 							<th scope="row">Osoby</th>
 							<td>
-								{#each post.people as p, i (p.slug)}<a href="/ludzie/{p.slug}">{p.name}</a>{#if i < post.people.length - 1},
-									{/if}{/each}
+								<!-- `{', '}` rather than a comma typed into the markup: Svelte trims
+								     the whitespace at the end of a block, so „A,B” came out unspaced. -->
+								{#each post.people as p, i (p.slug)}<a href="/ludzie/{p.slug}">{p.name}</a
+									>{#if i < post.people.length - 1}{', '}{/if}{/each}
+							</td>
+						</tr>
+					{/if}
+					{#if post.subjects?.length}
+						<tr>
+							<th scope="row">Przedmioty</th>
+							<td>
+								{#each post.subjects as s (s.slug)}
+									<a class="pill" href="/przegladaj?subject={s.slug}" title={s.short || undefined}>{s.name}</a>
+								{/each}
 							</td>
 						</tr>
 					{/if}

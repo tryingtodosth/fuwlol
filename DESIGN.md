@@ -17,7 +17,8 @@ black title, a 170 px thumbnail, justified text and a bold "| Więcej". Mobile: 
 recognition: a physics student sees the site and knows where they are.
 
 ## Data model (backend/archive/models.py)
-`Category` · `Person` (fictional in seeds; `is_listed` hides from the index) · `Tag` ·
+`Category` · `Person` (fictional in seeds; `is_listed` hides from the index; filed like the faculty
+directory — see "People" below) · `Tag` ·
 `Post` (`format` text|latex, `body`, fuzzy date = `year` + `year_precision` + `date_note`,
 `source_note`/`source_url`, `status` pending|published|rejected|hidden, `featured`, `views`,
 `catalog_no` = FUW-0001) · `Attachment` (file, `original_name`, `kind`) · `Reaction`
@@ -35,6 +36,127 @@ with `%PDF`, audio/video must carry their container signature; unknown extension
 refused; JPEG/PNG are re-saved without EXIF (GPS). GIF/WebP keep their bytes — a re-encode
 would kill animation, which is half of what a meme archive holds. No ClamAV here: OVH
 shared hosting has none; stated rather than faked.
+
+## People (/ludzie) — the faculty directory, copied on purpose
+`/ludzie` is `fuw.edu.pl/osoby-fuw.html` and `/ludzie/<slug>` is `osoby-fuw.html?show=…`, measured from
+the live site in September 2026: the breadcrumb, the orange-barred "Osoby", the alphabet strip
+(A…Ż, Ż its own letter), the search form, `table.employers` with a title column, a surname-filed name
+column and rows alternating odd/even straight through the letter rows; the profile's `single_record`
+table with the 130 px photo, the bold name with its title, the function in italics, the unit line and
+label/value rows. Where the faculty prints a room, a phone and an e-mail icon, we print **nicknames**
+and the number of posts; where it links USOSweb, we link the person's posts chronologically. The
+placeholders are the faculty's own silhouettes (`static/img/anonymous{ma,fe}bw.png`, picked by
+`Person.sex`), and a grey "Miejsce na foto" box when neither applies — the same three outcomes the
+faculty's page has.
+
+**Filing is a rule, not a collation** (`archive/people.py`). `split_degree` peels the title off a name
+("dr Kwant Niepewny" → `degree='dr'`), `derive_surname` takes the last word (editable — "Pani z
+portierni" files under P by hand), `sort_key_for` folds it so Łoś files next to Lis whatever SQLite
+thinks, and `letter` keeps the diacritic because the strip does. Migration 0007 filed every existing
+row the same way.
+
+**Nicknames are alternative tags.** `Person.aliases` is a many-to-many to ordinary `Tag` rows: a post
+tagged "Hamiltonianka" IS prof. Hamiltonian's post — on her page, in her count, in `?person=`. This is
+why the old bug ("no such person in the checkbox? put her in the tags" — and nothing ever promoted the
+tag) cannot recur: attaching the tag as an alias retroactively files every post that ever carried it,
+with no re-filing and no second copy. `person_posts_q` is the one definition of "whose post is whose";
+`annotate_people` counts distinct posts across both joins (a post both named and tagged counts once)
+and derives the years the archive covers. One nickname belongs to one person (409 otherwise); the
+trusted tier attaches and detaches them (`POST/DELETE /people/<slug>/aliases/…`), and a tag left with
+no owner and no posts is deleted with the alias.
+
+**Consent is the person's, not the uploader's.** `Person.image_consent` (`unknown | granted | refused |
+opted_out`) is what the person themself said about their image (art. 81 pr. aut.), written by the
+`consent` app's claims flow or by staff — never by a submitter, whose `rights_confirmed` remains their
+own declaration. `granted` draws the ✓ badge (`ConsentBadge.svelte`, explained at `/ludzie/zgoda`) and
+opens the `portraits` gallery; `refused` and `opted_out` tighten what may be published. Both apps hang
+off this one field so that revoking consent is a single write that every reader sees at once.
+
+## Przedmioty (/przedmioty) — the third filing axis
+A post is filed by category, by the people it is about, by free tags — and by the university course
+it happened on (`archive.Subject`: `slug`, `name`, `short`, `order`). Seeded in migration 0008 from the
+Faculty's own first- and second-cycle programmes (m.fuw.edu.pl, „Materiały dydaktyczne” for I/II/III
+rok, read September 2026): 35 rows ordered by the year they are usually sat in rather than
+alphabetically, because that is the order a physics student has them in their head.
+
+Its own model rather than a flagged `Tag`, because a free tag „mechanika” is forty spellings of
+itself. Not a `Person` either: no consent question, no opt-out, no directory that has to hide a
+proposal — which is why **anybody with an account may add one by naming it**, with no queue.
+De-duplication is `get_or_create` on the slug and deliberately nothing cleverer: fuzzy matching would
+collapse „Mechanika klasyczna” and „Mechanika klasyczna R”, which the Faculty runs as two different
+courses. Real duplicates are a moderator's merge in the admin (`SubjectAdmin.merge`). Slugs fold
+through `search.normalize_text` first (`subjects.subject_slug`), because Django's `slugify` drops „ł”
+— „Fizyka ciała stałego” would otherwise file itself as `fizyka-ciaa-staego`. `/api/subjects/` lists a
+seeded row always (it is an *offer*) and a named row once it has a published post; `retrieve` does
+not narrow, so a shared link always opens.
+
+## Naming a person into existence
+The editor used to show checkboxes for the people who already existed and tell you „Brak osoby?
+Wpisz ją w tagach” — and nothing ever promoted such a tag to a `Person`, so /ludzie stood at the seed
+data from launch day. Now all three axes are one typeahead (`editor/TagPicker.svelte`, a real ARIA
+combobox: `aria-expanded`/`aria-controls`/`aria-activedescendant`, arrows, Enter, Escape, Backspace
+takes the last chip back), and typing a name that is not there offers to add it — a two-line
+mini-form for the title and the role, then a chip marked „nowa”.
+
+Four rules make that safe enough for an ordinary account to add a row to a public index of named
+human beings, all in `archive/people.py`:
+- **A typed name that already exists is REUSED**, matched on `Person.name_key` (the folded bare
+  name, filled at save). The third person to write about Anna Nowak lands on the same page as the
+  first, not on a twin that splits her posts in half.
+- **Visibility is derived, never toggled** (`visible_people`): a published post, or seeded/staff-made,
+  or proposed by you. A proposed person appears the instant the post naming them is published, is
+  visible meanwhile only to their proposer, and a rejected submission never leaves a stranger a
+  readable page about somebody.
+- **The refusals are not an oracle.** Unknown slug, unlisted person, and a name matching somebody who
+  opted out all get one sentence. An opted-out match is refused rather than reused: reusing would let
+  anybody undo an art. 81 opt-out by typing a name.
+- **The moderator sees what they are publishing.** `is_new` on the queue card, drawn as NOWA chips
+  with „usuń z wpisu” and „scal z…”, both an ordinary staff PATCH of the post's `people`.
+  `manage.py sweep_people` deletes proposals with no post of any status after 30 days.
+
+Caps: five new people per post, six subjects, 2–120 characters, no „@”, no URLs. Two of the three
+bugs in this feature were found only by driving it in a browser: the listbox reopening over the next
+field after a chip was taken (a `focus()` that fired `onfocus`), and Enter creating the very duplicate
+the picker exists to prevent when pressed before the previous query's results had settled.
+
+## Consent — the person's own say (backend/consent/)
+`Post.rights_confirmed` is the uploader's declaration. The person a post is about — usually with no
+account here — gets their own channel: **„Jesteś tą osobą?”** on their profile. They give an e-mail
+and one of three wishes, worded for the person: *zdjęcia ze mną mogą tu być* (`images_ok`), *wzmianki
+tak, zdjęć nie* (`no_images`), *nie chcę być w archiwum* (`no_mention`). A link goes to the mailbox
+(never the claimant's note — that is how relay spam is born); the click proves the mailbox
+(`verified`); staff — not the trusted tier, because confirming an identity is a different power from
+"hide fast" — see the claim in `/moderacja/zgody` with plausibility signals (institutional domain,
+surname in the local part, an existing account, earlier claims) and approve or reject. `PersonClaim`
+is one row per claim with one `status` (`sent | verified | approved | rejected | superseded |
+withdrawn`), the consent text version, and the requester's IP for the retention window — the
+approved row is the archive's *evidence of consent* (art. 7 ust. 1 RODO) and is never deleted; a
+change writes a new row and marks the old one `superseded`.
+
+**The asymmetry is the design.** A fraudulent `images_ok` is real harm; a fraudulent `no_images` only
+hides content until staff reject it. So the two tightening wishes apply **at verification already,
+when the mailbox is at a `TrustedDomain`** — everything else waits for staff — and `ConsentHide` rows
+record exactly which posts a claim hid and from which status, so a rejection (or a later loosening)
+reverts precisely those and nothing a moderator hid for other reasons. `no_images` hides the person's
+posts with an image attachment (through `person_posts_q`, aliases included, pending ones too — a
+pending post is public tomorrow); `no_mention` hides all of them and delists the person. Hidden, not
+deleted: a moderator still has to decide what a lawful version of each post looks like. The audit
+line says „na wniosek osoby, której wpis dotyczy” and never the address. Withdrawal is as easy as
+consent (art. 7 ust. 3 RODO): a settings link to the same mailbox changes the wish immediately, no
+second review — the mailbox is the identity. `/ludzie/zgoda` explains all of this to the person; the
+badge links there, because a badge nobody can look up is a rumour.
+
+## Portraits — the profile photo is elected (backend/portraits/)
+Once a person's `image_consent` is `granted`, logged-in users may upload photos of them (bytes judged
+by `archive/validators.py`, EXIF stripped, `sha256` of the stored bytes, the uploader's own rights
+declaration required) and vote: **one vote per user per person**, movable, toggleable; the published
+portrait with the most votes — tie → the older — is the profile photo, and the `/ludzie/<slug>` page
+swaps the faculty silhouette for it. Trusted uploads publish at once, everybody else's wait in
+`/moderacja/portrety`; every transition writes a `PortraitAction`. `visible_q` requires the person's
+consent to *still* be `granted` for everybody, staff included — withdrawing consent empties the
+gallery at the next request without deleting anything, which is what makes the consent switch a
+single write. Not built: an escalation path for a portrait, an R2 upload path, a per-photo report
+button (today: the person's own consent entry is the door).
 
 ## Rendering
 - Text = Markdown (marked) → DOMPurify → KaTeX auto-render for `$…$`. External images are
@@ -227,6 +349,22 @@ Hetzner Cloud (CX23) with Coolify, behind Cloudflare's proxy — see `deploy/HET
 containers from `docker-compose.yml`: Postgres, Django+gunicorn, nginx (static build, `/api`
 proxied, `/media` from a shared volume). All secrets and hosts come from `FUWLOL_*` variables;
 `FUWLOL_TRUST_PROXY` makes per-IP throttles see the real visitor behind the proxy.
+
+## Link previews (backend/share/)
+Every URL is served the same `200.html` and no scraper — Messenger, WhatsApp, Telegram, Slack,
+Google — runs JavaScript, so a shared `/wpis/…` used to preview as the bare site title. nginx now
+routes the scrapers (by User-Agent, `frontend/nginx.conf`) to Django, which renders `<title>`,
+`og:*` and `twitter:*` for the route from `share/previews.preview_for`. It asks the existing rules
+(`can_see_post(None, …)`, `visible_people(None)`, `person_posts_q`, `portraits.rules.current_portrait`)
+rather than restating them: a hidden, nuked or escalated post gets the generic site card and a 404,
+byte-identical to a slug that never existed — a leak here would outlive the takedown, because a
+preview is cached on somebody else's servers. Images are absolute (R2 as-is, `/media` prefixed with
+`FUWLOL_SITE_URL`); a person without a portrait gets a 1200×630 card with the faculty silhouette,
+because Facebook drops any image under 200×200 and the bug report was Messenger. Humans who reach
+`/share/…` are redirected to the real page. The splice-into-the-real-shell mode (`FUWLOL_SPA_INDEX`)
+is implemented and tested for the day the SPA and Django share a filesystem; today they are two
+containers. `/sitemap.xml` comes from the same app. After a deploy, already-shared links stay as
+Facebook cached them until re-scraped (developers.facebook.com/tools/debug) — `deploy/OVH.md`.
 
 ## Left open
 - No e-mail (password reset, notifications — a head-admin learns about an escalation only by

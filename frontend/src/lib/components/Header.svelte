@@ -128,6 +128,7 @@
 			</ul>
 		</li>
 		<li><a href="/ludzie">Ludzie</a></li>
+		<li><a href="/przedmioty">Przedmioty</a></li>
 		<li><a href="/os-czasu">Oś czasu</a></li>
 		<li><a href="/losowe">Losowy wpis</a></li>
 		<li><a href="/czat">Czat</a></li>

@@ -10,10 +10,12 @@
 	 * body should use. */
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { api, ApiError } from '$lib/api';
-	import type { Attachment, Category, Format, Person, Post } from '$lib/types';
+	import type { Attachment, Category, Format, Post } from '$lib/types';
 	import { renderMarkdown, typeset } from '$lib/render/markdown';
 	import { renderLatex } from '$lib/render/latex';
 	import { resolver, type MediaRef } from '$lib/render/media';
+	import TagPicker from './TagPicker.svelte';
+	import { type Chip, namePayload, peoplePayload, personChip, subjectChip, tagChip } from './chips';
 
 	let { initial = null, onSaved }: { initial?: Post | null; onSaved: (post: Post) => void } = $props();
 
@@ -31,7 +33,10 @@
 		'\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{graphicx}\n\\begin{document}\n\\section*{Tytuł}\nTreść…\n\\end{document}\n';
 
 	interface NewFile { id: number; file: File; name: string; caption: string; kind: Attachment['kind']; url: string }
-	interface Draft { t: string; c: string; f: Format; b: string; s: string; y: string; yp: string; dn: string; sn: string; su: string; ppl: string[]; tg: string; at: number }
+	/** The draft kept in localStorage. `ppl`/`sub`/`tg` are chip lists now; drafts written
+	 * before the pickers existed hold `ppl` as a list of slugs and `tg` as one comma-separated
+	 * string, and `chipsFrom` reads both so an unsaved post survives the upgrade. */
+	interface Draft { t: string; c: string; f: Format; b: string; s: string; y: string; yp: string; dn: string; sn: string; su: string; ppl: Chip[]; sub: Chip[]; tg: Chip[]; at: number }
 
 	/* ---------- form state ---------- */
 	let title = $state(seed?.title ?? '');
@@ -45,12 +50,11 @@
 	let sourceNote = $state(seed?.source_note ?? '');
 	let sourceUrl = $state(seed?.source_url ?? '');
 	let rightsOk = $state(!!seed); // an edit does not re-ask; a new post must declare
-	let peopleSel = $state<string[]>(seed?.people.map((p) => p.slug) ?? []);
-	let tagsText = $state(seed?.tags.map((t) => t.name).join(', ') ?? '');
+	let peopleChips = $state<Chip[]>(seed?.people.map(personChip) ?? []);
+	let subjectChips = $state<Chip[]>(seed?.subjects?.map(subjectChip) ?? []);
+	let tagChips = $state<Chip[]>(seed?.tags.map(tagChip) ?? []);
 
 	let categories = $state<Category[]>([]);
-	let people = $state<Person[]>([]);
-	let personFilter = $state('');
 	let metaError = $state<string | null>(null);
 
 	let savedAtt = $state<Attachment[]>(seed ? [...seed.attachments] : []);
@@ -97,17 +101,11 @@
 		...keptSaved.map((a) => ({ name: a.original_name, url: a.url, kind: a.kind })),
 		...newFiles.map((f) => ({ name: f.name, url: f.url, kind: f.kind }))
 	]);
-	const parsedTags = $derived(tagsText.split(',').map((t) => t.trim()).filter(Boolean));
-	const shownPeople = $derived(
-		personFilter.trim()
-			? people.filter((p) => (p.name + ' ' + p.role).toLowerCase().includes(personFilter.trim().toLowerCase()))
-			: people
-	);
 	const lineNumbers = $derived(Array.from({ length: body.split('\n').length }, (_, i) => i + 1));
 	const extras = $derived(mediaRefs.filter((r) => r.kind !== 'image').map((r) => r.name));
 	const texStatus = $derived(compiling ? 'busy' : latexError ? 'err' : latexHtml ? 'ok' : 'idle');
 	const draftJson = $derived(
-		JSON.stringify({ t: title, c: category, f: format, b: body, s: summary, y: yearText, yp: yearPrec, dn: dateNote, sn: sourceNote, su: sourceUrl, ppl: peopleSel, tg: tagsText })
+		JSON.stringify({ t: title, c: category, f: format, b: body, s: summary, y: yearText, yp: yearPrec, dn: dateNote, sn: sourceNote, su: sourceUrl, ppl: peopleChips, sub: subjectChips, tg: tagChips })
 	);
 
 	/* ---------- helpers ---------- */
@@ -344,7 +342,7 @@
 		const snap = draftJson;
 		if (seed || draftOffer !== null) return;
 		const d = JSON.parse(snap) as Draft;
-		if (!d.t.trim() && !d.b.trim() && !d.s.trim() && !d.tg.trim()) return;
+		if (!d.t.trim() && !d.b.trim() && !d.s.trim() && !d.tg.length && !d.ppl.length && !d.sub.length) return;
 		const timer = setTimeout(() => {
 			try {
 				localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...d, at: Date.now() }));
@@ -355,12 +353,26 @@
 		return () => clearTimeout(timer);
 	});
 
+	/** A draft field that may be chips (current), a list of slugs (`ppl`, pre-pickers) or one
+	 * comma-separated string (`tg`, pre-pickers). A bare string in `ppl` was a SLUG, so it
+	 * becomes a chip that still carries the slug — the name shown is the slug until it is
+	 * saved, which is ugly for one draft and correct, where inventing a person called
+	 * „kwant-niepewny” would be neither. */
+	function chipsFrom(v: unknown, asSlug = false): Chip[] {
+		if (typeof v === 'string') {
+			return v.split(',').map((x) => x.trim()).filter(Boolean).map((name) => ({ name }));
+		}
+		if (!Array.isArray(v)) return [];
+		return v
+			.map((x) => (typeof x === 'string' ? (asSlug ? { slug: x, name: x } : { name: x }) : (x as Chip)))
+			.filter((c) => c && typeof c.name === 'string' && c.name.trim().length > 0);
+	}
 	function restoreDraft() {
 		const d = draftOffer;
 		if (!d) return;
 		title = d.t; category = d.c; format = d.f; body = d.b; summary = d.s;
 		yearText = d.y; yearPrec = d.yp; dateNote = d.dn; sourceNote = d.sn; sourceUrl = d.su;
-		peopleSel = [...(d.ppl ?? [])]; tagsText = d.tg;
+		peopleChips = chipsFrom(d.ppl, true); subjectChips = chipsFrom(d.sub); tagChips = chipsFrom(d.tg);
 		draftOffer = null;
 	}
 	function discardDraft() {
@@ -408,9 +420,6 @@
 	}
 	function toggleSaved(id: number) {
 		removeIds = removeIds.includes(id) ? removeIds.filter((x) => x !== id) : [...removeIds, id];
-	}
-	function togglePerson(slug: string, on: boolean) {
-		peopleSel = on ? [...new Set([...peopleSel, slug])] : peopleSel.filter((s) => s !== slug);
 	}
 	function setFormat(f: Format) {
 		if (f === format) return;
@@ -474,8 +483,12 @@
 		fd.set('date_note', dateNote.trim());
 		fd.set('source_note', sourceNote.trim());
 		fd.set('source_url', normalizedUrl());
-		fd.set('people', peopleSel.join(','));
-		fd.set('tags', parsedTags.join(','));
+		// JSON, not a comma-separated list: `people` may carry an object for somebody who does
+		// not exist yet, and a comma is a legal character in a tag. archive/serializers.py
+		// `_items` reads both shapes, so an older client keeps working.
+		fd.set('people', JSON.stringify(peoplePayload(peopleChips)));
+		fd.set('subjects', JSON.stringify(namePayload(subjectChips)));
+		fd.set('tags', JSON.stringify(namePayload(tagChips)));
 		fd.set('rights_confirmed', rightsOk ? 'true' : 'false');
 		for (const f of newFiles) fd.append('files', f.file, f.name);
 		fd.set('captions', JSON.stringify(newFiles.map((f) => f.caption.trim().slice(0, 200))));
@@ -517,16 +530,15 @@
 				/* unreadable draft — ignore it */
 			}
 		}
+		// Only the categories are fetched up front now. People, subjects and tags are typed
+		// at, not scrolled through: the pickers ask the API per keystroke, which is also the
+		// only way a person the directory means to hide stays hidden — a full download
+		// filtered in the browser would suggest her anyway.
 		(async () => {
 			try {
-				const [c, p] = await Promise.all([api.get<Category[]>('/categories/'), api.get<Person[]>('/people/')]);
-				categories = c;
-				// a person on this post who is not on the public list must still stay ticked
-				const bySlug = new Map(p.map((x) => [x.slug, x]));
-				for (const x of seed?.people ?? []) if (!bySlug.has(x.slug)) bySlug.set(x.slug, x);
-				people = [...bySlug.values()].sort((a, b) => a.name.localeCompare(b.name, 'pl'));
+				categories = await api.get<Category[]>('/categories/');
 			} catch (e) {
-				metaError = e instanceof ApiError ? e.message : 'Nie udało się wczytać kategorii i osób.';
+				metaError = e instanceof ApiError ? e.message : 'Nie udało się wczytać kategorii.';
 			}
 		})();
 	});
@@ -590,29 +602,42 @@
 			<label for="ed-datenote">Notatka o dacie</label>
 			<input id="ed-datenote" type="text" maxlength="120" bind:value={dateNote} placeholder="np. semestr zimowy 2009, kolokwium II" />
 
-			<div class="lbl" id="ed-people-lbl">Osoby</div>
-			<div class="pick-box" role="group" aria-labelledby="ed-people-lbl">
-				{#if people.length > 8}
-					<input class="pick-filter" type="text" bind:value={personFilter} placeholder="Szukaj osoby…" aria-label="Szukaj osoby" />
-				{/if}
-				<div class="pick-list">
-					{#each shownPeople as p (p.slug)}
-						<label class="pick">
-							<input type="checkbox" checked={peopleSel.includes(p.slug)} onchange={(e) => togglePerson(p.slug, e.currentTarget.checked)} />
-							{p.name}{#if p.role}<span class="muted small"> — {p.role}</span>{/if}
-						</label>
-					{:else}
-						<p class="muted small nores">{people.length ? 'Nikt nie pasuje do szukanej frazy.' : 'Lista osób jest pusta.'}</p>
-					{/each}
-				</div>
-			</div>
-			<p class="help">Brak osoby? Wpisz ją w tagach. Osoby to postacie folkloru — zdjęcie prawdziwego wykładowcy bez jego zgody to naruszenie wizerunku (art. 81), niezależnie od tego, jak śmieszne.</p>
+			<label for="ed-people">Osoby</label>
+			<TagPicker
+				kind="people"
+				id="ed-people"
+				allowCreate
+				selected={peopleChips}
+				onchange={(c) => (peopleChips = c)}
+				placeholder="zacznij pisać nazwisko…"
+			/>
+			<p class="help">
+				Osoby z <span class="okmark">✓</span> potwierdziły zgodę na publikację zdjęć; w pozostałych przypadkach
+				potrzebujesz zgody (art. 81 pr. aut.) — <a href="/ludzie/zgoda" target="_blank">jak to działa</a>.
+				Kogoś brakuje? Wpisz i dodaj — pojawi się w spisie, gdy wpis zostanie opublikowany.
+			</p>
 
-			<label for="ed-tags">Tagi (po przecinku)</label>
-			<input id="ed-tags" type="text" bind:value={tagsText} placeholder="np. kolokwium, kreda, dziekanat" />
-			{#if parsedTags.length}
-				<div class="tagprev">{#each parsedTags as t, i (t + i)}<span class="pill">{t}</span>{/each}</div>
-			{/if}
+			<label for="ed-subjects">Przedmioty</label>
+			<TagPicker
+				kind="subjects"
+				id="ed-subjects"
+				allowCreate
+				selected={subjectChips}
+				onchange={(c) => (subjectChips = c)}
+				placeholder="np. Mechanika klasyczna, II Pracownia fizyczna…"
+			/>
+			<p class="help">Zajęcia, na których to się stało. Lista jest z programu studiów — brakującego przedmiotu po prostu dopisz.</p>
+
+			<label for="ed-tags">Tagi</label>
+			<TagPicker
+				kind="tags"
+				id="ed-tags"
+				allowCreate
+				selected={tagChips}
+				onchange={(c) => (tagChips = c)}
+				placeholder="np. kolokwium, kreda, dziekanat…"
+			/>
+			<p class="help">Wszystko inne: miejsce, rekwizyt, pora roku. Ksywka wykładowcy też — wpis otagowany ksywką trafia na stronę tej osoby.</p>
 
 			<div class="row">
 				<div>
@@ -862,15 +887,8 @@
 	.lbl { font-size: 12px; color: #333; margin: 10px 0 3px; font-weight: bold; }
 	.lbl--bar { margin: 0; font-weight: bold; }
 
-	/* people */
-	.pick-box { border: 1px solid #aaa; background: #fff; }
-	.pick-filter { border: 0; border-bottom: 1px solid var(--line); }
-	.pick-list { max-height: 132px; overflow: auto; padding: 4px 6px; }
-	.pick { display: block; margin: 0; padding: 1px 0; font-size: 12px; color: var(--text); cursor: pointer; }
-	.pick input { margin-right: 5px; }
-	.nores { margin: 2px 0; }
-
-	.tagprev { margin-top: 5px; }
+	/* the ✓ in the people help text, same green as the consent badge it explains */
+	.okmark { color: #0b5a2a; font-weight: bold; }
 
 	/* file tray */
 	.tray { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); }

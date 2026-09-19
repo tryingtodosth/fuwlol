@@ -10,13 +10,32 @@ export interface User {
 export type ModerationState = 'visible' | 'hidden' | 'nuked';
 export interface ModerationBlock { actor: string; reason: string; at: string | null; action?: string }
 export interface Category { slug: string; name: string; description: string; emoji: string; post_count: number }
-export interface Person { slug: string; name: string; role: string; bio: string; post_count: number }
+export type Sex = 'm' | 'f' | '';
+/** What the person THEMSELF said about their image — see ConsentBadge.svelte and /ludzie/zgoda. */
+export type ImageConsent = 'unknown' | 'granted' | 'refused' | 'opted_out';
+/** A nickname: an ordinary tag that makes a tagged post the person's post (archive/people.py). */
+export interface PersonAlias { slug: string; name: string }
+export interface Person {
+	slug: string; name: string; full_name: string; degree: string; surname: string; letter: string;
+	role: string; unit: string; bio: string; sex: Sex; image_consent: ImageConsent; aliases: PersonAlias[];
+	// from the directory/profile endpoints only — absent when a Person is embedded in a post
+	post_count?: number; year_min?: number | null; year_max?: number | null;
+	/** Moderation queue only (ModerationPostSerializer): this post's submitter named them,
+	 * and nothing published mentions them yet — so publishing is also what puts them in
+	 * /ludzie. Absent everywhere else. */
+	is_new?: boolean;
+}
 export interface Tag { slug: string; name: string; post_count: number }
+/** A university subject (*przedmiot*) — the third filing axis, next to tags and people.
+ * Mirrors archive/models.py::Subject and archive/serializers.py::SubjectSerializer; say so
+ * in both places if either moves. `post_count` is present on /subjects/ and absent when the
+ * subject is embedded in a post, exactly like a Person's. */
+export interface Subject { slug: string; name: string; short: string; post_count?: number }
 export interface Attachment { id: number; url: string; original_name: string; kind: 'image' | 'pdf' | 'audio' | 'video' | 'other'; caption?: string; order: number }
 export interface PostSummary {
 	id: number; slug: string; catalog_no: string; title: string; summary: string; category: string; category_name: string;
 	format: Format; year: number | null; year_precision: 'exact' | 'approx' | 'decade' | 'unknown'; date_note: string;
-	people: Person[]; tags: Tag[]; submitted_by: string; status: Status; featured: boolean; views: number;
+	people: Person[]; subjects?: Subject[]; tags: Tag[]; submitted_by: string; status: Status; featured: boolean; views: number;
 	cover: string | null; reaction_counts: Record<ReactionKind, number>; comment_count: number;
 	published_at: string | null; created_at: string;
 }
