@@ -60,7 +60,23 @@ and `x@gmail.com@fuw.edu.pl` do not match.
 | `GET /api/moderation/escalations/{id}/evidence/{stored_as}` | head-admin | streams one captured file (`Content-Disposition: attachment`); the name must match a file on disk exactly. |
 | `POST /api/moderation/escalations/{id}/decide/` | head-admin | `{decision: approve\|decline, note?}`. `approve`: the package is complete, the human forwards it via Dyżurnet.pl; the content stays invisible and its files stay quarantined. `decline`: ordinary moderation works again and the files return to `/media` (unless the content is also nuked). A decided row cannot be decided again (`400`). |
 
+| `GET /api/moderation/escalations/{id}/nask-package/` | head-admin | `{package, text, escalation}` — everything Dyżurnet.pl asks for, assembled from the FROZEN manifest: target URL, publication and capture times (UTC), uploader IP and user-agent, every sha256, the package hash. `text` is the Polish version to paste into their form. Any `preview_url` inside is an R2 presigned GET that dies after **5 minutes**. Reading this destroys nothing. |
+| `POST /api/moderation/escalations/{id}/purge/` | head-admin | `{confirmed_dispatch: true, case_reference?, note?}`. The one irreversible action. Refuses unless the row is already `approved` (`400`) and unless `confirmed_dispatch` is explicitly true (`400`) — calling the endpoint is not itself the statement "I have sent it to NASK". Writes the `EvidenceAuditLog` rows, THEN destroys every copy (R2 object, `/media` file, quarantine copy, frozen evidence copy), THEN marks the row `purged`. A partial failure is **`409` `{detail, failures: [...]}`**: the report is on record, the bytes are not all gone, run it again. Never a silent success. |
+| `GET /api/moderation/evidence-audit/?post={id}` | head-admin | the append-only register of what was destroyed: `[{file_sha256, storage_location, original_name, size_bytes, uploader_ip, uploader_user_agent, uploaded_at, reported_to_nask_at, reported_by, nask_case_reference, ...}]`. Head-admin only — it holds uploader addresses. |
+
+`Post.status` gains `quarantined` (escalated) and `purged` (reported and destroyed). Both are
+excluded by `Post.objects`, the DEFAULT manager, and both answer `404` to every tier below
+head-admin — including `is_staff`, which is the tier that reads `nuked`. Head-admin is
+`is_superuser` **or** the grantable `escalation.can_manage_critical_quarantine`.
+
 Every request and decision is written to the `security` logger as well as the database.
+
+## Direct uploads to R2 (`archive`)
+
+| Method & path | Tier | Notes |
+|---|---|---|
+| `POST /api/uploads/presign/` | logged-in | `{files: [{filename, size_bytes, sha256, content_type}]}`, at most 6. → `{available: true, uploads: [{key, url, method: PUT, headers, expires_in}]}`. The URL is signed over `ContentLength` and `ChecksumSHA256` as well as the key, so the size cap and the checksum are enforced by R2, not requested politely. Returns **`503` `{available: false}`** when R2 is unconfigured — a supported setup; post the files with the form instead. Throttle `presign` 60/hour. |
+| `POST /api/posts/` with `uploads: [{key, filename, sha256, caption?}]` | logged-in | claims previously PUT objects as attachments. Each object is fetched back and re-validated on its BYTES, JPEG/PNG/WebP are re-stored with EXIF removed, and the recorded `sha256` is of the bytes actually stored. A key outside `public/attachments/`, a checksum mismatch, or an object that never arrived → `400`. `uploads` and multipart `files` share the same six-file limit. |
 
 ## Chat reports (`board`)
 

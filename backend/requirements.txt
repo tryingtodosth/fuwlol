@@ -2,6 +2,10 @@ Django>=5.2,<5.3
 djangorestframework>=3.16,<3.18
 django-cors-headers>=4.4,<5.0
 Pillow>=10.4,<13.0
+# Cloudflare R2 (config/r2.py). Optional at runtime — R2 unconfigured is a supported
+# setup and the whole test suite runs without touching it — but a deployment that stores
+# attachments in R2 needs it, so it is pinned here rather than being a surprise on the box.
+boto3>=1.35,<2
 gunicorn>=23.0,<24
 psycopg[binary]>=3.2,<4
 whitenoise>=6.7,<7

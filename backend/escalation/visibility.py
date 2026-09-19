@@ -11,14 +11,30 @@ from django.contrib.contenttypes.models import ContentType
 
 logger = logging.getLogger('security')
 
-ACTIVE_STATUSES = ('pending', 'approved')
+# Imported, not restated: this tuple decides whether content is visible, and a second copy
+# of it that drifts by one entry is a content leak rather than a style problem.
+from .models import ACTIVE_STATUSES  # noqa: E402  (after the logger, for readability)
 
 
 def is_head_admin(user) -> bool:
-    """The one tier above `is_staff` — Django's own `is_superuser`, reused rather than
-    inventing a fourth flag. Its whole strength is operational: grant it to as few real
-    people as possible."""
-    return bool(user is not None and getattr(user, 'is_authenticated', False) and user.is_superuser)
+    """The one tier above `is_staff`: Django's own `is_superuser`, or the explicitly
+    granted `escalation.can_manage_critical_quarantine`.
+
+    Its whole strength is operational — grant it to as few real people as possible. The
+    named permission exists so that "as few as possible" can be two people without the
+    second one also getting the keys to everything else, which is what handing out
+    `is_superuser` for this would mean.
+
+    A standard moderator (a trusted student volunteer) is deliberately NOT here and can
+    never reach quarantined material. That is not only an access-control decision: under
+    art. 202 § 4a/b k.k. viewing it is itself an exposure, and nobody should acquire that
+    exposure by volunteering to moderate a meme archive."""
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    if getattr(user, 'is_superuser', False):
+        return True
+    has_perm = getattr(user, 'has_perm', None)
+    return bool(has_perm and has_perm('escalation.can_manage_critical_quarantine'))
 
 
 def active_escalation_ids(model_cls):

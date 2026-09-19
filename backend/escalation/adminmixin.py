@@ -26,6 +26,17 @@ class HideEscalatedMixin:
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         if is_head_admin(request.user):
+            # ModelAdmin builds its queryset from `_default_manager`, and for archive.Post
+            # that is now the manager which hides quarantined and purged rows (see
+            # archive/models.py PostManager). For a head-admin — the one person who may
+            # look — swap in the unfiltered manager, so the admin does not become the one
+            # place the responsible person cannot see what they are responsible for.
+            unfiltered = getattr(self.model, 'all_objects', None)
+            if unfiltered is not None:
+                qs = unfiltered.get_queryset()
+                ordering = self.get_ordering(request)
+                if ordering:
+                    qs = qs.order_by(*ordering)
             return qs
         for lookup, model in self._guards():
             qs = qs.exclude(**{f'{lookup}__in': _active_ids(model)})

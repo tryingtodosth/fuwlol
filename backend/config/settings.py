@@ -135,6 +135,7 @@ REST_FRAMEWORK = {
         'board_user': '60/hour',
         'board_report': '20/hour',
         'escalate': '10/day',
+        'presign': '60/hour',  # one per file; a six-file post costs six
         'verify': '5/hour',  # institutional-address confirmation mails, per user
     },
 }
@@ -157,7 +158,12 @@ EMAIL_PORT = int(os.environ.get('FUWLOL_EMAIL_PORT', '587'))
 EMAIL_HOST_USER = os.environ.get('FUWLOL_EMAIL_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('FUWLOL_EMAIL_PASSWORD', '')
 EMAIL_USE_TLS = os.environ.get('FUWLOL_EMAIL_USE_TLS', '1') == '1'
-DEFAULT_FROM_EMAIL = os.environ.get('FUWLOL_FROM_EMAIL', 'fuw.lol <archiwum@fuw.lol>')
+DEFAULT_FROM_EMAIL = os.environ.get('FUWLOL_FROM_EMAIL', 'FUW <no-reply@fuw.lol>')
+# Deliberately NOT the same address. What we send FROM is a Brevo-verified relay sender
+# that nobody reads; where a person (or Dyżurnet.pl, or somebody exercising a RODO right)
+# should WRITE is a mailbox a human opens. Conflating them puts "no-reply@" on the DSA
+# art. 12 contact point, which is the one address that must actually answer.
+FUWLOL_CONTACT_EMAIL = os.environ.get('FUWLOL_CONTACT_EMAIL', 'admin@fuw.lol')
 # Where the confirmation link points (the SvelteKit site, which has the /potwierdz page).
 FUWLOL_SITE_URL = os.environ.get('FUWLOL_SITE_URL', 'http://localhost:5173').rstrip('/')
 
@@ -169,6 +175,34 @@ STORAGES = {
     'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
     'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
 }
+
+# --- Cloudflare R2 (config/r2.py) ------------------------------------------------------
+# Attachment bytes go browser -> R2 directly, through a presigned PUT, so a 25 MB upload
+# never occupies a gunicorn worker or the VPS's 500 Mbps uplink, and never meets
+# Cloudflare's 100 MB proxy ceiling (one file per request, six requests per post).
+#
+# UNSET IS A SUPPORTED CONFIGURATION and is what a bare clone and the whole test suite run
+# with: uploads then keep going through Django to MEDIA_ROOT exactly as before, and the
+# presign endpoint answers 503 rather than pretending. What is NOT supported is a
+# deployment that stores attachments in R2 without FUWLOL_R2_* — see config/r2.py.
+R2_BUCKET = os.environ.get('FUWLOL_R2_BUCKET', '')
+R2_ENDPOINT_URL = os.environ.get('FUWLOL_R2_ENDPOINT_URL', '')
+R2_ACCESS_KEY_ID = os.environ.get('FUWLOL_R2_ACCESS_KEY_ID', '')
+R2_SECRET_ACCESS_KEY = os.environ.get('FUWLOL_R2_SECRET_ACCESS_KEY', '')
+# The hostname Cloudflare serves the public prefix from (a custom domain on the bucket).
+R2_PUBLIC_BASE_URL = os.environ.get('FUWLOL_R2_PUBLIC_BASE_URL', '').rstrip('/')
+
+# Cache purge for a quarantined object (escalation/cdn.py). Without these an escalation
+# still hides the content everywhere this origin controls, and logs that the edge copy was
+# not purged — it does not pretend the purge happened.
+CLOUDFLARE_ZONE_ID = os.environ.get('FUWLOL_CLOUDFLARE_ZONE_ID', '')
+CLOUDFLARE_PURGE_TOKEN = os.environ.get('FUWLOL_CLOUDFLARE_PURGE_TOKEN', '')
+
+# How long the uploader's address and user-agent are kept on a Post (archive/models.py).
+# They exist for exactly one purpose — being the identifying half of a Dyzurnet.pl report
+# under art. 18 DSA — and a raw address kept past its usefulness is a liability, not an
+# asset. `manage.py forget_submitter_ips` enforces this; run it from cron.
+SUBMITTER_IP_RETENTION_DAYS = int(os.environ.get('FUWLOL_SUBMITTER_IP_RETENTION_DAYS', '90'))
 
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

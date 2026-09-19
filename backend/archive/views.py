@@ -53,7 +53,12 @@ def _escalated_comment_ids():
 
 
 def post_queryset(user=None):
-    return _not_escalated(Post.objects.select_related('category', 'submitted_by')
+    # `all_objects`, not `objects`: PostManager hides quarantined/purged rows from every
+    # call site that forgot to think about them, which is its whole job — but this is the
+    # call site that DID think about them. `rules.visible_posts_q` below is the decision,
+    # and it has exactly one exception (head-admin) that the manager must not override, or
+    # the person responsible for the material would be unable to look at it.
+    return _not_escalated(Post.all_objects.select_related('category', 'submitted_by')
             .prefetch_related('people', 'tags', 'attachments', 'reactions')
             # a moderated comment is a placeholder in the thread, not a comment on the card
             .annotate(comment_count=Count('comments', filter=Q(comments__is_removed=False,
@@ -266,8 +271,18 @@ class PostViewSet(viewsets.ModelViewSet):
         return request.FILES.getlist('files')
 
     def _attach(self, post, files, captions):
+        import hashlib
         for i, f in enumerate(files):
+            f.seek(0)
+            digest = hashlib.sha256(f.read()).hexdigest()
+            f.seek(0)
+            # The hash is recorded for the same reason the R2 path records one: it is what
+            # a Dyżurnet.pl report is keyed on, and it is the only thing about the bytes
+            # that may still exist after a purge. Computing it here means the local and
+            # the R2 path produce the same shape of row.
             Attachment.objects.create(post=post, file=f, original_name=f.name[:200], kind=kind_for(f.name),
+                                      sha256=digest, size_bytes=getattr(f, 'size', 0) or 0,
+                                      content_type=getattr(f, 'content_type', '') or '',
                                       caption=(captions[i] if i < len(captions) else '')[:200], order=i)
 
     def _captions(self, request):
@@ -283,17 +298,42 @@ class PostViewSet(viewsets.ModelViewSet):
             return []
         return [str(c) for c in parsed] if isinstance(parsed, list) else []
 
+    def _uploads(self, request):
+        """The R2 half of a submission: files already PUT straight to the bucket, named
+        here by key. A post may mix them with multipart files — the counts add up against
+        the same six-file limit, which is checked once, on the total."""
+        raw = request.data.get('uploads') if hasattr(request.data, 'get') else None
+        if isinstance(raw, str):  # multipart carries it as a JSON string
+            import json
+            try:
+                raw = json.loads(raw)
+            except (ValueError, TypeError):
+                raise ValidationError({'uploads': ['Nieprawidłowy format.']})
+        return raw if isinstance(raw, list) else []
+
     def create(self, request, *args, **kwargs):
         files = _validate_files(self._files(request), settings.MAX_FILES_PER_POST)
-        s = PostWriteSerializer(data=request.data, context={'request': request, 'has_files': bool(files)})
+        uploads = self._uploads(request)
+        if len(files) + len(uploads) > settings.MAX_FILES_PER_POST:
+            raise ValidationError({'files': f'Najwyżej {settings.MAX_FILES_PER_POST} plików.'})
+        s = PostWriteSerializer(data=request.data,
+                                context={'request': request, 'has_files': bool(files) or bool(uploads)})
         s.is_valid(raise_exception=True)
         with transaction.atomic():
             # Staff publish straight away — and so does a TRUSTED user (a confirmed FUW/UW/PAN
             # address): a verified member of the community is who the queue exists to check
             # for, so this is a small, deliberate widening. Everybody else waits for a moderator.
             post = s.save(submitted_by=request.user,
-                          status='published' if rules.is_trusted(request.user) else 'pending')
+                          status='published' if rules.is_trusted(request.user) else 'pending',
+                          # Recorded here and only here, for art. 18 DSA. `manage.py
+                          # forget_submitter_ips` blanks it after the retention window;
+                          # an escalation freezes it into the evidence manifest first.
+                          submitter_ip=request.META.get('REMOTE_ADDR') or None,
+                          submitter_user_agent=(request.META.get('HTTP_USER_AGENT') or '')[:1000])
             self._attach(post, files, self._captions(request))
+            if uploads:
+                from .uploads import claim_uploads
+                claim_uploads(post, uploads, start_order=len(files))
         post = self._base().get(pk=post.pk)
         return Response(PostDetailSerializer(post, context={'request': request}).data, status=status.HTTP_201_CREATED)
 

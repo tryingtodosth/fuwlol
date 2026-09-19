@@ -27,7 +27,7 @@ from rest_framework.permissions import BasePermission
 from escalation.quarantine import quarantine, release
 from escalation.visibility import is_escalated, is_head_admin
 
-from .models import ModerationAction
+from .models import CRITICAL_STATUSES, ModerationAction
 
 NUKE_NEEDS_REASON = 'Opcja nuklearna wymaga podania powodu.'
 ONLY_STAFF_UNNUKE = 'Treść ukrytą nuklearnie może przywrócić tylko administracja.'
@@ -82,6 +82,12 @@ def can_see_post(user, post):
     state in this app where `is_staff` stops meaning anything (see escalation/visibility.py)."""
     if is_escalated(post) and not is_head_admin(user):
         return False
+    if post.status in CRITICAL_STATUSES:
+        # Not covered by the check above once the escalation is closed: a 'purged' post
+        # has no open escalation, and without this the staff tier — which reads nuked
+        # content — would inherit the text of something reported to NASK. The criminal
+        # statuses answer to head-admin alone, for as long as the row exists.
+        return is_head_admin(user)
     if post.status == 'published':
         return True
     if post.status == 'nuked':
@@ -102,6 +108,11 @@ def visible_posts_q(user):
 
     if is_head_admin(user):
         return Q(pk__isnull=False)  # the one caller escalation does not filter away from
+    # Queryset twin of the CRITICAL_STATUSES check in can_see_post, and it has to be here
+    # rather than relying on PostManager: the API's own queryset is built from
+    # `Post.all_objects` precisely so a head-admin can reach these rows, which makes this
+    # Q the thing that keeps everybody else out of them.
+    critical = ~Q(status__in=CRITICAL_STATUSES)
     if is_staff(user):
         # NOT a bare Q(): an empty Q OR'd with another Q collapses to the other one in
         # Django (`Q() | Q(status='nuked')` == `Q(status='nuked')`), which would let staff
@@ -114,6 +125,7 @@ def visible_posts_q(user):
         if user is not None and getattr(user, 'is_authenticated', False):
             # own posts at any stage — except nuked, which nobody but staff ever reads again
             base |= Q(submitted_by=user) & ~Q(status='nuked')
+    base &= critical
     escalated = active_escalation_ids(Post)
     if escalated:
         base &= ~Q(pk__in=escalated)

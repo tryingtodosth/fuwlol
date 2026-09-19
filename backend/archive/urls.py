@@ -1,6 +1,7 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 from . import views
+from .uploads import PresignUploadView
 from .wayback import WaybackView
 
 router = DefaultRouter()
@@ -17,5 +18,6 @@ urlpatterns = router.urls + [
     path('comments/<int:pk>/nuke/', views.CommentModerationView.as_view(), {'verb': 'nuke'}),
     path('comments/<int:pk>/escalate/', views.CommentModerationView.as_view(), {'verb': 'escalate'}),
     path('moderation/board/', views.ModerationBoardView.as_view()),
+    path('uploads/presign/', PresignUploadView.as_view()),
     path('wayback/', WaybackView.as_view()),
 ]

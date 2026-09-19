@@ -82,6 +82,14 @@ class AttachmentSerializer(serializers.ModelSerializer):
         fields = ['id', 'url', 'original_name', 'kind', 'caption', 'order']
 
     def get_url(self, obj):
+        """'' for an attachment whose bytes are gone (shredded after a NASK report) or
+        held (quarantined). The row survives so the post still knows it had a file and the
+        body's `![](zdjecie.jpg)` reference still resolves to something — it just resolves
+        to a removed file rather than to a broken URL."""
+        if getattr(obj, 'storage_key', ''):
+            return obj.public_url
+        if not obj.file:
+            return ''
         req = self.context.get('request')
         return req.build_absolute_uri(obj.file.url) if req else obj.file.url
 

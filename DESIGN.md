@@ -87,6 +87,96 @@ decline (back to ordinary moderation). `is_escalated` fails CLOSED. Every step i
 database and a line in the `security` log. Nothing distinguishes "already escalated" from "does
 not exist" to anybody below head-admin.
 
+## The two takedowns, and why they end differently
+Taking something down is not one thing here, because the law it answers to is not one law.
+
+**Civil — copyright, defamation, a photo of somebody who never agreed** (art. 81 pr. aut.,
+art. 212 k.k., RODO). This is `nuked`: the post stops being readable by anybody below staff, and
+its files are HELD — moved off the public path, kept. A claim of this kind can be litigated years
+later and the file is the evidence; destroying it would destroy our own defence. This is what the
+task brief calls `SOFT_DELETED`, and it deliberately does not get a second status name: two names
+for one state is how an illegal state becomes representable.
+
+**Criminal — suspected CSAM or comparable material** (art. 202 k.k., art. 18 DSA). This ends the
+opposite way, because the opposite duty applies: art. 202 § 4b k.k. criminalises *possessing* the
+material, and Polish law gives an amateur platform no chain-of-custody exemption for keeping a
+copy "for the investigation". So the material is reported and then destroyed, and the two steps
+happen in that order and only that order — once the bytes are gone this service cannot produce
+them again for an investigator who asks.
+
+    escalate ──► quarantined ──► approved ──► [head-admin forwards to Dyżurnet.pl themselves]
+                     │                              │
+                     │ decline                      ▼ confirmed_dispatch=true
+                     ▼                         audit rows written  ──►  bytes destroyed  ──►  purged
+              back where it was
+
+`Post.status` gains `quarantined` and `purged`, written by exactly one module
+(`escalation/services.py`) as a projection of the `Escalation` row that owns the workflow — and
+`PostManager`, the DEFAULT manager, excludes both. That is the layer which catches the call site
+nobody thought about: the public API, the board, the admin, the search index, `manage.py shell`.
+`Post.all_objects` is the unfiltered escape hatch, used by the escalation machinery, by the API's
+own queryset (so a head-admin can still reach what they are responsible for), by `_unique_slug`,
+and by `Meta.base_manager_name` so related access keeps working. Comments and board messages have
+no status to project onto and stay governed by the `Escalation` row alone — the criminal path is
+not Post-only, because an attachment on a comment is the same offence and the same duty.
+
+**Access is head-admin only, and that is a safety rule before it is a privacy one.** A trusted
+student volunteering to moderate a meme archive must not acquire art. 202 § 4a/b exposure by
+volunteering. `is_head_admin` now accepts either `is_superuser` or a grantable
+`escalation.can_manage_critical_quarantine`, so "as few people as possible" can be two people
+without the second one getting the keys to everything else. Media previews for a head-admin are R2
+presigned GETs capped at **five minutes** (`config/r2.PREVIEW_TTL_SECONDS`) — they are bearer
+capabilities, so they are minutes, not hours.
+
+**The purge itself** (`escalation/shred.py`) destroys every copy: the R2 object, the MEDIA_ROOT
+file, the `EVIDENCE_ROOT/quarantine/` copy and the frozen evidence copy. Missing one would make
+the purge a fiction, and the fiction is the dangerous part — an audit row saying the material was
+destroyed while a copy sits on the VPS is exactly the state the statute punishes. A database
+transaction cannot roll back a deleted R2 object, so the ordering is chosen instead of pretending
+to be atomic: **audit rows commit, then bytes die, then the purge is marked**. A crash in the
+middle leaves an incomplete purge — visible, retryable, and finished by running the action again
+(the audit rows are not duplicated). The opposite order would leave destroyed bytes with no record
+of what was destroyed, which nothing can repair. A failed shred answers **409** with the list of
+copies that survived, never a silent success.
+
+What outlives it is `EvidenceAuditLog`: one append-only row per destroyed file (`save` on an
+existing row and `delete` both raise), holding the sha256, the uploader's IP and user-agent, the
+timestamps, who reported it and the Dyżurnet reference. None of that is the material; all of it is
+what an investigator actually asks for. `Post.submitter_ip` is recorded at upload for this one
+purpose and blanked after `SUBMITTER_IP_RETENTION_DAYS` by `manage.py forget_submitter_ips` — a
+raw address kept past its usefulness is a liability, not an asset. An escalation freezes it into
+the manifest first, so a report assembled next month still carries it.
+
+`escalation/nask.py` assembles the package a human sends: target URL, publication and capture
+timestamps in UTC, uploader IP and user-agent, every sha256, the package hash — as JSON and as
+Polish text to paste into Dyżurnet's form. Nothing here ever contacts an authority by itself.
+
+## Uploads go straight to R2 (backend/config/r2.py, backend/archive/uploads.py)
+A 25 MB file posted through Django occupies one gunicorn worker for the whole transfer; six of
+them is every worker the VPS has. A single six-file multipart POST is also 150 MB, which
+Cloudflare terminates at the edge (100 MB request cap, every plan) before Django sees it. So the
+browser asks `POST /api/uploads/presign/` for one signed URL per file and PUTs each one straight
+to the bucket.
+
+The presigned PUT is signed over `ContentLength` and `ChecksumSHA256`, not just the key: anything
+unsigned is something the uploader chooses freely, and signing those two makes the 25 MB cap
+binding at R2 and lets R2 itself reject bytes that are not the bytes declared — which is why
+`HeadObject` can later return a sha256 we did not compute and did not download 25 MB to learn.
+Keys are random; the uploader's filename is kept only as `original_name`.
+
+Two guarantees the multipart path gave are explicitly kept rather than quietly lost: the decision
+about what a file is still made on the BYTES, and EXIF still comes off a photograph. `verify_stored`
+pulls the object back at post-creation (R2 egress to the origin is free), runs the same
+`archive/validators.py`, and for JPEG/PNG/WebP re-stores the stripped version and records the hash
+of *those* bytes — recording the original's hash would put a checksum in a NASK report that does
+not match the file the report is about.
+
+**R2 unconfigured is a supported setup** and is what a bare clone and the whole test suite run
+with: uploads keep going through Django to MEDIA_ROOT, and the presign endpoint answers 503 rather
+than pretending. What is stated rather than solved: between the PUT and the post being created an
+unvalidated object sits in the bucket under a random, unreferenced key; `manage.py sweep_uploads`
+removes anything unclaimed after a day.
+
 ## Security posture (after the review of 16.09.2026)
 Uploads are judged by bytes and renamed to UUIDs; JPEG/PNG/WebP lose EXIF. In the browser, both
 renderers (Markdown and LaTeX.js) go through DOMPurify with an image allow-list enforced ON THE
@@ -106,8 +196,10 @@ Reporters' e-mails and notes are staff-only; a moderator's review note is the au
 Accepted, not forgotten: the token lives in localStorage (CSP is the second line, an httpOnly
 cookie would be a different auth model); one trusted account can escalate — and thereby freeze —
 any content (10/day, fully logged: the price of acting fast on CSAM); throttles count attempts,
-not failures; Cloudflare's cache must be purged by URL after a quarantine; quarantine assumes
-FileSystemStorage on one host.
+not failures. Two entries on this list were closed on 19.09.2026: the Cloudflare cache is now
+purged by URL on quarantine (`escalation/cdn.py`, and it logs rather than lies when unconfigured),
+and quarantine no longer assumes FileSystemStorage — it moves an R2 object to the `held/` prefix
+just as it moves a local file out of `/media`.
 
 ## The chat (backend/board/)
 An old-school shoutbox: anyone may write, guests under a nick (never an existing username),

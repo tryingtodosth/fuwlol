@@ -12,9 +12,11 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Escalation
+from .models import Escalation, EvidenceAuditLog
 from .permissions import IsHeadAdmin
-from .services import create_escalation, decide_escalation, visible_escalations_for
+from .services import (confirm_nask_report_and_purge, create_escalation, decide_escalation,
+                       visible_escalations_for)
+from .shred import ShredIncomplete
 
 
 def _row(esc):
@@ -25,17 +27,24 @@ def _row(esc):
         'decided_by': esc.decided_by.username if esc.decided_by_id else None,
         'decision_note': esc.decision_note, 'evidence_ref': esc.evidence_ref,
         'created_at': esc.created_at, 'decided_at': esc.decided_at,
+        'reported_to_nask_at': esc.reported_to_nask_at,
+        'nask_case_reference': esc.nask_case_reference, 'purged_at': esc.purged_at,
     }
 
 
 class EscalationListView(APIView):
-    """GET /api/moderation/escalations/?status=pending|approved|declined (default: pending)."""
+    """GET /api/moderation/escalations/?status=pending|approved|declined|purged (default: pending).
+
+    This is the critical-quarantine triage list the task calls for, and it is the ONLY
+    listing anywhere in the project that shows these rows: `visible_escalations_for`
+    returns an empty queryset to anybody who is not head-admin, and the targets themselves
+    are gone from `Post.objects` entirely (archive/models.py PostManager)."""
     permission_classes = [IsHeadAdmin]
 
     def get(self, request):
         qs = visible_escalations_for(request.user)
         wanted = request.query_params.get('status', 'pending')
-        if wanted in ('pending', 'approved', 'declined'):
+        if wanted in ('pending', 'approved', 'declined', 'purged'):
             qs = qs.filter(status=wanted)
         return Response([_row(e) for e in qs])
 
@@ -96,3 +105,83 @@ def escalate_and_respond(request, target):
     reason = request.data.get('reason') if hasattr(request.data, 'get') else ''
     esc = create_escalation(target, request.user, reason)
     return Response({'ok': True, 'escalation_id': esc.pk}, status=status.HTTP_201_CREATED)
+
+
+class EscalationNaskPackageView(APIView):
+    """GET /api/moderation/escalations/<id>/nask-package/
+
+    Everything a head-admin needs to file the report with Dyżurnet.pl, in both shapes:
+    `package` for a machine, `text` to paste into their form. Any preview links inside it
+    are R2 presigned GETs that die after five minutes (config/r2.PREVIEW_TTL_SECONDS) —
+    they are bearer capabilities, so they are minutes rather than hours and are never
+    logged.
+
+    Reading this changes nothing. The destructive step is a separate, explicit POST, so
+    that "I looked at it" and "destroy it" can never be the same click."""
+    permission_classes = [IsHeadAdmin]
+
+    def get(self, request, pk):
+        from .nask import build_package, render_text
+        esc = get_object_or_404(visible_escalations_for(request.user), pk=pk)
+        self.check_object_permissions(request, esc)
+        package = build_package(esc)
+        return Response({'package': package, 'text': render_text(package),
+                         'escalation': _row(esc)})
+
+
+class EscalationPurgeView(APIView):
+    """POST /api/moderation/escalations/<id>/purge/
+       {confirmed_dispatch: true, case_reference?: str, note?: str}
+
+    The one irreversible action in this project. It refuses unless the escalation is
+    already `approved` (reviewed and confirmed criminal) AND the caller states in the
+    request body that the package has been forwarded — the endpoint being reachable is not
+    itself taken as that statement.
+
+    A partial shred answers 409 with the list of copies that survived: the report is on
+    record, the bytes are not all gone, and the fix is to call this again once whatever
+    failed is reachable. It is not a 500, because nothing is broken — the world is in a
+    state the caller has to know about."""
+    permission_classes = [IsHeadAdmin]
+
+    def post(self, request, pk):
+        esc = get_object_or_404(visible_escalations_for(request.user), pk=pk)
+        self.check_object_permissions(request, esc)
+        data = request.data if hasattr(request.data, 'get') else {}
+        try:
+            esc = confirm_nask_report_and_purge(
+                esc, request.user,
+                confirmed_dispatch=bool(data.get('confirmed_dispatch')),
+                case_reference=data.get('case_reference') or '',
+                note=data.get('note') or '')
+        except ShredIncomplete as exc:
+            return Response(
+                {'detail': 'Zgłoszenie zapisano, ale nie wszystkie kopie udało się usunąć. '
+                           'Uruchom akcję ponownie po usunięciu przyczyny.',
+                 'failures': exc.failures},
+                status=status.HTTP_409_CONFLICT)
+        return Response(_row(esc))
+
+
+class EvidenceAuditLogView(APIView):
+    """GET /api/moderation/evidence-audit/?post=<id>
+
+    The register of what was destroyed, when, by whom and under which Dyżurnet reference —
+    the only thing that outlives a purge. Head-admin only: it holds uploader addresses."""
+    permission_classes = [IsHeadAdmin]
+
+    def get(self, request):
+        qs = EvidenceAuditLog.objects.select_related('reported_by')
+        post_id = request.query_params.get('post')
+        if post_id and str(post_id).isdigit():
+            qs = qs.filter(original_post_id=int(post_id))
+        return Response([{
+            'id': r.pk, 'escalation_id': r.escalation_id, 'target_kind': r.target_kind,
+            'original_post_id': r.original_post_id, 'file_sha256': r.file_sha256,
+            'storage_location': r.storage_location, 'original_name': r.original_name,
+            'size_bytes': r.size_bytes, 'uploader_ip': r.uploader_ip,
+            'uploader_user_agent': r.uploader_user_agent, 'uploaded_at': r.uploaded_at,
+            'reported_to_nask_at': r.reported_to_nask_at,
+            'reported_by': r.reported_by_username or (r.reported_by.username if r.reported_by_id else ''),
+            'nask_case_reference': r.nask_case_reference, 'created_at': r.created_at,
+        } for r in qs])

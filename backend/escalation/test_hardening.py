@@ -110,6 +110,12 @@ class QuarantineTests(Base):
         esc = create_escalation(self.post, self.staff, 'bardzo złe')
         decide_escalation(esc, self.superuser, 'decline')
         self.assertFalse(self._live())  # still nuked
+        # An escalation now projects 'quarantined' onto Post.status and the decline puts
+        # the old status back — on the row, and on the instance the SERVICE loaded. The
+        # one this test has been holding since nuke_post() is stale, exactly as it would
+        # be in a view that kept an object across two requests.
+        self.post.refresh_from_db()
+        self.assertEqual(self.post.status, 'nuked')
         rules.restore_post(self.post, self.superuser)
         self.assertTrue(self._live())
 

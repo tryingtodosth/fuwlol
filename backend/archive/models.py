@@ -1,4 +1,4 @@
-"""fuw.lol — the archive.
+r"""fuw.lol — the archive.
 
 A `Post` is one archived thing: a meme, a quote, a legendary exam problem, a photo, a
 story, a scan. Its `body` is either plain text/Markdown or a LaTeX source (`format`),
@@ -23,14 +23,26 @@ from .validators import validate_upload
 FORMAT_CHOICES = [('text', 'Tekst / Markdown'), ('latex', 'LaTeX')]
 # 'hidden' — taken off the public page; readable by trusted users on the moderation board.
 # 'nuked'  — the nuclear option: readable by staff only. Rules live in archive/moderation.py.
+#            This is the CIVIL end state (art. 81 pr. aut., art. 212 k.k., RODO): the post
+#            stops being readable, and its files are held outside the public path rather
+#            than destroyed, because a copyright or defamation claim has to be defensible
+#            years later and the file is the evidence.
+# 'quarantined' / 'purged' — the CRIMINAL end states, and the reason this list has five
+#            entries rather than three. They are written by exactly one module,
+#            escalation/services.py, as a projection of the Escalation row that owns the
+#            workflow; nothing else may set them. See DESIGN.md "The two takedowns".
 STATUS_CHOICES = [('pending', 'Czeka na moderację'), ('published', 'Opublikowany'),
-                  ('rejected', 'Odrzucony'), ('hidden', 'Ukryty'), ('nuked', 'Ukryty nuklearnie')]
+                  ('rejected', 'Odrzucony'), ('hidden', 'Ukryty'), ('nuked', 'Ukryty nuklearnie'),
+                  ('quarantined', 'Kwarantanna krytyczna'), ('purged', 'Usunięty trwale')]
+# Never visible to anybody through the ordinary managers, whatever else a queryset says.
+CRITICAL_STATUSES = ('quarantined', 'purged')
 # The same two tiers for a comment, on their own field: `is_removed` stays the author's
 # own deletion tombstone, `moderation` is what a trusted user or staff did to it.
 COMMENT_MODERATION_CHOICES = [('visible', 'Widoczny'), ('hidden', 'Ukryty'), ('nuked', 'Ukryty nuklearnie')]
 MODERATION_ACTION_CHOICES = [('hide', 'ukrycie'), ('restore', 'przywrócenie'), ('nuke', 'ukrycie nuklearne'),
                              ('unnuke', 'przywrócenie po opcji nuklearnej'), ('publish', 'publikacja'),
-                             ('reject', 'odrzucenie')]
+                             ('reject', 'odrzucenie'), ('quarantine', 'kwarantanna krytyczna'),
+                             ('purge', 'trwałe usunięcie po zgłoszeniu do NASK')]
 PRECISION_CHOICES = [('exact', 'dokładnie'), ('approx', 'około'),
                      ('decade', 'dekada'), ('unknown', 'nieznany')]
 REACTION_CHOICES = [('lol', 'lol'), ('classic', 'klasyk'), ('wow', 'wow'), ('cringe', 'cringe')]
@@ -83,10 +95,40 @@ def _unique_slug(model, base):
     base = slugify(base)[:60] or 'wpis'
     slug = base
     n = 2
-    while model.objects.filter(slug=slug).exists():
+    # `all_objects` on purpose: `objects` hides quarantined/purged posts, and a slug that
+    # looks free only because the post holding it is invisible is an IntegrityError later.
+    manager = getattr(model, 'all_objects', model.objects)
+    while manager.filter(slug=slug).exists():
         slug = f'{base}-{n}'
         n += 1
     return slug
+
+
+class PostQuerySet(models.QuerySet):
+    def critical(self):
+        """The rows the default manager hides. Only escalation/ and the head-admin views
+        have any business calling this, and both reach it through `Post.all_objects`."""
+        return self.filter(status__in=CRITICAL_STATUSES)
+
+
+class PostManager(models.Manager.from_queryset(PostQuerySet)):
+    """The default manager, and deliberately not a complete view of the table.
+
+    Everything in this project that lists posts — the public API, the moderation board a
+    trusted student reads, the staff admin, the search index, the sitemap, `manage.py
+    shell` — goes through `Post.objects`, so `Post.objects` is where "a post in criminal
+    quarantine does not exist" is cheapest to guarantee. `archive/moderation.py` also
+    filters, and `escalation/visibility.py` re-checks per object; this is the third layer,
+    and the only one that is on by default rather than by being remembered.
+
+    The cost is real and is the reason `all_objects` exists next to it: a filtered default
+    manager means `Post.objects.get(pk=...)` raises `DoesNotExist` for a quarantined post
+    even for a head-admin, and `Meta.base_manager_name = 'all_objects'` is what keeps
+    `attachment.post` and `comment.post` resolving so the escalation machinery can still
+    read the row it is deciding about."""
+
+    def get_queryset(self):
+        return super().get_queryset().exclude(status__in=CRITICAL_STATUSES)
 
 
 class Post(models.Model):
@@ -105,7 +147,7 @@ class Post(models.Model):
     tags = models.ManyToManyField(Tag, related_name='posts', blank=True)
     submitted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                      related_name='posts', on_delete=models.SET_NULL)
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default='pending')
     review_note = models.TextField(blank=True)
     reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                     related_name='+', on_delete=models.SET_NULL)
@@ -118,11 +160,26 @@ class Post(models.Model):
     # Derived at save time (archive/search.py): folded prose and canonical formulas.
     search_text = models.TextField(blank=True, editable=False)
     search_math = models.TextField(blank=True, editable=False)
+    # The identifying half of an art. 18 DSA report, and nothing else. A hash — which is
+    # what board/models.py keeps for chat — is the right answer when the question is "same
+    # visitor?", and useless when the question is the only one that matters here: WHO does
+    # Dyżurnet.pl / the police ask the ISP about. Kept for SUBMITTER_IP_RETENTION_DAYS and
+    # then blanked by `manage.py forget_submitter_ips`; copied into an EvidenceAuditLog
+    # row at the moment of a report, which is the one place it outlives that window.
+    submitter_ip = models.GenericIPAddressField(null=True, blank=True)
+    submitter_user_agent = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     published_at = models.DateTimeField(null=True, blank=True)
 
+    objects = PostManager()
+    all_objects = models.Manager()
+
     class Meta:
         ordering = ['-published_at', '-created_at']
+        # Related descriptors (`attachment.post`, `comment.post`) and `refresh_from_db` use
+        # the base manager. Pointing it at the unfiltered one keeps the escalation and
+        # shred paths able to load the very rows the default manager exists to hide.
+        base_manager_name = 'all_objects'
 
     def __str__(self):
         return self.title
@@ -147,8 +204,22 @@ def attachment_path(instance, filename):
 
 
 class Attachment(models.Model):
+    """One file on a post, stored EITHER locally under MEDIA_ROOT (`file`) OR in Cloudflare
+    R2 (`storage_key`), never both. The two coexist because the local path is what a bare
+    clone, the test suite and every row created before R2 use, and because a deployment
+    must be able to turn R2 off again without the archive losing its pictures.
+
+    `sha256` is not decoration: it is what a Dyżurnet.pl report is keyed on, what proves
+    the file forwarded to NASK is the file that was here, and — after a purge — the only
+    thing about the bytes that legally may still exist. For an R2 upload it is verified by
+    R2 itself against the checksum we signed (config/r2.py), not taken on trust from the
+    browser that sent it."""
     post = models.ForeignKey(Post, related_name='attachments', on_delete=models.CASCADE)
-    file = models.FileField(upload_to=attachment_path, validators=[validate_upload])
+    file = models.FileField(upload_to=attachment_path, validators=[validate_upload], blank=True)
+    storage_key = models.CharField(max_length=300, blank=True, db_index=True)
+    sha256 = models.CharField(max_length=64, blank=True)
+    size_bytes = models.PositiveBigIntegerField(default=0)
+    content_type = models.CharField(max_length=100, blank=True)
     original_name = models.CharField(max_length=200)
     kind = models.CharField(max_length=8, choices=KIND_CHOICES, default='other')
     caption = models.CharField(max_length=200, blank=True)
@@ -156,6 +227,19 @@ class Attachment(models.Model):
 
     class Meta:
         ordering = ['order', 'id']
+
+    @property
+    def is_remote(self) -> bool:
+        return bool(self.storage_key)
+
+    @property
+    def public_url(self) -> str:
+        """'' once the object has been moved off the public prefix or shredded — the
+        serializer turns that into an absent URL rather than a broken one."""
+        if not self.storage_key:
+            return ''
+        from config import r2
+        return '' if r2.is_held(self.storage_key) else r2.public_url(self.storage_key)
 
 
 class Reaction(models.Model):
@@ -225,9 +309,9 @@ class ModerationAction(models.Model):
                               related_name='moderation_actions', on_delete=models.SET_NULL)
     post = models.ForeignKey(Post, null=True, blank=True, related_name='actions', on_delete=models.CASCADE)
     comment = models.ForeignKey(Comment, null=True, blank=True, related_name='actions', on_delete=models.CASCADE)
-    action = models.CharField(max_length=8, choices=MODERATION_ACTION_CHOICES)
+    action = models.CharField(max_length=12, choices=MODERATION_ACTION_CHOICES)
     reason = models.TextField(blank=True)
-    previous_status = models.CharField(max_length=10, blank=True)
+    previous_status = models.CharField(max_length=16, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
