@@ -8,7 +8,14 @@
 			fuw.lol — nieoficjalne archiwum Wydziału Fizyki UW. Zgłoś błąd / prośbę o usunięcie: przy każdym
 			wpisie. Ta strona nie jest stroną Wydziału.
 		</p>
-		<p><a href="/o-archiwum">O archiwum</a></p>
+		<p class="foot__links">
+			<a href="/o-archiwum">O archiwum</a>
+			<!-- An unofficial archive that moderates other people's content owes readers a way
+			     to check what it actually does with it; the source is that answer. -->
+			<a href="https://github.com/tryingtodosth/fuwlol" target="_blank" rel="noopener noreferrer">
+				Kod źródłowy (GitHub)
+			</a>
+		</p>
 	</div>
 </footer>
 
@@ -29,6 +36,11 @@
 		margin: 0;
 		font-size: 11px;
 		color: var(--muted);
+	}
+	.foot__links {
+		display: flex;
+		gap: 12px;
+		white-space: nowrap;
 	}
 	.foot :global(a) {
 		color: var(--muted);

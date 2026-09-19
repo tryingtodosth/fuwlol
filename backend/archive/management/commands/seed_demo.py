@@ -116,7 +116,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **opts):
         if opts['reset']:
-            Post.objects.filter(submitted_by__username__in=['dziekan', 'student', 'doktorant']).delete()
+            Post.objects.filter(submitted_by__username__in=['dziekan', 'claude-slop', 'student', 'doktorant']).delete()
         # Passwords: the documented `fuwlol123` ONLY on a debug (local) server. Anywhere
         # else each demo account gets a random password, printed once here and never
         # written down — and an account that already exists is never re-passworded, so a
@@ -132,7 +132,11 @@ class Command(BaseCommand):
                     self.stdout.write(f'konto demo {username}: hasło {pw} (zapisz je teraz — nie zostanie pokazane ponownie)')
             return u
         admin = account('dziekan', is_staff=True, is_superuser=True, email='dziekan@fuw.lol')
-        student = account('student', email='student@fuw.lol')
+        # Every post below was written by a language model, so it is attributed to an
+        # account that says so. Splitting it between `dziekan` and a `student` account was
+        # a coin flip in this file, and it read — on an archive whose whole premise is
+        # provenance — as if a dean had written the folklore.
+        ai = account('claude-slop', email='', first_name='Claude', last_name='(AI)')
         # a TRUSTED demo account: verified fuw.edu.pl affiliation, no staff flag
         doktorant = account('doktorant', email='doktorant@fuw.lol')
         try:
@@ -152,7 +156,7 @@ class Command(BaseCommand):
         from django.utils.text import slugify
         for t in TAGS:
             Tag.objects.get_or_create(slug=slugify(t), defaults={'name': t})
-        if Post.objects.filter(submitted_by__in=[admin, student]).exists():
+        if Post.objects.filter(submitted_by__in=[admin, ai]).exists():
             self.stdout.write('Demo posts already present (use --reset).')
             return
         rnd = random.Random(7)
@@ -160,7 +164,7 @@ class Command(BaseCommand):
         for cat, title, year, prec, note, body, people, tags in TEXT_POSTS:
             p = Post.objects.create(title=title, category=Category.objects.get(slug=cat), format='text', body=body,
                                     summary=body.split('\n')[0][:200], year=year, year_precision=prec, date_note=note,
-                                    submitted_by=rnd.choice([admin, student]), status='published',
+                                    submitted_by=ai, status='published',
                                     source_note='Zbiory własne archiwum (demo).')
             p.people.set(Person.objects.filter(slug__in=people))
             p.tags.set(Tag.objects.filter(slug__in=[slugify(t) for t in tags]))
@@ -168,7 +172,7 @@ class Command(BaseCommand):
         for cat, title, year, prec, note, body, people, tags in LATEX_POSTS:
             p = Post.objects.create(title=title, category=Category.objects.get(slug=cat), format='latex', body=body,
                                     summary='Treść zadania w LaTeX-u — kliknij, żeby zobaczyć.', year=year,
-                                    year_precision=prec, date_note=note, submitted_by=admin, status='published',
+                                    year_precision=prec, date_note=note, submitted_by=ai, status='published',
                                     source_note='Odpis z zeszytu (demo).')
             p.people.set(Person.objects.filter(slug__in=people))
             p.tags.set(Tag.objects.filter(slug__in=[slugify(t) for t in tags]))
@@ -180,27 +184,27 @@ class Command(BaseCommand):
         created[0].featured = True; created[0].save()
         created[-1].featured = True; created[-1].save()
         for p in created:
-            for u, k in [(admin, 'classic'), (student, 'lol')]:
+            for u, k in [(admin, 'classic'), (ai, 'lol')]:
                 if rnd.random() < 0.7:
                     Reaction.objects.get_or_create(post=p, user=u, defaults={'kind': k})
-        c = Comment.objects.create(post=created[-1], author=student, body='Potwierdzam, byłem tam. Napisałem 41.')
+        c = Comment.objects.create(post=created[-1], author=ai, body='Potwierdzam, byłem tam. Napisałem 41.')
         Comment.objects.create(post=created[-1], author=admin, parent=c, format='latex',
                                body=r'Poprawna odpowiedź: $\frac{\pi^4}{15}$. Pół punktu podtrzymuję.')
         # one pending submission so the moderation queue has something in it
         Post.objects.create(title='Propozycja: nowy mem o sesji', category=Category.objects.get(slug='memy'),
                             format='text', body='Czeka na moderację.', year=2026, year_precision='exact',
-                            submitted_by=student, status='pending')
+                            submitted_by=ai, status='pending')
         # the moderation board has something on it: one hidden post, one nuked post, one hidden comment
         from archive import moderation as rules
         hidden = Post.objects.create(title='Mem, który był trochę za bardzo', category=Category.objects.get(slug='memy'),
                                      format='text', body='Ukryty przez zweryfikowanego użytkownika — widać go na tablicy moderacji.',
-                                     year=2022, year_precision='exact', submitted_by=student, status='published')
+                                     year=2022, year_precision='exact', submitted_by=ai, status='published')
         rules.hide_post(hidden, doktorant, 'Prosiła osoba na zdjęciu.')
         nuked = Post.objects.create(title='Wpis usunięty opcją nuklearną', category=Category.objects.get(slug='historie'),
                                     format='text', body='Tego nie zobaczy nikt poza administracją.', year=2021,
-                                    year_precision='approx', submitted_by=student, status='published')
+                                    year_precision='approx', submitted_by=ai, status='published')
         rules.nuke_post(nuked, admin, 'Treść niezgodna z prawem (demo).')
-        hc = Comment.objects.create(post=created[0], author=student, body='Ten komentarz został ukryty przez moderację.')
+        hc = Comment.objects.create(post=created[0], author=ai, body='Ten komentarz został ukryty przez moderację.')
         rules.hide_comment(hc, doktorant, 'Spam.')
-        self.stdout.write(self.style.SUCCESS(f'Seeded {len(created)} published posts. Logins: dziekan (staff, head-admin) / doktorant (zaufany) / student'
+        self.stdout.write(self.style.SUCCESS(f'Seeded {len(created)} published posts. Konta: dziekan (staff, head-admin) / doktorant (zaufany) / claude-slop (autor tresci demo)'
                                              + (', hasło fuwlol123' if settings.DEBUG else ' — hasła wypisane wyżej przy pierwszym utworzeniu')))
