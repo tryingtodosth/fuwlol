@@ -8,6 +8,7 @@
 	import PostBody from '$lib/components/PostBody.svelte';
 	import Reactions from '$lib/components/Reactions.svelte';
 	import ModTools from '$lib/components/ModTools.svelte';
+	import SuggestEdit from '$lib/components/SuggestEdit.svelte';
 	import MathText from '$lib/components/MathText.svelte';
 	import Comments from '$lib/components/Comments.svelte';
 
@@ -195,6 +196,10 @@
 			<PostBody format={post.format} body={post.body} attachments={post.attachments} />
 
 			<Reactions {post} />
+
+			<SuggestEdit {post}
+				canDecide={auth.isStaff || post.submitted_by === auth.user?.username}
+				onChanged={() => location.reload()} />
 
 			{#if post.can_moderate}
 				<p class="acts small modrow">

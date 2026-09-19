@@ -231,17 +231,21 @@ class PostWriteSerializer(serializers.ModelSerializer):
         return v
 
     def validate(self, data):
-        if not (data.get('body') or '').strip() and not self.context.get('has_files'):
+        # On a PATCH the body may simply not be in the payload, and "absent" is not
+        # "empty": reading it straight out of `data` meant that changing only the title of
+        # a post with no attachments was refused as having no content at all.
+        body = data['body'] if 'body' in data else (getattr(self.instance, 'body', '') or '')
+        if not (body or '').strip() and not self.context.get('has_files'):
             raise serializers.ValidationError({'body': 'Wpis musi mieć treść albo plik.'})
-        problem = latexguard.check_source(data.get('body') or '', max_chars=latexguard.MAX_POST_CHARS)
+        problem = latexguard.check_source(body or '', max_chars=latexguard.MAX_POST_CHARS)
         if problem:
             raise serializers.ValidationError({'body': problem})
         if self.instance is None and not data.get('rights_confirmed'):
             raise serializers.ValidationError({'rights_confirmed': 'Potwierdź, że masz prawo opublikować tę treść (regulamin w „O archiwum”).'})
         if 'summary' in data and not (data.get('summary') or '').strip():
-            data['summary'] = auto_summary(data.get('body') or '', data.get('format') or 'text')
+            data['summary'] = auto_summary(body, data.get('format') or 'text')
         elif 'summary' not in data and self.instance is None:
-            data['summary'] = auto_summary(data.get('body') or '', data.get('format') or 'text')
+            data['summary'] = auto_summary(body, data.get('format') or 'text')
         return data
 
     def _apply_m2m(self, post, data):

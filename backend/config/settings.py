@@ -136,6 +136,7 @@ REST_FRAMEWORK = {
         'board_report': '20/hour',
         'escalate': '10/day',
         'presign': '60/hour',  # one per file; a six-file post costs six
+        'suggest': '20/hour',  # edit suggestions: a real correction is rare, a flood is not
         'verify': '5/hour',  # institutional-address confirmation mails, per user
     },
 }

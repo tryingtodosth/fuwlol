@@ -19,5 +19,8 @@ urlpatterns = router.urls + [
     path('comments/<int:pk>/escalate/', views.CommentModerationView.as_view(), {'verb': 'escalate'}),
     path('moderation/board/', views.ModerationBoardView.as_view()),
     path('uploads/presign/', PresignUploadView.as_view()),
+    path('suggestions/', views.MySuggestionInboxView.as_view()),
+    path('suggestions/<int:pk>/decide/', views.EditSuggestionActionView.as_view(), {'verb': 'decide'}),
+    path('suggestions/<int:pk>/withdraw/', views.EditSuggestionActionView.as_view(), {'verb': 'withdraw'}),
     path('wayback/', WaybackView.as_view()),
 ]

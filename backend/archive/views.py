@@ -4,6 +4,7 @@ import random
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, F, Max, Min, OuterRef, Prefetch, Q, Subquery
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -16,7 +17,9 @@ from rest_framework.views import APIView
 from escalation.views import escalate_and_respond
 
 from . import moderation as rules
-from .models import (Attachment, Category, Comment, CommentAttachment, ModerationAction, Person, Post,
+from . import suggestions as suggestions_mod
+from .models import (Attachment, Category, Comment, CommentAttachment, EditSuggestion,
+                     ModerationAction, Person, Post,
                      Reaction, Report, Tag)
 from .search import query_parts
 from .serializers import (CategorySerializer, CommentSerializer, MinePostSerializer, ModerationPostSerializer,
@@ -50,6 +53,54 @@ def _not_escalated(qs, post_field=None, user=None):
 def _escalated_comment_ids():
     from escalation.visibility import active_escalation_ids
     return active_escalation_ids(Comment)
+
+
+def _suggestion_row(s):
+    return {
+        'id': s.pk, 'post_id': s.post_id, 'post_slug': s.post.slug, 'post_title': s.post.title,
+        'suggested_by': s.suggested_by_username or (s.suggested_by.username if s.suggested_by_id else None),
+        'changes': s.changes, 'base': s.base, 'rationale': s.rationale, 'status': s.status,
+        'decided_by': s.decided_by.username if s.decided_by_id else None,
+        'decision_note': s.decision_note, 'decided_at': s.decided_at, 'created_at': s.created_at,
+    }
+
+
+class EditSuggestionActionView(APIView):
+    """POST /api/suggestions/<id>/decide/   {decision: accept|reject, note?}
+       POST /api/suggestions/<id>/withdraw/
+
+    Deliberately not scoped by a queryset: a suggestion is reached by its own id and the
+    rule module decides. `decide_suggestion` re-derives "may this person decide" from the
+    POST, every time — being able to name the id is not authority."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk, verb):
+        sug = get_object_or_404(EditSuggestion.objects.select_related('post'), pk=pk)
+        data = request.data if hasattr(request.data, 'get') else {}
+        if verb == 'withdraw':
+            sug = suggestions_mod.withdraw_suggestion(sug, request.user)
+        else:
+            sug = suggestions_mod.decide_suggestion(sug, request.user,
+                                                    data.get('decision'), data.get('note') or '')
+        return Response(_suggestion_row(sug))
+
+
+class MySuggestionInboxView(APIView):
+    """GET /api/suggestions/?status=pending — everything waiting on ME: suggestions on
+    posts I wrote, plus (for staff) everything, plus my own wherever they went."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        u = request.user
+        qs = EditSuggestion.objects.select_related('post', 'suggested_by', 'decided_by')
+        if rules.is_staff(u):
+            pass
+        else:
+            qs = qs.filter(Q(post__submitted_by=u) | Q(suggested_by=u))
+        wanted = request.query_params.get('status', 'pending')
+        if wanted in ('pending', 'accepted', 'rejected', 'withdrawn'):
+            qs = qs.filter(status=wanted)
+        return Response([_suggestion_row(s) for s in qs[:200]])
 
 
 def post_queryset(user=None):
@@ -164,6 +215,8 @@ class PostViewSet(viewsets.ModelViewSet):
             return [FixedScopeThrottle('post_create')]
         if self.action == 'escalate':
             return [FixedScopeThrottle('escalate')]
+        if self.action == 'suggestions' and self.request.method == 'POST':
+            return [FixedScopeThrottle('suggest')]
         if self.action == 'comments' and self.request.method == 'POST':
             # a comment carries up to 3 × 25 MB of images; the global per-user rate alone
             # would let one account write gigabytes a minute
@@ -177,6 +230,12 @@ class PostViewSet(viewsets.ModelViewSet):
             return [IsAdminUser()]
         if self.action in ('hide', 'restore', 'nuke', 'escalate', 'feature'):
             return [rules.IsTrusted()]
+        if self.action == 'suggestions':
+            # GET is scoped by visible_suggestions_for (empty for a stranger); POST needs
+            # an account, because a suggestion without somebody behind it is a wish.
+            return [IsAuthenticated()] if self.request.method == 'POST' else []
+        if self.action == 'revisions':
+            return [IsAuthenticated()]
         return []
 
     def get_serializer_class(self):
@@ -196,7 +255,8 @@ class PostViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = self._base()
         u = self.request.user
-        if self.action in ('retrieve', 'update', 'partial_update', 'destroy', 'moderate', 'comments'):
+        if self.action in ('retrieve', 'update', 'partial_update', 'destroy', 'moderate', 'comments',
+                           'suggestions', 'revisions'):
             # who may read what — the one rule, in archive/moderation.py
             return qs.filter(rules.visible_posts_q(u))
         if self.action in ('hide', 'restore', 'nuke', 'escalate', 'feature'):
@@ -342,7 +402,8 @@ class PostViewSet(viewsets.ModelViewSet):
         if not request.user.is_staff and post.submitted_by_id != request.user.id:
             raise PermissionDenied()
         if not request.user.is_staff and post.status == 'published':
-            raise PermissionDenied('Opublikowany wpis może zmienić tylko moderator — zgłoś poprawkę w komentarzu.')
+            raise PermissionDenied('Opublikowany wpis może zmienić tylko moderator — '
+                                   'zaproponuj poprawkę przyciskiem „Zaproponuj poprawkę” pod wpisem.')
         if not request.user.is_staff and post.status not in ('pending', 'rejected'):
             # hidden: it is on the moderation board as evidence of what was taken down
             raise PermissionDenied('Ukryty wpis może zmienić tylko moderator.')
@@ -353,7 +414,16 @@ class PostViewSet(viewsets.ModelViewSet):
                                 context={'request': request, 'has_files': bool(files) or post.attachments.exists()})
         s.is_valid(raise_exception=True)
         with transaction.atomic():
+            # Taken BEFORE the save, because afterwards the row no longer knows what it
+            # used to say. An edit that changes nothing tracked writes no revision — a
+            # history full of empty versions is a history nobody reads.
+            before = suggestions_mod.current_values(post)
             post = s.save()
+            if any(getattr(post, f) != v for f, v in before.items()):
+                suggestions_mod.snapshot(
+                    post, request.user,
+                    'moderator' if request.user.is_staff and post.submitted_by_id != request.user.id else 'author',
+                    data=before)
             if remove:
                 post.attachments.filter(id__in=remove).delete()
             if post.attachments.count() + len(files) > settings.MAX_FILES_PER_POST:
@@ -495,6 +565,37 @@ class PostViewSet(viewsets.ModelViewSet):
 
     def _reason(self, request):
         return (request.data.get('reason') or '') if hasattr(request.data, 'get') else ''
+
+    @action(detail=True, methods=['get', 'post'], url_path='suggestions')
+    def suggestions(self, request, slug=None):
+        """GET  — the suggestions the caller may see (author and staff: all of them; a
+                  suggester: their own; anybody else: none).
+           POST {changes: {field: value}, rationale} — propose an edit. 201.
+
+        Any logged-in account may propose; the whole point is that the person who knows
+        the year is wrong is usually neither the author nor a moderator."""
+        post = self.get_object()
+        if request.method == 'GET':
+            rows = suggestions_mod.visible_suggestions_for(request.user, post)
+            return Response([_suggestion_row(x) for x in rows])
+        sug = suggestions_mod.create_suggestion(
+            post, request.user,
+            (request.data.get('changes') if hasattr(request.data, 'get') else None) or {},
+            request.data.get('rationale') if hasattr(request.data, 'get') else '')
+        return Response(_suggestion_row(sug), status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='revisions')
+    def revisions(self, request, slug=None):
+        """GET — what this post used to say. Author, trusted and staff only; see
+        archive/models.PostRevision for why this is not public."""
+        post = self.get_object()
+        if not suggestions_mod.can_see_revisions(request.user, post):
+            raise PermissionDenied(suggestions_mod.NOT_YOURS)
+        return Response([{
+            'id': r.pk, 'created_at': r.created_at, 'source': r.source,
+            'changed_by': r.changed_by_username or (r.changed_by.username if r.changed_by_id else None),
+            'note': r.note, 'data': r.data, 'suggestion_id': r.suggestion_id,
+        } for r in post.revisions.all()])
 
     @action(detail=True, methods=['post'])
     def feature(self, request, slug=None):

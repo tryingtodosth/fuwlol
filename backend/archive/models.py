@@ -14,6 +14,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -321,3 +322,88 @@ class ModerationAction(models.Model):
     def __str__(self):
         target = self.post.catalog_no if self.post_id else f'komentarz #{self.comment_id}'
         return f'{self.get_action_display()} — {target}'
+
+
+# The fields a stranger may propose changing. Deliberately scalar text and dates only:
+# category, people, tags and attachments are NOT here, because each has its own shape
+# (slug sets, uploaded bytes) and its own abuse surface, and "suggest an edit" is a
+# different feature from "re-file this post". Named once so the serializer, the API and
+# the history all agree on what a revision even is.
+SUGGESTABLE_FIELDS = ('title', 'summary', 'body', 'format', 'year', 'year_precision',
+                      'date_note', 'source_note', 'source_url')
+SUGGESTION_STATUS = [('pending', 'Czeka'), ('accepted', 'Przyjęta'),
+                     ('rejected', 'Odrzucona'), ('withdrawn', 'Wycofana')]
+REVISION_SOURCE = [('author', 'edycja autora'), ('moderator', 'edycja moderacji'),
+                   ('suggestion', 'przyjęta poprawka')]
+
+
+class PostRevision(models.Model):
+    """What the post said BEFORE a change — one row per change, never per read.
+
+    Stored as the previous state rather than the new one, so the live `Post` row is always
+    the current version and history is simply "everything it used to be", newest first.
+    The alternative — a row per version including the current — means every read has to
+    work out which row is live, and gets it wrong once.
+
+    NOT public. An archive of folklore gets removal requests under art. 81 pr. aut. and
+    RODO, and a public history would mean that taking somebody's name out of a post left
+    it one click away in the diff — which is not removal, it is relocation. Visible to the
+    post's author, to trusted moderators and to staff, who are the people who need to know
+    what changed and who changed it.
+    """
+    post = models.ForeignKey(Post, related_name='revisions', on_delete=models.CASCADE)
+    data = models.JSONField()  # the SUGGESTABLE_FIELDS as they were before this change
+    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   related_name='+', on_delete=models.SET_NULL)
+    # Kept as text too: the account may go, the record of who changed the archive may not.
+    changed_by_username = models.CharField(max_length=150, blank=True)
+    source = models.CharField(max_length=10, choices=REVISION_SOURCE, default='author')
+    suggestion = models.ForeignKey('EditSuggestion', null=True, blank=True,
+                                   related_name='+', on_delete=models.SET_NULL)
+    note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        return f'{self.post_id} @ {self.created_at:%Y-%m-%d %H:%M}'
+
+
+class EditSuggestion(models.Model):
+    """"I think this quote is misattributed" — from anybody with an account.
+
+    The archive's whole value is other people knowing better: a year that is wrong by two,
+    a lecturer's name spelled from memory, a LaTeX source that does not compile. Those
+    people are usually not the author and usually not moderators, and before this they had
+    nowhere to put it but a report, which is the channel for "take this down".
+
+    `changes` holds only the fields being changed; `base` holds what those same fields said
+    when the suggestion was written. Keeping both is what makes acceptance safe: if the
+    post moved on in the meantime, applying the diff blindly would silently revert somebody
+    else's edit, so `decide` compares and refuses with 409 instead.
+    """
+    post = models.ForeignKey(Post, related_name='edit_suggestions', on_delete=models.CASCADE)
+    suggested_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                     related_name='edit_suggestions', on_delete=models.SET_NULL)
+    suggested_by_username = models.CharField(max_length=150, blank=True)
+    changes = models.JSONField()
+    base = models.JSONField()
+    # Mandatory: a diff without a reason is a puzzle for whoever has to decide about it.
+    rationale = models.TextField()
+    status = models.CharField(max_length=10, choices=SUGGESTION_STATUS, default='pending')
+    decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   related_name='+', on_delete=models.SET_NULL)
+    decision_note = models.TextField(blank=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        constraints = [
+            models.UniqueConstraint(fields=['post', 'suggested_by'], condition=Q(status='pending'),
+                                    name='one_pending_suggestion_per_person_per_post'),
+        ]
+
+    def __str__(self):
+        return f'#{self.pk} {self.post_id} ({self.get_status_display()})'
