@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     'consent',
     'escalation',
     'portraits',
+    'share',
 ]
 
 # See config/middleware.py for what each of these means and when it is safe.
@@ -180,6 +181,11 @@ DEFAULT_FROM_EMAIL = os.environ.get('FUWLOL_FROM_EMAIL', 'FUW <no-reply@fuw.lol>
 FUWLOL_CONTACT_EMAIL = os.environ.get('FUWLOL_CONTACT_EMAIL', 'admin@fuw.lol')
 # Where the confirmation link points (the SvelteKit site, which has the /potwierdz page).
 FUWLOL_SITE_URL = os.environ.get('FUWLOL_SITE_URL', 'http://localhost:5173').rstrip('/')
+# Link previews (share/). FUWLOL_SPA_INDEX points at the built SvelteKit shell when Django can
+# read it (mode a: the tags are spliced into the real page for everybody); unset, share/ serves
+# its own minimal page to crawlers (mode b — what runs today, see deploy/OVH.md).
+FUWLOL_SPA_INDEX = os.environ.get('FUWLOL_SPA_INDEX', '')
+FUWLOL_SHARE_REDIRECT_HUMANS = os.environ.get('FUWLOL_SHARE_REDIRECT_HUMANS', '1')
 
 CORS_ALLOWED_ORIGINS = [o for o in os.environ.get(
     'FUWLOL_CORS_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',') if o]

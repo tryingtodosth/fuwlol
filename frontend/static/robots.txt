@@ -1,3 +1,10 @@
 # allow crawling everything by default
 User-agent: *
 Disallow:
+
+# The rendered link previews (backend/share/). A crawler is routed to them from the real
+# URL and caches that real URL, so it never needs to ask for one directly; keeping them
+# out of the index stops a search result pointing at a page with no application on it.
+Disallow: /share/
+
+Sitemap: https://fuw.lol/sitemap.xml

@@ -6,6 +6,12 @@
 # would risk losing a line of it quietly. Caddy does the one job nginx is awkward at here
 # (certificates) and nothing else.
 #
+# Nothing about link previews is configured here, and that is deliberate rather than
+# missing: Caddy forwards every request to nginx untouched, and nginx is where the
+# scraper's User-Agent is matched and routed to Django (frontend/nginx.conf, the
+# $fuwlol_crawler map). Doing it here as well would mean two copies of the crawler list
+# in two languages, and the one that drifts is the one nobody is looking at.
+#
 # The certificate is a CLOUDFLARE ORIGIN CERTIFICATE, not Let's Encrypt, and that is a
 # consequence of the firewall: deploy/firewall.sh only lets Cloudflare's ranges reach 80
 # and 443, so an ACME HTTP-01 challenge — which arrives from Let's Encrypt directly, not

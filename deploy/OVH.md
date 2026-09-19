@@ -147,6 +147,11 @@ AWS_SECRET_ACCESS_KEY=
 not this server** — a backup you cannot decrypt is not a backup, and the server is the one
 machine guaranteed to be missing when you need it.
 
+`FUWLOL_SITE_URL` (`https://fuw.lol`, set in `docker-compose.prod.yml`; default
+`http://localhost:5173`) is the host every server-built link points at — the verification
+mail, the consent claims, and `og:url`/`canonical` in the link previews. Running dev on the
+alternate ports means setting it to `http://localhost:5273`, or every link says 5173.
+
 ### Firewall, and the boot/refresh units
 
 ```bash
@@ -184,12 +189,15 @@ visitors from a new one get dropped.
 ```cron
 0 3 * * *  /srv/fuwlol/deploy/backup.sh >> /var/log/fuwlol-backup.log 2>&1
 0 4 * * *  cd /srv/fuwlol && docker compose -f docker-compose.prod.yml exec -T api python manage.py forget_submitter_ips
+0 4 * * *  cd /srv/fuwlol && docker compose -f docker-compose.prod.yml exec -T api python manage.py forget_claim_ips
 0 5 * * *  cd /srv/fuwlol && docker compose -f docker-compose.prod.yml exec -T api python manage.py sweep_uploads
 ```
 
-The second one is not housekeeping: `Post.submitter_ip` is personal data kept for one
-purpose (art. 18 DSA), and keeping it past that purpose is the RODO problem, not the
-solution. The third deletes objects that were uploaded to R2 and never claimed by a post.
+The second and third are not housekeeping: `Post.submitter_ip` is personal data kept for
+one purpose (art. 18 DSA), and keeping it past that purpose is the RODO problem, not the
+solution. `forget_claim_ips` does the same for the consent claims — except on approved
+rows, which ARE the evidence that somebody agreed. The last one deletes objects that were
+uploaded to R2 and never claimed by a post.
 
 ### First start
 
@@ -225,6 +233,61 @@ every commit is still in GHCR:
 cd /srv/fuwlol && IMAGE_TAG=<older-sha> docker compose -f docker-compose.prod.yml --env-file .env up -d
 ```
 
+## Link previews (`backend/share/`)
+
+Every URL here is served the same `200.html` and titled by JavaScript, and **no scraper
+runs JavaScript** — which is why a post pasted into Messenger used to show „fuw.lol" and
+nothing else. The fix is server-rendered tags for the scrapers, and nothing at all for
+everybody else.
+
+**The mode: crawler routing, at the nginx hop.** `frontend/nginx.conf` matches the
+User-Agent and rewrites the request to Django, which answers `/share/<the same path>` with
+a small page carrying `og:*`, `twitter:*`, `<title>`, the description and a canonical link:
+
+```nginx
+map $http_user_agent $fuwlol_crawler { default 0; ~*facebookexternalhit|…|Signal 1; }
+map $uri             $fuwlol_route   { default 1; ~\. 0; }   # a dot means a file, not a route
+map $fuwlol_crawler$fuwlol_route $fuwlol_preview { default 0; 11 1; }
+
+location / {
+    if ($fuwlol_preview) { rewrite ^ /share$uri last; }
+    try_files $uri /200.html;
+}
+location /share/     { proxy_pass http://api:8000; … }
+location = /sitemap.xml { proxy_pass http://api:8000/share/sitemap.xml; … }
+```
+
+The other design — Django serving the real `200.html` with the tags spliced into its
+`<head>`, for everybody, with no User-Agent anywhere — is better and is implemented
+(`FUWLOL_SPA_INDEX` + `FUWLOL_SHARE_REDIRECT_HUMANS=0`, tested). It is not what runs,
+because the built SPA lives in the `web` image and Django in the `api` one: it would need
+a shared volume or one image holding both. Switch when the packaging does; the Django side
+needs no change. Until then the human path is byte-for-byte what it was, which is the
+point — Caddy is untouched and so is the CSP.
+
+**Cloudflare: do not put a „Cache Everything" rule on HTML.** One URL now answers
+differently by User-Agent, and Cloudflare honours `Vary` on `Accept-Encoding` only — a
+cache-everything rule would serve one visitor's answer to the other kind of visitor.
+HTML is not in Cloudflare's default cache set (it caches by extension), so as configured
+this is safe; the bypass rule on `/api/*` stays as it is.
+
+**After a deploy, re-scrape anything already shared.** Facebook keeps what it scraped —
+for a URL somebody sent last week, Messenger will go on showing the old, empty card until
+Facebook fetches it again, and it will not fetch it again just because the page changed.
+Paste the URL into <https://developers.facebook.com/tools/debug/> and press *Scrape Again*
+(that is also where a malformed tag shows up as an error rather than as silence). Telegram
+caches the same way: send the link to [@WebpageBot](https://t.me/WebpageBot) and it
+refreshes. WhatsApp, Slack and Discord expire on their own within a day or so, and a URL
+nobody has shared yet is fetched fresh, so this is only about the links already out there.
+
+**The three fallback pictures** (`frontend/static/og-default.png`, `og-osoba-m.png`,
+`og-osoba-f.png`) are drawn by `manage.py make_share_images` and committed — 1200×630,
+because Facebook drops any image below 200×200 and the faculty's own silhouettes are
+130×130. Re-run the command if the wording on them should change.
+
+`https://fuw.lol/sitemap.xml` is generated by the same app (published posts, listed people,
+subjects, categories, the standing pages) and named from `robots.txt`.
+
 ## Verify after a deploy
 
 Green tests are not evidence that the site works; several real bugs in this project were
@@ -239,6 +302,10 @@ found by looking at it. So, in a browser:
    the network tab — it must not go to `fuw.lol/api/`), and it plays back afterwards.
 5. Escalate something as a trusted user, confirm it vanishes for everyone but head-admin,
    and that the picture's URL on `pliki.fuw.lol` now 404s.
+6. `curl -s -A "facebookexternalhit/1.1" https://fuw.lol/wpis/<slug> | grep og:` prints the
+   post's title, summary and picture; the same URL in a browser is still the app. Then
+   paste the link into Messenger and **look at it** — and check that a hidden post's URL
+   gives the plain site card, not its title.
 
 ## Not verified here
 
@@ -246,3 +313,9 @@ Written on a machine with no Docker: the compose file parses and the Python side
 covered by 186 tests, but the first `docker compose pull` and the first Caddy start happen
 on the server. If `caddy` will not start, `docker compose logs caddy` names the reason —
 usually the origin certificate paths.
+
+The link-preview rewrite is in the same position: the Django half has its own tests, but
+the three `map` blocks and the `/share/` location have never been through `nginx -t` —
+there is no nginx on the machine they were written on. `docker compose exec web nginx -t`
+is the first thing to run after the deploy that carries them, and `curl -A
+facebookexternalhit` the second.

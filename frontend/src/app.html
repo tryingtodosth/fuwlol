@@ -5,6 +5,42 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
 		<title>fuw.lol — Archiwum Wydziału Fizyki UW</title>
+		<!--
+			The FALLBACK card: what a scraper sees when it was not routed to the
+			server-rendered preview (backend/share/) — an unlisted user agent, or a build
+			with no nginx in front of it. The per-page tags come from Django and say the
+			same things about a particular post or person; these are the floor, so that the
+			worst case is the site's own name and picture rather than an empty grey box.
+			No crawler runs the JavaScript that fills <svelte:head>, which is why these
+			live here and not in a route.
+
+			og:image is ABSOLUTE and hard-coded rather than relative to the assets base: a
+			relative og:image is ignored by Facebook and most of the others, and this file
+			is static, so there is no request to resolve it against. It is the one place in
+			the frontend that knows the production hostname; backend/share/ builds every
+			other URL from FUWLOL_SITE_URL. The picture itself is drawn by
+			`manage.py make_share_images`.
+
+			No og:url on purpose — one fixed value would tell every scraper that every page
+			on this site is the home page, which is worse than leaving it out (they fall
+			back to the URL they fetched).
+		-->
+		<meta
+			name="description"
+			content="Archiwum folkloru Wydziału Fizyki UW: memy, cytaty z wykładów, legendarne zadania egzaminacyjne i kartki z drzwi pracowni. Zbierane i moderowane przez czytelników."
+		/>
+		<meta property="og:site_name" content="fuw.lol" />
+		<meta property="og:locale" content="pl_PL" />
+		<meta property="og:type" content="website" />
+		<meta property="og:title" content="fuw.lol — archiwum Wydziału Fizyki UW" />
+		<meta
+			property="og:description"
+			content="Memy, cytaty z wykładów, legendarne zadania i kartki z drzwi pracowni — folklor Wydziału Fizyki UW w jednym miejscu."
+		/>
+		<meta property="og:image" content="https://fuw.lol/og-default.png" />
+		<meta property="og:image:alt" content="fuw.lol — archiwum folkloru Wydziału Fizyki UW" />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:image" content="https://fuw.lol/og-default.png" />
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

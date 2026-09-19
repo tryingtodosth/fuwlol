@@ -7,9 +7,11 @@
 > live site runs.
 
 One box runs three containers from `docker-compose.yml`: `db` (Postgres 16), `api` (Django
-+ gunicorn), `web` (nginx: the SvelteKit build, `/api` `/admin` `/static` proxied to the api,
-`/media` served straight from the shared uploads volume). Everything is on ONE domain, so no
-CORS and `PUBLIC_API_BASE_URL=/api` is baked into the build.
++ gunicorn), `web` (nginx: the SvelteKit build, `/api` `/admin` `/static` `/share` and
+`/sitemap.xml` proxied to the api, `/media` served straight from the shared uploads volume).
+Everything is on ONE domain, so no CORS and `PUBLIC_API_BASE_URL=/api` is baked into the
+build. Link previews need nothing from Traefik/Coolify either — they are a User-Agent match
+inside `frontend/nginx.conf`, which this setup uses unchanged; see `deploy/OVH.md`.
 
 ## First deploy (Coolify)
 

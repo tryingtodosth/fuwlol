@@ -13,6 +13,8 @@ urlpatterns = [
     path('api/', include('portraits.urls')),
     path('api/', include('consent.urls')),
     path('api/', include('archive.urls')),
+    # Link previews + sitemap.xml for the scrapers that do not run JavaScript (share/).
+    path('share/', include('share.urls')),
 ]
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
