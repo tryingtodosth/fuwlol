@@ -1,5 +1,11 @@
 # fuw.lol on Hetzner Cloud (CX23, Coolify) behind Cloudflare
 
+> **Superseded on 19.09.2026.** The site runs on an OVHcloud VPS-1 in Warsaw with plain
+> Docker Compose and Caddy — see `deploy/OVH.md`. This file stays because it is still an
+> accurate description of the Coolify setup, and `docker-compose.yml` (the build-it-here
+> one it refers to) is still valid for local use; `docker-compose.prod.yml` is what the
+> live site runs.
+
 One box runs three containers from `docker-compose.yml`: `db` (Postgres 16), `api` (Django
 + gunicorn), `web` (nginx: the SvelteKit build, `/api` `/admin` `/static` proxied to the api,
 `/media` served straight from the shared uploads volume). Everything is on ONE domain, so no

@@ -1,0 +1,154 @@
+# fuw.lol — test, build, deploy.
+#
+# The project has no CI at all today, and the one thing worse than no pipeline is a
+# pipeline that deploys something it never ran. So `deploy` cannot start until the Django
+# suite and the frontend check have both passed, on the same commit.
+#
+# Images are built HERE and pulled by the VPS, never built on it: the box is 2 vCores and
+# 4 GB shared between Postgres, gunicorn, nginx and Caddy, and a Vite/Rollup build on top
+# of that is how a deploy takes the live site down with it. It also makes a rollback
+# `IMAGE_TAG=<older-sha> docker compose up -d` rather than a rebuild.
+#
+# Secrets this needs (Settings -> Secrets and variables -> Actions):
+#   DEPLOY_SSH_KEY   the private half of the ed25519 key installed on the VPS
+#   DEPLOY_HOST      146.59.103.167
+#   DEPLOY_USER      deploy
+# The host key is pinned below rather than accepted blindly — a deploy that would trust
+# any host is a deploy that can be redirected.
+name: test & deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# One deploy at a time, and never cancel one halfway: an interrupted `docker compose up`
+# leaves the box between two versions.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  API_IMAGE: ghcr.io/${{ github.repository_owner }}/fuwlol-api
+  WEB_IMAGE: ghcr.io/${{ github.repository_owner }}/fuwlol-web
+
+jobs:
+  backend:
+    name: Django tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
+      - name: Migrations match the models
+        working-directory: backend
+        run: python manage.py makemigrations --check --dry-run
+      - name: Test suite
+        working-directory: backend
+        # FUWLOL_DEBUG defaults to 1, so no secret key is needed; the suite runs on SQLite.
+        run: python manage.py test --verbosity=1
+
+  frontend:
+    name: svelte-check & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: frontend
+        run: npm ci --no-audit --no-fund
+      - working-directory: frontend
+        run: npm run check
+      - working-directory: frontend
+        env:
+          PUBLIC_API_BASE_URL: /api
+        run: npm run build
+
+  build:
+    name: Build & push images
+    needs: [backend, frontend]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: API image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ env.API_IMAGE }}:${{ github.sha }},${{ env.API_IMAGE }}:latest
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+      - name: Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ env.WEB_IMAGE }}:${{ github.sha }},${{ env.WEB_IMAGE }}:latest
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+  deploy:
+    name: Deploy to OVH
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: SSH key and pinned host key
+        run: |
+          install -d -m700 ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo '146.59.103.167 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICnQAnZQvc27oc8LllfYWhOUqpS7u6Hqc1wNVu7fM+nO' > ~/.ssh/known_hosts
+      - name: Ship the compose file and the Caddyfile
+        # Only these two. Everything else the box runs comes from the images, and the
+        # secrets in /srv/fuwlol/.env are never touched by a deploy.
+        run: |
+          rsync -e ssh -av docker-compose.prod.yml \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/srv/fuwlol/"
+          rsync -e ssh -av deploy/Caddyfile \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/srv/fuwlol/deploy/"
+      - name: Pull and restart
+        run: |
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -euo pipefail <<EOF
+            cd /srv/fuwlol
+            echo "IMAGE_TAG=${{ github.sha }}" > .image
+            export IMAGE_TAG=${{ github.sha }}
+            docker compose -f docker-compose.prod.yml --env-file .env pull
+            docker compose -f docker-compose.prod.yml --env-file .env up -d --remove-orphans
+            docker image prune -f
+          EOF
+      - name: Wait for the API to report healthy
+        # The deploy is not "done" when compose returns; it is done when the container the
+        # entrypoint migrated into says it can answer. Sixty seconds, then fail loudly.
+        run: |
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -euo pipefail <<'EOF'
+            cd /srv/fuwlol
+            for i in $(seq 1 30); do
+              state=$(docker inspect --format '{{.State.Health.Status}}' fuwlol-api-1 2>/dev/null || echo starting)
+              [ "$state" = healthy ] && echo "api healthy" && exit 0
+              sleep 2
+            done
+            echo "api did not become healthy — last 50 log lines:"
+            docker compose -f docker-compose.prod.yml --env-file .env logs --tail=50 api
+            exit 1
+          EOF

@@ -39,11 +39,23 @@ services:
       FUWLOL_MEDIA_ROOT: /app/media
       FUWLOL_CACHE_DIR: /app/cachedata
       FUWLOL_EVIDENCE_ROOT: /app/evidence
+      # Cloudflare R2 for attachment bytes (config/r2.py). Leave unset to keep uploads on
+      # the local `media` volume — supported, and what a bare clone does.
+      FUWLOL_R2_BUCKET: ${FUWLOL_R2_BUCKET:-}
+      FUWLOL_R2_ENDPOINT_URL: ${FUWLOL_R2_ENDPOINT_URL:-}
+      FUWLOL_R2_ACCESS_KEY_ID: ${FUWLOL_R2_ACCESS_KEY_ID:-}
+      FUWLOL_R2_SECRET_ACCESS_KEY: ${FUWLOL_R2_SECRET_ACCESS_KEY:-}
+      FUWLOL_R2_PUBLIC_BASE_URL: ${FUWLOL_R2_PUBLIC_BASE_URL:-}
+      # Purging the edge copy of a quarantined file (escalation/cdn.py).
+      FUWLOL_CLOUDFLARE_ZONE_ID: ${FUWLOL_CLOUDFLARE_ZONE_ID:-}
+      FUWLOL_CLOUDFLARE_PURGE_TOKEN: ${FUWLOL_CLOUDFLARE_PURGE_TOKEN:-}
+      FUWLOL_SUBMITTER_IP_RETENTION_DAYS: ${FUWLOL_SUBMITTER_IP_RETENTION_DAYS:-90}
       FUWLOL_EMAIL_HOST: ${FUWLOL_EMAIL_HOST:-}
       FUWLOL_EMAIL_PORT: ${FUWLOL_EMAIL_PORT:-587}
       FUWLOL_EMAIL_USER: ${FUWLOL_EMAIL_USER:-}
       FUWLOL_EMAIL_PASSWORD: ${FUWLOL_EMAIL_PASSWORD:-}
-      FUWLOL_FROM_EMAIL: ${FUWLOL_FROM_EMAIL:-fuw.lol <archiwum@fuw.lol>}
+      FUWLOL_FROM_EMAIL: ${FUWLOL_FROM_EMAIL:-FUW <no-reply@fuw.lol>}
+      FUWLOL_CONTACT_EMAIL: ${FUWLOL_CONTACT_EMAIL:-admin@fuw.lol}
       FUWLOL_SEED_DEMO: ${FUWLOL_SEED_DEMO:-0}
       GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
     volumes:

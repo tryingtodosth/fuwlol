@@ -1,0 +1,123 @@
+# fuw.lol in production: OVHcloud VPS-1 (Warsaw), plain Docker Compose, Caddy in front.
+#
+# Deliberately a SECOND file rather than an edit of docker-compose.yml: that one still
+# describes the build-it-here setup that `docker compose up -d --build` and the Coolify
+# runbook use, and both remain valid. This one never builds anything — the images come
+# from GHCR, built and tested by .github/workflows/deploy.yml, because a Vite/Rollup build
+# on a 2-vCore box is competing with Postgres and gunicorn for the same 4 GB.
+#
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Everything deployment-specific lives in /srv/fuwlol/.env — see deploy/OVH.md.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fuwlol
+      POSTGRES_USER: fuwlol
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fuwlol"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # Tuned for 4 GB shared with gunicorn, nginx, Caddy and the page cache. The default
+    # shared_buffers of 128 MB is fine; max_connections is the one that matters, because
+    # an unbounded spike is how a small box dies rather than slows.
+    command: >
+      postgres -c shared_buffers=256MB -c work_mem=8MB -c maintenance_work_mem=64MB
+               -c effective_cache_size=1GB -c max_connections=30
+
+  api:
+    image: ghcr.io/tryingtodosth/fuwlol-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://fuwlol:${POSTGRES_PASSWORD}@db:5432/fuwlol
+      FUWLOL_DEBUG: "0"
+      FUWLOL_TRUST_PROXY: "1"
+      # CF -> Caddy -> nginx. THREE, not two: `client_ip` (config/middleware.py) takes the
+      # Nth address from the right of X-Forwarded-For, and the proxy that writes the
+      # visitor's own address is Cloudflare — so Cloudflare counts. At 2 every per-IP
+      # throttle would key on a Cloudflare edge address and one visitor's budget would be
+      # everybody's.
+      FUWLOL_PROXY_HOPS: "3"
+      # Correct here, and only because deploy/firewall.sh makes it correct: 80 and 443
+      # accept Cloudflare's ranges alone, so CF-Connecting-IP cannot be forged by somebody
+      # talking to the origin directly.
+      FUWLOL_CLOUDFLARE: "1"
+      FUWLOL_IP_SALT: ${FUWLOL_IP_SALT:?set FUWLOL_IP_SALT}
+      FUWLOL_SECRET_KEY: ${FUWLOL_SECRET_KEY:?set FUWLOL_SECRET_KEY}
+      # localhost/127.0.0.1 are here for the container HEALTHCHECK, which curls
+      # http://localhost:8000/api/categories/ from inside the container. Without them
+      # Django answers 400 (DisallowedHost) to its own health probe, the container never
+      # reports healthy, and the deploy workflow waits for something that cannot happen.
+      FUWLOL_ALLOWED_HOSTS: fuw.lol,www.fuw.lol,api,localhost,127.0.0.1
+      FUWLOL_CSRF_ORIGINS: https://fuw.lol,https://www.fuw.lol
+      FUWLOL_CORS_ORIGINS: ""
+      FUWLOL_SITE_URL: https://fuw.lol
+      FUWLOL_MEDIA_ROOT: /app/media
+      FUWLOL_CACHE_DIR: /app/cachedata
+      FUWLOL_EVIDENCE_ROOT: /app/evidence
+      # Cloudflare R2 (config/r2.py). Unset = attachments stay on the media volume.
+      FUWLOL_R2_BUCKET: ${FUWLOL_R2_BUCKET:-}
+      FUWLOL_R2_ENDPOINT_URL: ${FUWLOL_R2_ENDPOINT_URL:-}
+      FUWLOL_R2_ACCESS_KEY_ID: ${FUWLOL_R2_ACCESS_KEY_ID:-}
+      FUWLOL_R2_SECRET_ACCESS_KEY: ${FUWLOL_R2_SECRET_ACCESS_KEY:-}
+      FUWLOL_R2_PUBLIC_BASE_URL: ${FUWLOL_R2_PUBLIC_BASE_URL:-}
+      FUWLOL_CLOUDFLARE_ZONE_ID: ${FUWLOL_CLOUDFLARE_ZONE_ID:-}
+      FUWLOL_CLOUDFLARE_PURGE_TOKEN: ${FUWLOL_CLOUDFLARE_PURGE_TOKEN:-}
+      FUWLOL_SUBMITTER_IP_RETENTION_DAYS: ${FUWLOL_SUBMITTER_IP_RETENTION_DAYS:-90}
+      # Brevo relay on 587 — OVH blocks outbound 25, and the verification mail that drives
+      # the trusted tier is the one message that must not land in spam.
+      FUWLOL_EMAIL_HOST: ${FUWLOL_EMAIL_HOST:-smtp-relay.brevo.com}
+      FUWLOL_EMAIL_PORT: ${FUWLOL_EMAIL_PORT:-587}
+      FUWLOL_EMAIL_USER: ${FUWLOL_EMAIL_USER:-}
+      FUWLOL_EMAIL_PASSWORD: ${FUWLOL_EMAIL_PASSWORD:-}
+      FUWLOL_FROM_EMAIL: ${FUWLOL_FROM_EMAIL:-FUW <no-reply@fuw.lol>}
+      FUWLOL_CONTACT_EMAIL: ${FUWLOL_CONTACT_EMAIL:-admin@fuw.lol}
+      FUWLOL_SEED_DEMO: "0"
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
+    volumes:
+      - media:/app/media
+      - cachedata:/app/cachedata
+      - evidence:/app/evidence   # NASK evidence packages + quarantine — back this up
+
+  web:
+    image: ghcr.io/tryingtodosth/fuwlol-web:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - api
+    volumes:
+      - media:/media:ro
+    # No published port: Caddy is the only way in.
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./secrets/origin.crt:/etc/caddy/origin.crt:ro
+      - ./secrets/origin.key:/etc/caddy/origin.key:ro
+      - caddydata:/data
+      - caddyconfig:/config
+
+volumes:
+  pgdata:
+  media:
+  cachedata:
+  evidence:
+  caddydata:
+  caddyconfig:

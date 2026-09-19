@@ -161,7 +161,8 @@
 	<h2 class="box__title">Kontakt</h2>
 	<div class="box__body">
 		<p class="small">
-			archiwum@fuw.lol (adres do ustawienia). W sprawach usunięcia treści najszybszy jest link
+			<a href="mailto:admin@fuw.lol">admin@fuw.lol</a> — to jest nasz punkt kontaktowy
+			w rozumieniu art. 12 DSA. W sprawach usunięcia treści najszybszy jest link
 			<em>Zgłoś</em> przy wpisie — trafia prosto do kolejki moderacji.
 		</p>
 	</div>
