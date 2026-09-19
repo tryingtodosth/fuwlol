@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     'accounts',
     'archive',
     'board',
+    'consent',
     'escalation',
     'portraits',
 ]
@@ -139,6 +140,12 @@ REST_FRAMEWORK = {
         'presign': '60/hour',  # one per file; a six-file post costs six
         'suggest': '20/hour',  # edit suggestions: a real correction is rare, a flood is not
         'verify': '5/hour',  # institutional-address confirmation mails, per user
+        # „Jesteś tą osobą?” (consent/views.py). Both send mail to somebody ELSE's
+        # mailbox, so the rate limits what one visitor can do TO a third party
+        # rather than what they can do to us. Three an hour is a person retrying a
+        # form twice; it is not a way to post a lecturer's inbox.
+        'claim_request': '3/hour',
+        'claim_manage': '3/hour',
         # Portraits (portraits/views.py). An upload is 25 MB of decoded pixels plus a
         # moderator's attention; a vote is one row, but a gallery voted by a script is
         # not a vote. Both per IP, like every other scope here.

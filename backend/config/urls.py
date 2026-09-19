@@ -11,6 +11,7 @@ urlpatterns = [
     # BEFORE archive.urls: the archive's DefaultRouter owns `people/<slug>/`, and the
     # portrait gallery hangs one segment deeper under the same prefix.
     path('api/', include('portraits.urls')),
+    path('api/', include('consent.urls')),
     path('api/', include('archive.urls')),
 ]
 if settings.DEBUG:
