@@ -24,7 +24,7 @@
 
 (common) {
 	encode zstd gzip
-	tls /etc/caddy/origin.crt /etc/caddy/origin.key
+	tls /etc/caddy/secrets/origin.crt /etc/caddy/secrets/origin.key
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		-Server

@@ -109,8 +109,12 @@ services:
       - "443:443/udp"
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./secrets/origin.crt:/etc/caddy/origin.crt:ro
-      - ./secrets/origin.key:/etc/caddy/origin.key:ro
+      # The DIRECTORY, not the two files. Bind-mounting a path that does not exist yet
+      # makes Docker create it — as a root-owned DIRECTORY — and Caddy then dies with
+      # "read /etc/caddy/origin.crt: is a directory", which `deploy` cannot even clean up
+      # because it has no sudo. Mounting the directory fails softly instead: Caddy
+      # complains about a missing certificate and the files can be dropped in later.
+      - ./secrets:/etc/caddy/secrets:ro
       - caddydata:/data
       - caddyconfig:/config
 
