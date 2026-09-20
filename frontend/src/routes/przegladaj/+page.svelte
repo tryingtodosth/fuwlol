@@ -145,6 +145,11 @@
 	<title>Przeglądaj — fuw.lol</title>
 </svelte:head>
 
+<div class="mod_breadcrumb">
+	<a href="/" title="fuw.lol — archiwum folkloru Wydziału Fizyki UW">fuw.lol</a> &gt;
+	<span class="active">Przeglądaj</span>
+</div>
+
 <div class="box">
 	<h1 class="box__title">Przeglądaj archiwum</h1>
 	<div class="box__body">

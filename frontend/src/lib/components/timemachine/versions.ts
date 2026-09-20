@@ -2,9 +2,9 @@
  *
  * This is what makes "check how the website used to work" more than a phrase: the time
  * machine does not restyle today's page for an old date, it MOUNTS THE COMPONENT that
- * was the site on that date. Today there is exactly one entry, so every date from the
- * launch onwards renders v1 — the registry earns its keep on the day of the first
- * redesign.
+ * was the site on that date. Two entries today: v1 (10–19.09.2026) and v2, the first
+ * redesign — which is also when v1 stopped relying on the live globals and got its own
+ * pinned styles, because a historical component that borrows today's CSS is not a record.
  *
  * Adding a version, in full:
  *   1. copy the current version component to a new file (VersionV2.svelte), change that;
@@ -15,6 +15,7 @@
 import type { Component } from 'svelte';
 import { parseTravel, type TravelDate } from './eras';
 import VersionV1 from './VersionV1.svelte';
+import VersionV2 from './VersionV2.svelte';
 
 export interface SiteVersion {
 	id: string;
@@ -31,6 +32,13 @@ export const SITE_VERSIONS: SiteVersion[] = [
 		from: '2026-09-10',
 		label: 'Wersja 1 — w stylu fuw.edu.pl',
 		component: VersionV1
+	},
+	{
+		// the branch date; move it to the day the redesign actually goes live
+		id: 'v2',
+		from: '2026-09-20',
+		label: 'Wersja 2 — jeszcze bardziej jak fuw.edu.pl',
+		component: VersionV2
 	}
 ];
 

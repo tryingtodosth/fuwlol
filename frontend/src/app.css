@@ -1,59 +1,103 @@
-/* fuw.lol — the look of www.fuw.edu.pl, on purpose: Tahoma 13px, dark-grey text, a light
-   grey logo banner, the dark-green navigation bar (#175e4c), a 900px white column, boxes
-   with 1px #ccc borders and ✱ bullets in front of headlines. */
+/* fuw.lol — the look of fuw.edu.pl, on purpose. Measured on m.fuw.edu.pl (where www.fuw.edu.pl
+   sends every visitor since September 2026): Tahoma 13px/1.5 #444; an amber banner and a
+   dark-green navigation bar, both 1000px wide, over a 900px column inset 32/36px; boxes with
+   1px #bbb borders and bold orange (#ee8d30) title bars; ✱ headlines in rust (#a84204) with the
+   faculty's own asterisk; justified text indented 16px; thumbnails floated left at 170px.
+   DESIGN.md "Look" has the numbers and where each was read. */
 :root {
 	--green: #175e4c;
 	--green-dark: #104336;
 	--green-light: #1d7a62;
 	--amber: #fdba45;
 	--orange: #ff8c00;
+	--title: #ee8d30;
 	--rust: #a84204;
 	--text: #444;
 	--muted: #777;
+	--info: #888;
 	--line: #ccc;
+	--box-line: #bbb;
 	--box: #f6f6f6;
-	--banner: #d9d9d9;
+	--crumb: #5e6a94;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: #fff; }
-body { font-family: Tahoma, Verdana, Arial, Helvetica, sans-serif; font-size: 13px; line-height: 1.45; color: var(--text); }
+body { font: 13px/1.5 Tahoma, Helvetica, Verdana, sans-serif; color: var(--text); }
 a { color: var(--rust); text-decoration: none; }
 a:hover { text-decoration: underline; }
-h1, h2, h3 { font-weight: bold; color: #222; margin: 0 0 8px; }
-h1 { font-size: 20px; }
-h2 { font-size: 16px; }
+/* the faculty's headings are plain: normal weight, the body colour, 16/15/14 px */
+h1, h2, h3 { font-weight: normal; color: var(--text); margin: 6px 0 12px; }
+h1 { font-size: 16px; }
+h2 { font-size: 15px; }
 h3 { font-size: 14px; }
-p { margin: 0 0 9px; }
+p { margin: 0 0 12px; }
 img { max-width: 100%; }
 code, pre, .mono { font-family: "DejaVu Sans Mono", Consolas, monospace; font-size: 12px; }
 pre { background: var(--box); border: 1px solid var(--line); padding: 8px; overflow-x: auto; }
 blockquote { margin: 6px 0 9px; padding: 4px 12px; border-left: 3px solid var(--amber); background: #fffbe8; }
 table { border-collapse: collapse; }
-hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
+hr { border: 0; border-top: 1px solid var(--box-line); margin: 6px 0; }
 
-.container { width: 92%; max-width: 900px; margin: 0 auto; }
-.page { padding: 18px 0 30px; }
+/* the 900px column (#main); the banner and the nav are 1000px and overhang it by 50px a side.
+   .page is the faculty's .mod_article: 10px 36px 10px 32px, 10px all round on a phone */
+.container { width: 90%; max-width: 900px; margin: 0 auto; }
+.page { padding: 10px 36px 10px 32px; }
 
-/* boxes, like "Aktualności" on the faculty site */
-.box { border: 1px solid var(--line); background: #fff; margin: 0 0 16px; }
-.box__title { margin: 0; padding: 7px 12px; font-size: 14px; font-weight: bold; color: #222; border-bottom: 1px solid var(--line); background: #fff; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.box__title small { font-weight: normal; color: var(--muted); font-size: 11px; }
-.box__body { padding: 12px; }
+/* boxes — .mod_newslist: the title bar reaches the border with negative margins */
+.box { border: 1px solid var(--box-line); background: #fff; margin: 10px 0; padding: 0 10px 6px 6px; }
+.box__title { margin: 0 -10px 8px -6px; padding: 8px 0 10px 11px; font-size: 16px; line-height: 1; font-weight: bold; color: var(--title); border-bottom: 1px solid var(--box-line); text-align: left; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.box__title small { font-weight: normal; color: var(--muted); font-size: 11px; margin-right: 10px; }
+.box__title a { color: var(--title); }
+.box__body { padding: 2px 4px 4px 10px; }
 .box--grey { background: var(--box); }
 
-/* news-style list items */
-.item { padding: 10px 12px 12px 12px; border-bottom: 1px solid #e6e6e6; }
-.item:last-child { border-bottom: 0; }
-.item__title { font-size: 15px; font-weight: normal; color: #000; margin: 0 0 6px; }
-.item__title::before { content: "✱ "; color: #555; font-size: 14px; }
-.item__title a { color: #000; }
-.item__row { display: flex; gap: 12px; align-items: flex-start; }
-.item__thumb { flex: 0 0 170px; }
-.item__thumb img { width: 170px; height: 110px; object-fit: cover; border: 1px solid var(--line); display: block; background: var(--box); }
-.item__text { flex: 1; text-align: justify; }
-.item__meta { color: var(--muted); font-size: 11px; margin-top: 5px; }
-.item__meta a { color: var(--muted); }
-.more { font-weight: bold; color: #222; white-space: nowrap; }
+/* news items — .layout_short: the ✱ is the faculty's 12px image at 0 3px, the text is indented
+   under the headline, the picture floats left at its natural height, nothing separates items */
+.item { margin: 0 6px 3px 0; padding: 0; }
+.item::after { content: ""; display: block; clear: both; }
+.item__title { margin: 3px 0; padding: 0 0 0 16px; font-size: 15px; font-weight: normal; line-height: 1.5; color: var(--text); background: url(/img/asterisk-small.png) no-repeat 0 3px; }
+.item__title a { color: var(--rust); }
+.item__thumb { float: left; padding: 5px 10px 0 15px; }
+.item__thumb img { width: 170px; height: auto; display: block; }
+.item__text { padding: 0 8px 0 16px; text-align: justify; }
+.item__text p { margin: 0 0 4px; }
+.item__meta { padding: 0 8px 0 16px; margin: 0 0 4px; color: var(--info); font-size: 11px; text-align: left; }
+.item__meta a { color: var(--info); }
+.more { color: var(--rust); white-space: nowrap; }
+
+/* the faculty's right column: a 65px picture floated beside one line, rows parted by <hr> */
+.side-item { padding: 8px 0 0; }
+.side-item::after { content: ""; display: block; clear: both; }
+.side-item img { float: left; width: 65px; height: auto; margin: 0 5px 4px 0; }
+.side-item p { margin: 0; padding: 0 0 0 5px; line-height: 1.25; text-align: left; }
+.side-list { list-style: none; margin: 0; padding: 0; }
+.side-list li { padding: 2px 0 2px 16px; background: url(/img/asterisk-small.png) no-repeat 0 7px; }
+.side-list a { color: var(--text); }
+.side-list .cnt { color: var(--muted); }
+
+/* two columns — .subcolumns with .c66l and .c33r, a 10px gutter, stacked on a phone */
+.subcolumns { display: flex; gap: 10px; align-items: flex-start; }
+.col--main { flex: 0 0 calc(66% - 5px); min-width: 0; }
+.col--side { flex: 1 1 0; min-width: 0; }
+
+/* the breadcrumb and the orange-barred headline of every faculty subpage */
+.mod_breadcrumb { margin: 0 0 4px; padding: 0 3px 7px; font-size: 12px; }
+.mod_breadcrumb a { color: var(--crumb); }
+.mod_breadcrumb a:hover { color: #858fb3; }
+.mod_breadcrumb .active { color: var(--text); }
+h1.ce_headline, .page > h1 { margin: 12px 0; padding: 0 0 0 5px; border-left: 10px solid var(--orange); line-height: 1.3; font-weight: normal; font-size: 16px; color: var(--text); }
+.ce_text { text-align: justify; line-height: 1.5; }
+.ce_text p { margin: 0 0 12px; }
+
+/* one article — .mod_newsreader: headline, a grey 14px info line, the text with a 315px
+   picture floated left, and „Wróć” at the foot */
+.mod_newsreader .info { margin: 0 0 6px; font-size: 14px; color: var(--info); }
+.mod_newsreader .info a { color: var(--info); }
+.mod_newsreader .ce_text { margin-top: 16px; padding-right: 2px; }
+.mod_newsreader .back { margin: 18px 0 24px; padding-top: 12px; }
+.image_container { float: left; padding: 5px 10px 5px 0; width: 325px; max-width: 100%; }
+.image_container img { width: 315px; max-width: 100%; height: auto; display: block; }
+.image_container .caption { font-size: 11px; font-style: italic; color: #555; margin-right: 10px; }
 
 /* meta table on a post */
 .meta { width: 100%; font-size: 12px; }
@@ -97,22 +141,23 @@ button:disabled { opacity: .55; cursor: default; }
 .center { text-align: center; }
 .muted { color: var(--muted); }
 .small { font-size: 11px; }
+@media (max-width: 850px) {
+	.container { width: 100%; }
+	.page { padding: 10px; }
+	.subcolumns { display: block; }
+	.image_container { float: none; width: auto; padding: 5px 0; }
+	.image_container img { width: 100%; }
+}
 @media (max-width: 640px) {
-	.item__row { flex-direction: column; }
-	.item__thumb { flex-basis: auto; }
-	.item__thumb img { width: 100%; height: auto; max-height: 220px; }
+	/* the text still wraps round the 170px picture as on the faculty's phone page, but our
+	   meta line with the stamp goes under it rather than into the narrow gap beside it */
+	.item__meta { clear: both; padding-top: 4px; }
 }
 
 /* /ludzie — the people directory and the profile, copied from fuw.edu.pl/osoby-fuw.html on
-   purpose: the breadcrumb, the orange-barred h1, the alphabet strip, the search form, the
-   `table.employers` with a title column and alternating rows, and the `single_record` profile
-   table with a 130 px photo. Measured from the live site (Sept 2026). */
-.osoby .mod_breadcrumb { margin: 0 0 4px; padding: 0 3px 7px; font-size: 12px; }
-.osoby .mod_breadcrumb a { color: #5e6a94; }
-.osoby .mod_breadcrumb a:hover { color: #858fb3; }
-.osoby .mod_breadcrumb .active { color: var(--text); }
-.osoby h1.ce_headline { margin: 12px 0; padding: 0 0 0 5px; border-left: 10px solid var(--orange); line-height: 1.3; font-weight: normal; font-size: 16px; color: var(--text); }
-.osoby .ce_text p { margin: 0 0 12px; text-align: justify; }
+   purpose: the alphabet strip, the search form, the `table.employers` with a title column and
+   alternating rows, and the `single_record` profile table with a 130 px photo. Measured from the
+   live site (Sept 2026). The breadcrumb and the orange-barred h1 are the site-wide rules above. */
 .osoby .letters { text-align: center; font-size: 12px; margin: 0 0 10px; }
 .osoby .letters a { color: var(--rust); }
 .osoby .letters span { color: #aaa; }

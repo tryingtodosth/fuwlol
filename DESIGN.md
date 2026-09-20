@@ -20,13 +20,57 @@ it was written. When it and a `CLAUDE.md` disagree about a *rule*, the `CLAUDE.m
 closer to the code.
 
 ## Look: a copy of fuw.edu.pl, on purpose
-Measured from the real site (Sept 2026): Tahoma 13 px `#444`, a ~70 px light-grey banner
-with the logo left and icons right, a dark green nav bar `#175e4c` (hover `#1d7a62`) with
-white 13 px links and ▾ dropdowns, a 900 px white column, content in boxes with 1 px `#ccc`
-borders and a bordered title bar ("Aktualności"), news items with a ✱ bullet before a 15 px
-black title, a 170 px thumbnail, justified text and a bold "| Więcej". Mobile: a grey `#666`
-"Menu" bar. `frontend/src/app.css` holds all of it as reusable classes. The point is
-recognition: a physics student sees the site and knows where they are.
+Measured twice. In early September 2026 from www.fuw.edu.pl: Tahoma 13 px `#444`, a ~70 px
+light-grey banner with the logo left and icons right, a dark green nav bar `#175e4c` (hover
+`#1d7a62`), a 900 px white column, boxes with 1 px `#ccc` borders and a bordered title bar, news
+items with a typed ✱ before a 15 px black title, a 170 px thumbnail, justified text and a bold
+"| Więcej", a grey `#666` "Menu" bar on a phone. That is version 1, which `VersionV1.svelte`
+keeps for the time machine. On 20.09.2026 from **m.fuw.edu.pl** — where www.fuw.edu.pl now sends
+every visitor, desktop browsers included — with a headless browser reading computed styles, and
+this is what the site copies since version 2:
+
+- `body` 13px/1.5 Tahoma, Helvetica, Verdana, `#444`; headings plain — normal weight, `#444`,
+  16 / 15 / 14 px, `margin: 6px 0 12px`; paragraphs 12 px apart; links `#a84204`, underlined on
+  hover only.
+- **Banner** (`.responsive_baner`): amber `rgb(253,186,69)`, 1000 px wide and centred, 71 px tall,
+  a flex row — the faculty logo (100×61) flush left, the UW seal beside it, at the right a flag, an
+  envelope and a magnifier as plain dark icons. On a phone the grey `#666` hamburger square (a 29 px
+  icon with `padding: 4px 4px 3px`) sits at the banner's right end; there is no separate menu bar.
+- **Navigation** (`.nav`): `#175e4c`, also 1000 px and centred — the two bars overhang the 900 px
+  column by 50 px a side — 31 px tall; links white 13 px, `padding: 5px 15px` (6px 15px on a
+  phone), a 1 px `#104336` line along the top; a parent item carries a 9×5 grey arrow at its right
+  edge; the submenu is 20 em wide, its items `#1d7a62` with a 1 px `#175e4c` line between, no
+  border, no shadow.
+- **Column**: `#main` 900 px; `.mod_article` inset `10px 36px 10px 32px` (10 px all round under
+  850 px), so content is 832 px wide.
+- **Boxes** (`.mod_newslist`): 1 px `#bbb` border, `margin: 10px 0`, `padding: 0 10px 6px 6px`; the
+  title bar (`h1`) reaches the border with negative margins (`0 -10px 8px -6px`), `padding: 8px 0
+  10px 11px`, **16 px bold orange `#ee8d30`**, a 1 px `#bbb` underline — 35 px tall.
+- **News items** (`.layout_short`): nothing between them (`margin: 0 6px 3px 0`); the headline
+  `h2` 15 px normal weight with `padding-left: 16px` and the faculty's own 12×12 orange asterisk
+  (`/img/asterisk-small.png`, at `0 3px`), the link in rust; paragraphs 13px/1.5 justified,
+  `padding: 0 8px 0 16px`, `margin: 0 0 4px`; a picture is `.image_container.float_left`, 170 px
+  wide at its natural height, `padding: 5px 10px 0 15px`, the text wrapping round it; "| Więcej"
+  is typed text with a plain rust link, not bold. An item without a picture has no placeholder.
+- **The front page** is two columns (`.c66l` / `.c33r`, a 10 px gutter): the news box left; right,
+  a stack of small boxes with the same orange titles — a welcome paragraph, rows with a 65 px
+  picture floated beside one line and `<hr>` between them, link lists. Stacked on a phone.
+- **Every subpage headline** carries the same 10 px orange left bar — ours too: `h1.ce_headline` and
+  any `h1` that is a page's own top-level heading (`.page > h1`).
+- **An article** (`.mod_newsreader`): a breadcrumb (`.mod_breadcrumb`, 12 px, links `#5e6a94`,
+  "Wydział Fizyki UW > Wydział > Aktualności", the active item `#444`); `h1` 16 px normal weight
+  behind a **10 px `#ff8c00` left bar** (`padding-left: 5px`, `margin: 12px 0`); `p.info` — the
+  date — 14 px `#888`; `.ce_text` justified, `margin-top: 16px`, the picture
+  `.image_container.float_left` at 315 px with `padding: 5px 10px 5px 0` and an 11 px italic
+  `#555` caption; `p.back a` "Wróć" (`history.go(-1)`) 18 px below. No box around any of it.
+- **Footer** (`#mfooter`): one bare line at the bottom left, `padding: 0 10px`, a rust link.
+
+`frontend/src/app.css` holds all of it as reusable classes, `Header.svelte` and `Footer.svelte`
+the bars and the line, `PostCard.svelte` the item, `routes/wpis/[slug]` the article. The point is
+recognition: a physics student sees the site and knows where they are — so a measurement that turns
+out wrong (the grey banner, the black headlines, the bold "| Więcej", the hairline between items)
+is corrected in the live look and kept, pinned, in the version component the time machine mounts
+for the dates it was true.
 
 ## Data model (backend/archive/models.py)
 `Category` · `Person` (fictional in seeds; `is_listed` hides from the index; filed like the faculty

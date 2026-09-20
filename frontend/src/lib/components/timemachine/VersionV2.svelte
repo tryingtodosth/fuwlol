@@ -1,10 +1,8 @@
-<!-- Version 1 of fuw.lol's home page (10–19.09.2026): the ✱ list in the style of
-     www.fuw.edu.pl as it was measured then — grey-black bold 14px title bars, black
-     headlines with a typed ✱, a hairline between items. Registered in versions.ts.
-     The component is not live code any more: when the globals in app.css moved to the
-     m.fuw.edu.pl look on 20.09.2026 (version 2), the styles this markup depended on were
-     pinned below, so a date from before the redesign keeps rendering what the site
-     actually looked like. Do not "modernise" them. -->
+<!-- Version 2 of fuw.lol's home page (from 20.09.2026): the „Aktualności” box as on
+     m.fuw.edu.pl — an orange bold title bar, rust headlines behind the faculty's own
+     asterisk, no lines between items. It relies on the live globals in app.css, exactly as
+     version 1 did while it was current; when version 3 comes, pin them here the way
+     VersionV1.svelte pins its own, and leave this file alone afterwards. -->
 <script lang="ts">
 	import MathText from '$lib/components/MathText.svelte';
 	import { api, qs } from '$lib/api';
@@ -74,78 +72,9 @@
 
 <style>
 	.asof {
-		border-bottom: 1px solid #ccc;
+		border-bottom: 1px solid var(--box-line);
 		padding-bottom: 6px;
 		margin-bottom: 14px;
-		font-weight: bold;
-		color: #222;
-	}
-	/* app.css as of 19.09.2026 — the box and the item, frozen */
-	.box {
-		border: 1px solid #ccc;
-		background: #fff;
-		margin: 0 0 16px;
-		padding: 0;
-	}
-	.box__title {
-		margin: 0;
-		padding: 7px 12px;
-		font-size: 14px;
-		line-height: 1.45;
-		font-weight: bold;
-		color: #222;
-		border-bottom: 1px solid #ccc;
-		background: #fff;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 8px;
-	}
-	.box__title small {
-		font-weight: normal;
-		color: #777;
-		font-size: 11px;
-		margin: 0;
-	}
-	.box__body {
-		padding: 12px;
-	}
-	.item {
-		margin: 0;
-		padding: 10px 12px 12px;
-		border-bottom: 1px solid #e6e6e6;
-	}
-	.item:last-child {
-		border-bottom: 0;
-	}
-	.item::after {
-		content: none;
-	}
-	.item__title {
-		font-size: 15px;
-		font-weight: normal;
-		line-height: 1.45;
-		color: #000;
-		margin: 0 0 6px;
-		padding: 0;
-		background: none;
-	}
-	.item__title::before {
-		content: '✱ ';
-		color: #555;
-		font-size: 14px;
-	}
-	.item__title a {
-		color: #000;
-	}
-	.item__text {
-		padding: 0;
-		text-align: justify;
-	}
-	.item__meta {
-		padding: 0;
-		color: #777;
-		font-size: 11px;
-		margin: 5px 0 0;
+		color: var(--text);
 	}
 </style>

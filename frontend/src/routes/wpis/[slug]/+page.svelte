@@ -1,7 +1,10 @@
 <script lang="ts">
-	/** One exhibit: the stamp, the metadata table, the body, reactions, the report form and
-	 * the discussion underneath. */
+	/** One exhibit, laid out like a faculty news item: the breadcrumb, the orange-barred
+	 * headline, a grey info line, the text with its first picture floated left, then what is
+	 * ours — reactions, the details table, the report form, „Wróć” — and the discussion
+	 * underneath. */
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { api, ApiError } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
 	import { fmtDate, yearLabel, type Post } from '$lib/types';
@@ -86,6 +89,13 @@
 	}
 
 	const formatLabel = $derived(post?.format === 'latex' ? 'LaTeX' : 'Tekst / Markdown');
+
+	/** The faculty's „Wróć” is history.go(-1); a reader who arrived from a shared link has no
+	 * history to go back to and lands on the archive instead. */
+	function back() {
+		if (history.length > 1) history.back();
+		else goto('/przegladaj');
+	}
 	const statusNote = $derived.by(() => {
 		if (!post || post.status === 'published') return '';
 		if (post.status === 'pending') return 'Ten wpis czeka na moderację — widzisz go, bo go dodałeś/aś (albo moderujesz).';
@@ -111,6 +121,12 @@
 {:else if error}
 	<div class="box"><div class="box__body"><div class="error">{error}</div></div></div>
 {:else if post}
+	<div class="mod_breadcrumb">
+		<a href="/" title="fuw.lol — archiwum folkloru Wydziału Fizyki UW">fuw.lol</a> &gt;
+		<a href="/przegladaj" title="Przeglądaj archiwum">Przeglądaj</a> &gt;
+		<span class="active">{post.category_name}</span>
+	</div>
+
 	{#if statusNote}
 		<div class="box box--grey">
 			<div class="box__body">
@@ -122,184 +138,160 @@
 		</div>
 	{/if}
 
-	<div class="box">
-		<div class="box__body">
-			<h1 class="title">
-				{#if post.catalog_no}<span class="stamp">{post.catalog_no}</span>{/if}
-				{post.title}
-				{#if post.featured}<span class="pill pill--amber">Wyróżnione</span>{/if}
-			</h1>
-			{#if post.summary}<p class="lead"><MathText text={post.summary} /></p>{/if}
+	<div class="mod_newsreader">
+		<h1 class="ce_headline">{post.title}</h1>
+		<p class="info">
+			{post.published_at ? fmtDate(post.published_at) : 'jeszcze nieopublikowane'}
+			· {#if post.year != null}<a href="/przegladaj?year={post.year}">{yearLabel(post)}</a>{:else}{yearLabel(post)}{/if}
+			· <a href="/przegladaj?category={post.category}">{post.category_name}</a>
+			{#if post.people.length}
+				·
+				{#each post.people as p, i (p.slug)}<a href="/ludzie/{p.slug}">{p.name}</a
+					>{#if i < post.people.length - 1}{', '}{/if}{/each}
+			{/if}
+			{#if post.catalog_no}<span class="stamp">{post.catalog_no}</span>{/if}
+			{#if post.featured}<span class="pill pill--amber">Wyróżnione</span>{/if}
+		</p>
 
-			<table class="meta">
-				<tbody>
+		<div class="ce_text">
+			{#if post.summary}<p class="lead"><strong><MathText text={post.summary} /></strong></p>{/if}
+			<PostBody format={post.format} body={post.body} attachments={post.attachments} article />
+		</div>
+
+		<Reactions {post} />
+
+		<table class="meta">
+			<tbody>
+				{#if post.date_note}
+					<tr><th scope="row">Kiedy</th><td>{post.date_note}</td></tr>
+				{/if}
+				{#if post.subjects?.length}
 					<tr>
-						<th scope="row">Kategoria</th>
-						<td><a href="/przegladaj?category={post.category}">{post.category_name}</a></td>
-					</tr>
-					<tr>
-						<th scope="row">Rok</th>
+						<th scope="row">Przedmioty</th>
 						<td>
-							{#if post.year != null}
-								<a href="/przegladaj?year={post.year}">{yearLabel(post)}</a>
-							{:else}
-								{yearLabel(post)}
+							{#each post.subjects as s (s.slug)}
+								<a class="pill" href="/przegladaj?subject={s.slug}" title={s.short || undefined}>{s.name}</a>
+							{/each}
+						</td>
+					</tr>
+				{/if}
+				{#if post.tags.length}
+					<tr>
+						<th scope="row">Tagi</th>
+						<td>
+							{#each post.tags as t (t.slug)}
+								<a class="pill" href="/przegladaj?tag={t.slug}">{t.name}</a>
+							{/each}
+						</td>
+					</tr>
+				{/if}
+				{#if post.source_note || post.source_url}
+					<tr>
+						<th scope="row">Źródło</th>
+						<td>
+							{post.source_note}
+							{#if post.source_url}
+								{#if post.source_note}<br />{/if}
+								<a href={post.source_url} target="_blank" rel="noopener nofollow">{post.source_url}</a>
 							{/if}
 						</td>
 					</tr>
-					{#if post.date_note}
-						<tr><th scope="row">Kiedy</th><td>{post.date_note}</td></tr>
-					{/if}
-					{#if post.people.length}
-						<tr>
-							<th scope="row">Osoby</th>
-							<td>
-								<!-- `{', '}` rather than a comma typed into the markup: Svelte trims
-								     the whitespace at the end of a block, so „A,B” came out unspaced. -->
-								{#each post.people as p, i (p.slug)}<a href="/ludzie/{p.slug}">{p.name}</a
-									>{#if i < post.people.length - 1}{', '}{/if}{/each}
-							</td>
-						</tr>
-					{/if}
-					{#if post.subjects?.length}
-						<tr>
-							<th scope="row">Przedmioty</th>
-							<td>
-								{#each post.subjects as s (s.slug)}
-									<a class="pill" href="/przegladaj?subject={s.slug}" title={s.short || undefined}>{s.name}</a>
-								{/each}
-							</td>
-						</tr>
-					{/if}
-					{#if post.tags.length}
-						<tr>
-							<th scope="row">Tagi</th>
-							<td>
-								{#each post.tags as t (t.slug)}
-									<a class="pill" href="/przegladaj?tag={t.slug}">{t.name}</a>
-								{/each}
-							</td>
-						</tr>
-					{/if}
-					{#if post.source_note || post.source_url}
-						<tr>
-							<th scope="row">Źródło</th>
-							<td>
-								{post.source_note}
-								{#if post.source_url}
-									{#if post.source_note}<br />{/if}
-									<a href={post.source_url} target="_blank" rel="noopener nofollow">{post.source_url}</a>
-								{/if}
-							</td>
-						</tr>
-					{/if}
-					<tr><th scope="row">Dodał/a</th><td>{post.submitted_by || '—'}</td></tr>
-					<tr>
-						<th scope="row">Opublikowano</th>
-						<td>{post.published_at ? fmtDate(post.published_at) : 'jeszcze nie'}</td>
-					</tr>
-					<tr><th scope="row">Wyświetlenia</th><td>{post.views}</td></tr>
-					<tr><th scope="row">Format</th><td>{formatLabel}</td></tr>
-				</tbody>
-			</table>
-
-			<hr />
-
-			<PostBody format={post.format} body={post.body} attachments={post.attachments} />
-
-			<Reactions {post} />
-
-			<SuggestEdit {post}
-				canDecide={auth.isStaff || post.submitted_by === auth.user?.username}
-				onChanged={() => location.reload()} />
-
-			{#if post.can_moderate}
-				<p class="acts small modrow">
-					{#if post.moderation_notice}<span class="pill pill--amber">{post.moderation_notice}</span>{/if}
-					{#if post.moderation?.actor}<span class="muted">({post.moderation.actor}: {post.moderation.reason || 'bez powodu'})</span>{/if}
-					<ModTools kind="post" id={post.slug}
-						status={post.status === 'hidden' ? 'hidden' : post.status === 'nuked' ? 'nuked' : 'visible'}
-						featured={post.featured}
-						onChanged={() => location.reload()} />
-				</p>
-			{/if}
-
-			{#if post.can_edit && (post.status === 'hidden' || post.status === 'rejected')}
-				<div class="reasons small">
-					<strong>{post.status === 'rejected' ? 'Wpis został odrzucony.' : 'Wpis został ukryty przez moderację.'}</strong>
-					{#if post.review_note}Powód: {post.review_note}.{:else}Powód podany jest w „Moich wpisach”, jeśli moderator go zostawił.{/if}
-					Możesz się odwołać w ciągu 14 dni: napisz na adres z „O archiwum”, podając numer {post.catalog_no || 'wpisu'} — odwołanie rozpatruje człowiek.
-				</div>
-			{/if}
-
-			<p class="acts small">
-				{#if post.can_edit}
-					<a href="/edytuj/{post.slug}">Edytuj</a> ·
 				{/if}
-				<button type="button" class="linky" onclick={() => (reportOpen = !reportOpen)}>
-					Zgłoś / poproś o usunięcie
-				</button>
+				<tr><th scope="row">Dodał/a</th><td>{post.submitted_by || '—'}</td></tr>
+				<tr><th scope="row">Wyświetlenia</th><td>{post.views}</td></tr>
+				<tr><th scope="row">Format</th><td>{formatLabel}</td></tr>
+			</tbody>
+		</table>
+
+		<SuggestEdit {post}
+			canDecide={auth.isStaff || post.submitted_by === auth.user?.username}
+			onChanged={() => location.reload()} />
+
+		{#if post.can_moderate}
+			<p class="acts small modrow">
+				{#if post.moderation_notice}<span class="pill pill--amber">{post.moderation_notice}</span>{/if}
+				{#if post.moderation?.actor}<span class="muted">({post.moderation.actor}: {post.moderation.reason || 'bez powodu'})</span>{/if}
+				<ModTools kind="post" id={post.slug}
+					status={post.status === 'hidden' ? 'hidden' : post.status === 'nuked' ? 'nuked' : 'visible'}
+					featured={post.featured}
+					onChanged={() => location.reload()} />
 			</p>
+		{/if}
 
-			{#if reportDone}
-				<div class="ok">Dziękujemy, zgłoszenie trafiło do moderacji.</div>
+		{#if post.can_edit && (post.status === 'hidden' || post.status === 'rejected')}
+			<div class="reasons small">
+				<strong>{post.status === 'rejected' ? 'Wpis został odrzucony.' : 'Wpis został ukryty przez moderację.'}</strong>
+				{#if post.review_note}Powód: {post.review_note}.{:else}Powód podany jest w „Moich wpisach”, jeśli moderator go zostawił.{/if}
+				Możesz się odwołać w ciągu 14 dni: napisz na adres z „O archiwum”, podając numer {post.catalog_no || 'wpisu'} — odwołanie rozpatruje człowiek.
+			</div>
+		{/if}
+
+		<p class="acts small">
+			{#if post.can_edit}
+				<a href="/edytuj/{post.slug}">Edytuj</a> ·
 			{/if}
+			<button type="button" class="linky" onclick={() => (reportOpen = !reportOpen)}>
+				Zgłoś / poproś o usunięcie
+			</button>
+		</p>
 
-			{#if reportOpen}
-				<form class="report" onsubmit={sendReport}>
-					<p class="small muted">
-						Jesteś na zdjęciu, coś tu jest nieprawdą albo naruszamy Twoje prawa? Napisz — moderator to
-						przejrzy.
-					</p>
-					<label for="r-reason">Powód</label>
-					<select id="r-reason" bind:value={reason}>
-						{#each REASONS as r (r.value)}
-							<option value={r.value}>{r.label}</option>
-						{/each}
-					</select>
+		{#if reportDone}
+			<div class="ok">Dziękujemy, zgłoszenie trafiło do moderacji.</div>
+		{/if}
 
-					<label for="r-note">Szczegóły (opcjonalnie)</label>
-					<textarea id="r-note" rows="4" bind:value={note}></textarea>
+		{#if reportOpen}
+			<form class="report" onsubmit={sendReport}>
+				<p class="small muted">
+					Jesteś na zdjęciu, coś tu jest nieprawdą albo naruszamy Twoje prawa? Napisz — moderator to
+					przejrzy.
+				</p>
+				<label for="r-reason">Powód</label>
+				<select id="r-reason" bind:value={reason}>
+					{#each REASONS as r (r.value)}
+						<option value={r.value}>{r.label}</option>
+					{/each}
+				</select>
 
-					<label for="r-mail">E-mail kontaktowy</label>
-					<input id="r-mail" type="email" bind:value={contact} placeholder="żebyśmy mogli odpisać" />
-					<p class="help">Bez adresu zgłoszenie też trafi do moderacji, ale nie będzie formalnym zawiadomieniem w rozumieniu art. 16 DSA i nie dostaniesz odpowiedzi. Zgłoszenia treści nielegalnych dotyczących dzieci mogą być anonimowe.</p>
-					<label class="check"><input type="checkbox" bind:checked={goodFaith} required /> Oświadczam, że zgłoszenie składam w dobrej wierze, a podane informacje są rzetelne i kompletne.</label>
+				<label for="r-note">Szczegóły (opcjonalnie)</label>
+				<textarea id="r-note" rows="4" bind:value={note}></textarea>
 
-					{#if reportError}<div class="error">{reportError}</div>{/if}
+				<label for="r-mail">E-mail kontaktowy</label>
+				<input id="r-mail" type="email" bind:value={contact} placeholder="żebyśmy mogli odpisać" />
+				<p class="help">Bez adresu zgłoszenie też trafi do moderacji, ale nie będzie formalnym zawiadomieniem w rozumieniu art. 16 DSA i nie dostaniesz odpowiedzi. Zgłoszenia treści nielegalnych dotyczących dzieci mogą być anonimowe.</p>
+				<label class="check"><input type="checkbox" bind:checked={goodFaith} required /> Oświadczam, że zgłoszenie składam w dobrej wierze, a podane informacje są rzetelne i kompletne.</label>
 
-					<div class="report__send">
-						<button type="submit" disabled={sending}>{sending ? 'Wysyłam…' : 'Wyślij zgłoszenie'}</button>
-						<button type="button" class="btn btn--ghost" onclick={() => (reportOpen = false)}>
-							Anuluj
-						</button>
-					</div>
-				</form>
-			{/if}
-		</div>
+				{#if reportError}<div class="error">{reportError}</div>{/if}
+
+				<div class="report__send">
+					<button type="submit" disabled={sending}>{sending ? 'Wysyłam…' : 'Wyślij zgłoszenie'}</button>
+					<button type="button" class="btn btn--ghost" onclick={() => (reportOpen = false)}>
+						Anuluj
+					</button>
+				</div>
+			</form>
+		{/if}
+
+		<p class="back"><button type="button" class="linky linky--back" onclick={back} title="Wróć">Wróć</button></p>
 	</div>
 
 	<Comments slug={post.slug} />
 {/if}
 
 <style>
-	.title {
-		font-size: 20px;
-		line-height: 1.3;
-		margin-bottom: 8px;
+	.info .stamp {
+		margin-left: 6px;
+		vertical-align: 1px;
 	}
-	.title .stamp {
-		margin-right: 6px;
-		vertical-align: 3px;
-	}
-	.title .pill {
-		vertical-align: 4px;
+	.info .pill {
+		vertical-align: 2px;
 		font-weight: normal;
+		margin-left: 4px;
 	}
 	.lead {
-		font-size: 13px;
-		color: #333;
-		font-style: italic;
+		color: var(--text);
+	}
+	.meta {
+		margin: 12px 0;
 	}
 	.acts {
 		margin-top: 10px;
@@ -317,6 +309,9 @@
 	.linky:hover {
 		background: none;
 		text-decoration: underline;
+	}
+	.linky--back {
+		font-size: 13px;
 	}
 	.reasons { border: 1px solid #f2b8b8; background: #fff0f0; padding: 6px 9px; margin: 8px 0; }
 	.check { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; margin: 8px 0; }

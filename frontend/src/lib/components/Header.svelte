@@ -1,5 +1,8 @@
 <script lang="ts">
-	/** The faculty banner and the green bar, copied from www.fuw.edu.pl on purpose. */
+	/** The banner and the green bar, copied from fuw.edu.pl on purpose: an amber strip 1000px
+	 * wide with the mark at its left edge and plain dark icons at its right, the navigation as a
+	 * second 1000px bar directly under it, and on a phone the grey hamburger square inside the
+	 * banner instead of the old full-width "Menu" bar. */
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -59,53 +62,56 @@
 
 <svelte:window onkeydown={onKey} />
 
-<div class="banner">
-	<div class="container banner__in">
-		<a class="brand" href="/">
-			<svg class="brand__mark" width="46" height="46" viewBox="0 0 46 46" aria-hidden="true">
-				<rect width="46" height="46" fill="#175e4c" />
-				<polygon points="23,6 42,17 4,17" fill="#fff" />
-				<rect x="6" y="19" width="5" height="15" fill="#fff" />
-				<rect x="14" y="19" width="5" height="15" fill="#fff" />
-				<rect x="27" y="19" width="5" height="15" fill="#fff" />
-				<rect x="35" y="19" width="5" height="15" fill="#fff" />
-				<rect x="3" y="35" width="40" height="4" fill="#fff" />
+<header class="banner">
+	<a class="brand" href="/">
+		<svg class="brand__mark" width="61" height="61" viewBox="0 0 46 46" aria-hidden="true">
+			<rect width="46" height="46" fill="#175e4c" />
+			<polygon points="23,6 42,17 4,17" fill="#fff" />
+			<rect x="6" y="19" width="5" height="15" fill="#fff" />
+			<rect x="14" y="19" width="5" height="15" fill="#fff" />
+			<rect x="27" y="19" width="5" height="15" fill="#fff" />
+			<rect x="35" y="19" width="5" height="15" fill="#fff" />
+			<rect x="3" y="35" width="40" height="4" fill="#fff" />
+		</svg>
+		<span class="brand__txt">
+			<span class="brand__name">fuw.lol</span>
+			<span class="brand__sub">ARCHIWUM WYDZIAŁU FIZYKI UW</span>
+		</span>
+	</a>
+
+	<div class="banner__grow"></div>
+
+	<div class="banner__icons">
+		{#if auth.isAuthenticated}
+			<a class="who" href="/konto">{auth.user?.username}</a>
+			<button type="button" class="linky" onclick={logout}>Wyloguj</button>
+		{:else if auth.ready}
+			<a class="who" href="/logowanie">Zaloguj się</a>
+		{/if}
+		<a class="icon" href="/przegladaj" title="Szukaj w archiwum" aria-label="Szukaj w archiwum">
+			<svg width="29" height="29" viewBox="0 0 24 24" aria-hidden="true">
+				<circle cx="10" cy="10" r="6.5" fill="none" stroke="#222" stroke-width="2" />
+				<line x1="15" y1="15" x2="21.5" y2="21.5" stroke="#222" stroke-width="2" stroke-linecap="round" />
 			</svg>
-			<span class="brand__txt">
-				<span class="brand__name">fuw.lol</span>
-				<span class="brand__sub">ARCHIWUM WYDZIAŁU FIZYKI UW</span>
-			</span>
 		</a>
-
-		<div class="banner__icons">
-			<a class="icon" href="/przegladaj" title="Szukaj w archiwum" aria-label="Szukaj w archiwum">
-				<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-					<circle cx="7.5" cy="7.5" r="5.2" fill="none" stroke="#175e4c" stroke-width="2" />
-					<line x1="11.4" y1="11.4" x2="16.5" y2="16.5" stroke="#175e4c" stroke-width="2" />
-				</svg>
-			</a>
-			{#if auth.isAuthenticated}
-				<a class="who" href="/konto">{auth.user?.username}</a>
-				<button type="button" class="linky" onclick={logout}>Wyloguj</button>
-			{:else if auth.ready}
-				<a class="who" href="/logowanie">Zaloguj się</a>
-			{/if}
-		</div>
+		<!-- the faculty's hamburger: a grey square at the right end of the banner, phones only -->
+		<button
+			type="button"
+			class="toggleMenu"
+			aria-expanded={mobileOpen}
+			aria-controls="nav-main"
+			aria-label="Menu"
+			onclick={() => (mobileOpen = !mobileOpen)}
+		>
+			<svg width="29" height="29" viewBox="0 0 24 24" aria-hidden="true">
+				<path d="M3 6h18M3 12h18M3 18h18" stroke="#fff" stroke-width="2" stroke-linecap="round" />
+			</svg>
+		</button>
 	</div>
-</div>
-
-<button
-	type="button"
-	class="toggleMenu"
-	aria-expanded={mobileOpen}
-	aria-controls="nav-main"
-	onclick={() => (mobileOpen = !mobileOpen)}
->
-	Menu
-</button>
+</header>
 
 <nav class="nav" class:is-open={mobileOpen} id="nav-main" aria-label="Nawigacja główna">
-	<ul class="container nav__list">
+	<ul class="nav__list">
 		<li><a href="/">Strona główna</a></li>
 		<li class="has-drop">
 			<button
@@ -114,7 +120,7 @@
 				aria-haspopup="true"
 				onclick={() => (dropOpen = !dropOpen)}
 			>
-				Przeglądaj <span class="arr" aria-hidden="true">▾</span>
+				Przeglądaj
 			</button>
 			<ul class="drop" class:is-open={dropOpen}>
 				<li><a href="/przegladaj">Wszystkie wpisy</a></li>
@@ -154,22 +160,21 @@
 </nav>
 
 <style>
+	/* .responsive_baner: rgb(253,186,69), 1000px, 71px, flex; the logo sits flush left */
 	.banner {
-		background: var(--banner);
-		border-bottom: 1px solid #bbb;
-	}
-	.banner__in {
-		min-height: 70px;
+		max-width: 1000px;
+		margin: 0 auto;
+		min-height: 71px;
+		background: var(--amber);
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
 	}
 	.brand {
 		display: flex;
 		align-items: center;
 		gap: 10px;
 		color: #222;
+		padding: 5px 0;
 	}
 	.brand:hover {
 		text-decoration: none;
@@ -186,27 +191,31 @@
 		display: block;
 		font-size: 22px;
 		font-weight: bold;
-		color: #175e4c;
+		color: var(--green);
 		letter-spacing: -0.5px;
 	}
 	.brand__sub {
 		display: block;
 		font-size: 10px;
 		letter-spacing: 1px;
-		color: #555;
+		color: #333;
+	}
+	.banner__grow {
+		flex: 1 1 auto;
 	}
 	.banner__icons {
 		display: flex;
 		align-items: center;
 		gap: 10px;
-		font-size: 11px;
+		padding: 0 10px;
+		font-size: 13px;
 	}
 	.banner__icons a {
-		color: #444;
+		color: #222;
 	}
 	.icon {
 		display: inline-flex;
-		padding: 2px;
+		padding: 4px;
 	}
 	.who {
 		max-width: 130px;
@@ -218,7 +227,7 @@
 		background: none;
 		border: 0;
 		padding: 0;
-		font-size: 11px;
+		font-size: 13px;
 		color: var(--rust);
 		cursor: pointer;
 		font-family: inherit;
@@ -228,23 +237,24 @@
 		text-decoration: underline;
 	}
 
-	/* the grey "Menu" bar, only on phones — .toggleMenu on the faculty site */
+	/* .toggleMenu: #666, padding 4px 4px 3px around a 29px icon — 37×36 */
 	.toggleMenu {
 		display: none;
-		width: 100%;
 		background: #666;
 		border: 0;
 		color: #fff;
-		font-size: 13px;
-		padding: 8px 12px;
-		text-align: left;
+		padding: 4px 4px 3px;
+		line-height: 0;
 		border-radius: 0;
 	}
 	.toggleMenu:hover {
-		background: #777;
+		background: #555;
 	}
 
+	/* .nav: #175e4c, 1000px, links 13px white with 5px 15px padding, one 1px darker line on top */
 	.nav {
+		max-width: 1000px;
+		margin: 0 auto;
 		background: var(--green);
 	}
 	.nav__list {
@@ -256,14 +266,15 @@
 	}
 	.nav__list > li {
 		position: relative;
+		border-top: 1px solid var(--green-dark);
 	}
 	.nav :global(a),
 	.nav button {
 		display: block;
 		color: #fff;
 		font-size: 13px;
-		line-height: 1.3;
-		padding: 7px 12px;
+		line-height: 1.5;
+		padding: 5px 15px;
 		background: none;
 		border: 0;
 		font-family: inherit;
@@ -278,30 +289,40 @@
 		background: var(--green-light);
 		text-decoration: none;
 	}
-	.arr {
-		font-size: 10px;
+	/* the faculty's parent items carry a small grey arrow at their right edge */
+	.has-drop > button {
+		padding-right: 28px;
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='5'%3E%3Cpath d='M0 0h9L4.5 5z' fill='%23c2c2c2'/%3E%3C/svg%3E");
+		background-repeat: no-repeat;
+		background-position: right 12px center;
 	}
 	.nav :global(a.nav__alert) {
 		background: var(--rust);
 	}
+	/* .nav li ul: 20em wide, each item #1d7a62 with a 1px #175e4c line on top, no shadow */
 	.drop {
 		display: none;
 		position: absolute;
 		left: 0;
 		top: 100%;
 		z-index: 40;
-		min-width: 230px;
+		width: 20em;
 		list-style: none;
 		margin: 0;
-		padding: 3px 0;
-		background: var(--green);
-		border: 1px solid var(--green-dark);
-		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+		padding: 0;
 	}
 	.has-drop:hover .drop,
 	.has-drop:focus-within .drop,
 	.drop.is-open {
 		display: block;
+	}
+	.drop :global(a) {
+		background: var(--green-light);
+		border-top: 1px solid var(--green);
+		white-space: normal;
+	}
+	.drop :global(a:hover) {
+		background: var(--green);
 	}
 	.cnt {
 		color: #b7ddd1;
@@ -310,7 +331,7 @@
 
 	@media (max-width: 850px) {
 		.toggleMenu {
-			display: block;
+			display: inline-block;
 		}
 		.nav {
 			display: none;
@@ -321,20 +342,34 @@
 		.nav__list {
 			display: block;
 		}
-		.nav__list > li {
-			border-top: 1px solid var(--green-dark);
+		.nav :global(a),
+		.nav button {
+			padding: 6px 15px;
+			white-space: normal;
 		}
 		.drop {
 			position: static;
-			border: 0;
-			box-shadow: none;
-			background: var(--green-dark);
+			width: auto;
 		}
 		.brand__name {
 			font-size: 18px;
 		}
 		.brand__sub {
 			font-size: 9px;
+		}
+		.banner__icons {
+			gap: 6px;
+			padding: 0 0 0 6px;
+		}
+	}
+	/* the faculty's phone banner is logos and icons only; ours keeps the name and drops the line
+	   under it, which otherwise wraps into the icons at 390px */
+	@media (max-width: 480px) {
+		.brand__sub {
+			display: none;
+		}
+		.brand__name {
+			font-size: 20px;
 		}
 	}
 </style>

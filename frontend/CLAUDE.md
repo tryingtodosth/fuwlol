@@ -7,14 +7,22 @@ the reasoning ("Look", "Rendering", "Naming a person into existence", "The time 
 
 ## The look is a measured copy of fuw.edu.pl — keep measuring, don't restyle
 
-Tahoma 13 px `#444`; a ~70 px light-grey banner, logo left, icons right; the dark green nav
-`#175e4c` (hover `#1d7a62`) with white 13 px links and ▾ dropdowns; a 900 px white column; content in
-boxes with 1 px `#ccc` borders and a bordered title bar; news items with a ✱ before a 15 px black
-title, a 170 px thumbnail, justified text and a bold „| Więcej"; on a phone a grey `#666` „Menu"
-bar. `/ludzie` and `/ludzie/[slug]` copy `osoby-fuw.html` down to `table.employers` and the
-`single_record` table, with the faculty's own silhouettes (`static/img/anonymous{ma,fe}bw.png`).
-**`src/app.css` holds all of it as reusable classes** — a new page reuses them; a new measurement
-goes into `app.css` and into `DESIGN.md` "Look". The point is recognition, so "nicer" is wrong.
+Measured on m.fuw.edu.pl on 20.09.2026 (www.fuw.edu.pl sends every visitor there) with a headless
+browser reading computed styles: Tahoma 13px/1.5 `#444`; plain headings (normal weight, 16/15/14
+px); an **amber** `#fdba45` banner and the `#175e4c` nav, both 1000 px centred over the 900 px
+column, which `.page` insets by 32/36 px; boxes with 1 px `#bbb` borders and **bold 16 px orange
+(`#ee8d30`) title bars**; news headlines 15 px normal weight in rust behind the faculty's own
+asterisk (`static/img/asterisk-small.png`, a 16 px indent), justified text indented the same, the
+picture floated left at 170 px, "| Więcej" plain, nothing between items; on a phone the grey
+hamburger square inside the banner. An article is a `.mod_breadcrumb`, an `h1.ce_headline` behind
+the 10 px orange bar, a grey 14 px `.info` line, `.ce_text` with a 315 px picture floated left,
+and „Wróć". The front page is two columns (`.subcolumns`, 66/33). `/ludzie` copies
+`osoby-fuw.html` down to `table.employers` and the faculty's own silhouettes
+(`static/img/anonymous{ma,fe}bw.png`). **`src/app.css` holds all of it as reusable classes** and
+`DESIGN.md` "Look" has every number and where it was read; a new measurement goes into both. The
+point is recognition, so "nicer" is wrong. **A redesign is a new `VersionV<n>.svelte`** registered
+in `timemachine/versions.ts`, with the previous version's styles pinned inside its own file — that
+is what lets an old date in the time machine render the look the site actually had.
 
 ## The layer boundary
 
@@ -84,8 +92,8 @@ picker exists to prevent when pressed before the previous query's results had se
 
 `eras.ts` `eraFor(date)` is one pure function: ≥ `SITE_LAUNCH` (2026-09-10) → our archive as of
 that day (`?before=`), rendered by the layout version in force then (`versions.ts` `SITE_VERSIONS`
-— the registry a redesign **appends** to, keeping the old component, so an old date renders an old
-look); `WAYBACK_EARLIEST` (1998-01-20) ≤ d < launch → fuw.edu.pl from the Internet Archive in an
+— v1 for 10–19.09.2026, v2 since; the registry a redesign **appends** to, keeping the old component
+with its styles pinned, so an old date renders an old look); `WAYBACK_EARLIEST` (1998-01-20) ≤ d < launch → fuw.edu.pl from the Internet Archive in an
 iframe (`/api/wayback/` for the caption); 1816 → a Polish paper; 1795 → German; 1400 → Latin;
 then cave paintings, dinosaurs, and before the Big Bang nothing. The Big Bang animation plays on
 every journey to before fuw.lol existed. Only the home page has one.

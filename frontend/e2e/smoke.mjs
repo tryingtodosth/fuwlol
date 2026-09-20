@@ -59,8 +59,9 @@ check('post shows its catalog number', (await p.locator('.stamp').count()) > 0);
 await p.screenshot({ path: path.join(SHOTS, 'post-latex.png'), fullPage: true });
 
 await p.goto(`${FRONT}/ludzie`, { waitUntil: 'load' });
-await p.waitForSelector('.tile', { timeout: 15000 });
-check('people index lists fictional people', (await p.locator('.tile').count()) >= 3);
+// the directory is the faculty's table.employers since 19.09.2026, not a grid of tiles
+await p.waitForSelector('table.employers', { timeout: 15000 });
+check('people index lists fictional people', (await p.locator('table.employers td.nm a').count()) >= 3);
 await p.goto(`${FRONT}/os-czasu`, { waitUntil: 'load' });
 await p.waitForTimeout(1500);
 check('timeline shows years', (await p.getByText(/2011/).count()) > 0);

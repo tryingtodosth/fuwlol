@@ -9,8 +9,9 @@
 	let {
 		format,
 		body,
-		attachments = []
-	}: { format: Format; body: string; attachments?: Attachment[] } = $props();
+		attachments = [],
+		article = false
+	}: { format: Format; body: string; attachments?: Attachment[]; article?: boolean } = $props();
 
 	const resolve = $derived(
 		resolver(attachments.map((a) => ({ name: a.original_name, url: a.url, kind: a.kind })))
@@ -68,7 +69,11 @@
 				.map((a) => a.id)
 		)
 	);
-	const images = $derived(attachments.filter((a) => a.kind === 'image' && !named.has(a.id)));
+	const unnamed = $derived(attachments.filter((a) => a.kind === 'image' && !named.has(a.id)));
+	// On a post page a Markdown body gets its first picture floated left at 315px, the way a
+	// faculty news item does; a typeset LaTeX page and a comment keep the gallery underneath.
+	const lead = $derived(article && format !== 'latex' ? unnamed[0] : undefined);
+	const images = $derived(lead ? unnamed.slice(1) : unnamed);
 	const others = $derived(attachments.filter((a) => a.kind !== 'image'));
 </script>
 
@@ -86,7 +91,16 @@
 		<pre>{body}</pre>
 	</div>
 {:else}
+	{#if lead}
+		<div class="image_container">
+			<a href={lead.url} target="_blank" rel="noopener">
+				<img src={lead.url} alt={lead.caption || lead.original_name} />
+			</a>
+			{#if lead.caption}<div class="caption">{lead.caption}</div>{/if}
+		</div>
+	{/if}
 	<div class="body-html" class:latex-doc={format === 'latex'} bind:this={el}>{@html html}</div>
+	{#if lead}<div class="clear"></div>{/if}
 {/if}
 
 {#if images.length}
@@ -129,6 +143,9 @@
 {/if}
 
 <style>
+	.clear {
+		clear: both;
+	}
 	.body-html :global(img) {
 		max-width: 100%;
 		height: auto;

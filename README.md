@@ -2,8 +2,8 @@
 
 Nieoficjalne, społecznościowe archiwum śmiesznych rzeczy z Wydziału Fizyki Uniwersytetu
 Warszawskiego: memy, cytaty, legendarne zadania, zdjęcia, historie, skany, folklor, stare
-strony. Wygląd celowo kopiuje www.fuw.edu.pl (Tahoma 13 px, zielony pasek `#175e4c`, ramki
-1 px `#ccc`, ✱ przed nagłówkami) — to część żartu.
+strony. Wygląd celowo kopiuje fuw.edu.pl (Tahoma 13 px, bursztynowy baner, zielony pasek `#175e4c`,
+ramki 1 px `#bbb` z pomarańczowymi tytułami, ✱ Wydziału przed nagłówkami) — to część żartu.
 
 **Stos:** Django 5.2 + Django REST Framework (SQLite, tokeny) · SvelteKit 2 / Svelte 5 (SPA,
 `adapter-static`) · LaTeX.js + KaTeX w przeglądarce · marked + DOMPurify.
