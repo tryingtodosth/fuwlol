@@ -28,7 +28,7 @@ services:
       FUWLOL_TRUST_PROXY: "1"
       # X-Forwarded-For hops we run: Traefik (Coolify) + nginx = 2. See backend/config/middleware.py.
       FUWLOL_PROXY_HOPS: ${FUWLOL_PROXY_HOPS:-2}
-      # 1 ONLY when the origin accepts traffic from Cloudflare alone (deploy/HETZNER.md)
+      # 1 ONLY when the origin accepts traffic from Cloudflare alone (deploy/OVH.md)
       FUWLOL_CLOUDFLARE: ${FUWLOL_CLOUDFLARE:-0}
       FUWLOL_IP_SALT: ${FUWLOL_IP_SALT:-}
       FUWLOL_SECRET_KEY: ${FUWLOL_SECRET_KEY:?set FUWLOL_SECRET_KEY}

@@ -1,11 +1,23 @@
 # fuw.lol — design notes
 
-## What it is
-An internet archive of the *funny* side of the Faculty of Physics, University of Warsaw —
-folklore, not a news site: things that are only ever passed around by word of mouth, a
-group chat, or a scan somebody keeps. The value is that it is one place, browsable by
-category/person/year, moderated, and that a post can be *written* — a legendary exam
-problem needs LaTeX, a meme needs a picture, a story needs a paragraph.
+The *why* behind each subsystem: what was measured, what was decided, what broke on the way and how
+it was found. This is the reasoning. The rules an editor has to hold while changing the code are
+distilled into `CLAUDE.md` at the root and into the scoped `CLAUDE.md` of each half and each app,
+which point back here for the argument.
+
+Until 2026-09-19 this file held everything. What moved out, and where:
+
+| Now in | What |
+|---|---|
+| `PRODUCT.md` | what the archive is and is not, the tiers, the feature set, product decisions, what is left open |
+| `LEGAL.md` | the two takedowns and why they end differently, consent, RODO retention, DSA notice-and-action, the Dyżurnet step |
+| `SECURITY.md` | the standing security posture, its accepted risks, and how to test a "known vulnerability" claim |
+| `deploy/OVH.md` | how the site actually runs (this file's old "Deployment" section described a Hetzner + Coolify plan that never went live) |
+| `test.md` | every test suite and browser script, what it covers, how to run it |
+
+When this file and the code disagree, the code is the present and this file is what was true when
+it was written. When it and a `CLAUDE.md` disagree about a *rule*, the `CLAUDE.md` wins — it is
+closer to the code.
 
 ## Look: a copy of fuw.edu.pl, on purpose
 Measured from the real site (Sept 2026): Tahoma 13 px `#444`, a ~70 px light-grey banner
@@ -34,8 +46,8 @@ files, and the editor previews unsaved files with object URLs through the same m
 (after a pixel-count check from the header, against decompression bombs), a PDF must start
 with `%PDF`, audio/video must carry their container signature; unknown extensions are
 refused; JPEG/PNG are re-saved without EXIF (GPS). GIF/WebP keep their bytes — a re-encode
-would kill animation, which is half of what a meme archive holds. No ClamAV here: OVH
-shared hosting has none; stated rather than faked.
+would kill animation, which is half of what a meme archive holds. No ClamAV anywhere in this
+stack; stated rather than faked (`SECURITY.md`).
 
 ## People (/ludzie) — the faculty directory, copied on purpose
 `/ludzie` is `fuw.edu.pl/osoby-fuw.html` and `/ludzie/<slug>` is `osoby-fuw.html?show=…`, measured from
@@ -209,69 +221,12 @@ decline (back to ordinary moderation). `is_escalated` fails CLOSED. Every step i
 database and a line in the `security` log. Nothing distinguishes "already escalated" from "does
 not exist" to anybody below head-admin.
 
-## The two takedowns, and why they end differently
-Taking something down is not one thing here, because the law it answers to is not one law.
-
-**Civil — copyright, defamation, a photo of somebody who never agreed** (art. 81 pr. aut.,
-art. 212 k.k., RODO). This is `nuked`: the post stops being readable by anybody below staff, and
-its files are HELD — moved off the public path, kept. A claim of this kind can be litigated years
-later and the file is the evidence; destroying it would destroy our own defence. This is what the
-task brief calls `SOFT_DELETED`, and it deliberately does not get a second status name: two names
-for one state is how an illegal state becomes representable.
-
-**Criminal — suspected CSAM or comparable material** (art. 202 k.k., art. 18 DSA). This ends the
-opposite way, because the opposite duty applies: art. 202 § 4b k.k. criminalises *possessing* the
-material, and Polish law gives an amateur platform no chain-of-custody exemption for keeping a
-copy "for the investigation". So the material is reported and then destroyed, and the two steps
-happen in that order and only that order — once the bytes are gone this service cannot produce
-them again for an investigator who asks.
-
-    escalate ──► quarantined ──► approved ──► [head-admin forwards to Dyżurnet.pl themselves]
-                     │                              │
-                     │ decline                      ▼ confirmed_dispatch=true
-                     ▼                         audit rows written  ──►  bytes destroyed  ──►  purged
-              back where it was
-
-`Post.status` gains `quarantined` and `purged`, written by exactly one module
-(`escalation/services.py`) as a projection of the `Escalation` row that owns the workflow — and
-`PostManager`, the DEFAULT manager, excludes both. That is the layer which catches the call site
-nobody thought about: the public API, the board, the admin, the search index, `manage.py shell`.
-`Post.all_objects` is the unfiltered escape hatch, used by the escalation machinery, by the API's
-own queryset (so a head-admin can still reach what they are responsible for), by `_unique_slug`,
-and by `Meta.base_manager_name` so related access keeps working. Comments and board messages have
-no status to project onto and stay governed by the `Escalation` row alone — the criminal path is
-not Post-only, because an attachment on a comment is the same offence and the same duty.
-
-**Access is head-admin only, and that is a safety rule before it is a privacy one.** A trusted
-student volunteering to moderate a meme archive must not acquire art. 202 § 4a/b exposure by
-volunteering. `is_head_admin` now accepts either `is_superuser` or a grantable
-`escalation.can_manage_critical_quarantine`, so "as few people as possible" can be two people
-without the second one getting the keys to everything else. Media previews for a head-admin are R2
-presigned GETs capped at **five minutes** (`config/r2.PREVIEW_TTL_SECONDS`) — they are bearer
-capabilities, so they are minutes, not hours.
-
-**The purge itself** (`escalation/shred.py`) destroys every copy: the R2 object, the MEDIA_ROOT
-file, the `EVIDENCE_ROOT/quarantine/` copy and the frozen evidence copy. Missing one would make
-the purge a fiction, and the fiction is the dangerous part — an audit row saying the material was
-destroyed while a copy sits on the VPS is exactly the state the statute punishes. A database
-transaction cannot roll back a deleted R2 object, so the ordering is chosen instead of pretending
-to be atomic: **audit rows commit, then bytes die, then the purge is marked**. A crash in the
-middle leaves an incomplete purge — visible, retryable, and finished by running the action again
-(the audit rows are not duplicated). The opposite order would leave destroyed bytes with no record
-of what was destroyed, which nothing can repair. A failed shred answers **409** with the list of
-copies that survived, never a silent success.
-
-What outlives it is `EvidenceAuditLog`: one append-only row per destroyed file (`save` on an
-existing row and `delete` both raise), holding the sha256, the uploader's IP and user-agent, the
-timestamps, who reported it and the Dyżurnet reference. None of that is the material; all of it is
-what an investigator actually asks for. `Post.submitter_ip` is recorded at upload for this one
-purpose and blanked after `SUBMITTER_IP_RETENTION_DAYS` by `manage.py forget_submitter_ips` — a
-raw address kept past its usefulness is a liability, not an asset. An escalation freezes it into
-the manifest first, so a report assembled next month still carries it.
-
-`escalation/nask.py` assembles the package a human sends: target URL, publication and capture
-timestamps in UTC, uploader IP and user-agent, every sha256, the package hash — as JSON and as
-Polish text to paste into Dyżurnet's form. Nothing here ever contacts an authority by itself.
+**Why a nuke keeps the file and a purge destroys it** — the civil and the criminal takedown end in
+opposite ways because opposite duties apply (art. 81 pr. aut. versus art. 202 § 4b k.k.), and the
+purge's ordering (audit rows commit, then bytes die, then the row is marked) follows from that.
+The argument is in `LEGAL.md` §6; the engineering it forces — `Post.status` gaining `quarantined`
+and `purged`, the default manager excluding both, `Post.all_objects` as the escape hatch, the
+append-only `EvidenceAuditLog`, the 409 on a partial shred — is held in `backend/escalation/CLAUDE.md`.
 
 ## Uploads go straight to R2 (backend/config/r2.py, backend/archive/uploads.py)
 A 25 MB file posted through Django occupies one gunicorn worker for the whole transfer; six of
@@ -299,30 +254,6 @@ than pretending. What is stated rather than solved: between the PUT and the post
 unvalidated object sits in the bucket under a random, unreferenced key; `manage.py sweep_uploads`
 removes anything unclaimed after a day.
 
-## Security posture (after the review of 16.09.2026)
-Uploads are judged by bytes and renamed to UUIDs; JPEG/PNG/WebP lose EXIF. In the browser, both
-renderers (Markdown and LaTeX.js) go through DOMPurify with an image allow-list enforced ON THE
-DOM: an `<img>` survives only if its `src` is one of our attachment URLs (or a preview blob) —
-the older regex over `![](url)` never saw reference-style images or raw tags, and a hot-linked
-picture is a tracking pixel fired at every moderator. `class` is not allowed in user content.
-nginx sends a CSP (img-src self, frame-src web.archive.org, frame-ancestors self), X-Frame-Options,
-Referrer-Policy; `/media` is served with `sandbox` and PDFs as attachments. The client address is
-taken from X-Forwarded-For counted from the RIGHT by `FUWLOL_PROXY_HOPS` (Traefik + nginx = 2) and
-CF-Connecting-IP only with `FUWLOL_CLOUDFLARE=1` — the leftmost entry is the client's own and used
-to drive every per-IP throttle. Per-action throttles on the post ViewSet were a silent no-op
-(`ScopedRateThrottle` reads the scope off the VIEW); `FixedScopeThrottle` makes post_create 30/h,
-comment_create 60/h and escalate 10/day real. Login is limited per username as well as per IP.
-`seed_demo` never resets an existing password and, outside DEBUG, generates random ones; the
-Docker image sets `FUWLOL_DEBUG=0` and settings refuse to start with the default SECRET_KEY.
-Reporters' e-mails and notes are staff-only; a moderator's review note is the author's only.
-Accepted, not forgotten: the token lives in localStorage (CSP is the second line, an httpOnly
-cookie would be a different auth model); one trusted account can escalate — and thereby freeze —
-any content (10/day, fully logged: the price of acting fast on CSAM); throttles count attempts,
-not failures. Two entries on this list were closed on 19.09.2026: the Cloudflare cache is now
-purged by URL on quarantine (`escalation/cdn.py`, and it logs rather than lies when unconfigured),
-and quarantine no longer assumes FileSystemStorage — it moves an R2 object to the `held/` prefix
-just as it moves a local file out of `/media`.
-
 ## The chat (backend/board/)
 An old-school shoutbox: anyone may write, guests under a nick (never an existing username),
 2048 characters (2^11), links yes, images no, LaTeX yes (the same two renderers with images
@@ -345,10 +276,19 @@ first 100 characters of each message and folds the rest under a spoiler; the lis
 - The Big Bang animation plays on every journey to before fuw.lol existed.
 
 ## Deployment
-Hetzner Cloud (CX23) with Coolify, behind Cloudflare's proxy — see `deploy/HETZNER.md`. Three
-containers from `docker-compose.yml`: Postgres, Django+gunicorn, nginx (static build, `/api`
-proxied, `/media` from a shared volume). All secrets and hosts come from `FUWLOL_*` variables;
-`FUWLOL_TRUST_PROXY` makes per-IP throttles see the real visitor behind the proxy.
+
+OVHcloud VPS-1 in Warsaw, plain Docker Compose behind Caddy, behind Cloudflare's proxy, with
+attachment bytes in Cloudflare R2 and verification mail through Brevo — `deploy/OVH.md` is the
+runbook and the post-deploy checklist. Four containers from `docker-compose.prod.yml`: Postgres,
+Django + gunicorn, nginx (the static build, `/api` and `/share` proxied, `/media` from a shared
+volume), Caddy for TLS with a Cloudflare origin certificate. **Push to `main` is the deploy:**
+`.github/workflows/deploy.yml` runs the Django suite and `svelte-check`, builds both images, pushes
+them to GHCR and only then pulls them on the box — nothing is ever built on the 2-vCore VPS, and a
+rollback is the same `docker compose up` with an older image tag. All secrets and hosts come from
+`FUWLOL_*` variables; `FUWLOL_TRUST_PROXY` with `FUWLOL_PROXY_HOPS=3` (Cloudflare → Caddy → nginx)
+makes every per-IP throttle see the visitor rather than a proxy. `deploy/HETZNER.md` is the
+superseded Coolify plan, kept because `docker-compose.yml` still describes that build-it-here setup
+and remains valid for a plain `docker compose up -d --build`.
 
 ## Link previews (backend/share/)
 Every URL is served the same `200.html` and no scraper — Messenger, WhatsApp, Telegram, Slack,
@@ -366,12 +306,3 @@ is implemented and tested for the day the SPA and Django share a filesystem; tod
 containers. `/sitemap.xml` comes from the same app. After a deploy, already-shared links stay as
 Facebook cached them until re-scraped (developers.facebook.com/tools/debug) — `deploy/OVH.md`.
 
-## Left open
-- No e-mail (password reset, notifications — a head-admin learns about an escalation only by
-  logging in; that mail is the first thing to build, the SMTP for verification already exists).
-  No real-time anything.
-- No syntax highlighting in the LaTeX editor (a textarea with a line gutter, by choice).
-- LaTeX.js covers a subset: no TikZ, no custom packages; the error panel says so.
-- No user profiles, no per-user pages beyond "Moje wpisy".
-- The German/Latin eras keep post titles in Polish — content is not translated.
-- Only the home page has a time machine; other pages are the ground (`versions.ts`) for it.

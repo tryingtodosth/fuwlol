@@ -79,17 +79,34 @@ Porty zajęte? `FUWLOL_CORS_ORIGINS` + `frontend/.env` (`PUBLIC_API_BASE_URL`) s
 backend/   config/ (settings, urls, middleware — adres za proxy)  accounts/ (rejestracja, logowanie, zaufani)  archive/ (modele, API, walidacja plików, wayback, seed_demo, testy)
            board/ (czat, zgłoszenia, reputacja)  escalation/ (eskalacja do NASK: dowody, kwarantanna plików, widoczność, mixin panelu Django)
            consent/ (zgoda na wizerunek: wnioski osób, kolejka, dowód zgody)  portraits/ (zdjęcia osób i głosowanie na zdjęcie profilowe)
+           share/ (podglądy linków dla scraperów pod /share/…, sitemap.xml)
 frontend/  src/lib/{api,types,auth}  src/lib/render/{markdown,latex,media}  src/lib/components/{editor,timemachine,…}  src/routes/…
-deploy/    HETZNER.md — Hetzner + Coolify + Cloudflare; Dockerfiles w backend/ i frontend/, docker-compose.yml
+deploy/    OVH.md — runbook produkcji (OVHcloud VPS w Warszawie, Caddy, Cloudflare, R2, Brevo) i lista sprawdzeń po wdrożeniu;
+           Caddyfile, firewall.sh, backup.sh; HETZNER.md — zastąpiony plan Coolify. Dockerfiles w backend/ i frontend/,
+           docker-compose.yml (lokalnie / Coolify) i docker-compose.prod.yml (to, co działa na fuw.lol; wdraża .github/workflows/deploy.yml)
 docs/      fuwlol-dokumentacja.drawio (+ .pdf, render/NN.png) — dokumentacja techniczna po polsku z prawdziwymi zrzutami,
            generowana przez build_docs.py + render_docs.mjs; research-brief-gemini.md — brief do researchu rynkowego
            gemini/ — pięć raportów Gemini Deep Research + note.md (co z nich weszło do kodu, jak ich używać dalej)
 ```
 
-Testy: `cd backend && ../.venv/bin/python manage.py test` (149) · `cd frontend && npm run check && npm run build`
+Testy: `cd backend && ../.venv/bin/python manage.py test` (374) · `cd frontend && npm run check && npm run build`
 · przy działających serwerach: `npm run e2e` (smoke, 34 kroki), `npm run e2e:escalation` (eskalacja od kliknięcia
 do decyzji), `npm run e2e:research` (wzory w Markdownie, wyszukiwanie LaTeX-a, zgłoszenie DSA, oświadczenie o prawach),
 `npm run e2e:render-guard` (treść, która ominęła `check_source` inną drogą niż API — np. panel administracyjny —
 nigdy nie wykonuje się w przeglądarce czytelnika) i `npm run survey` (zrzuty każdej strony dla 4 ról × 2 szerokości
 — do oglądania, nie do asercji).
-Więcej o decyzjach: `DESIGN.md`.
+
+## Dokumentacja
+
+| Plik | Co w nim jest |
+|---|---|
+| `CLAUDE.md` | kontrakt inżynierski: zasady, komendy, pułapki — dla każdego, kto zmienia kod (także dla agentów) |
+| `backend/CLAUDE.md`, `frontend/CLAUDE.md`, `backend/<app>/CLAUDE.md`, `frontend/e2e/CLAUDE.md` | zasady i pułapki lokalne dla danej części |
+| `DESIGN.md` | *dlaczego* każdy podsystem jest taki, jaki jest |
+| `PRODUCT.md` | czym archiwum jest i nie jest, role, decyzje produktowe, co zostawione otwarte |
+| `LEGAL.md` | prawo, na które odpowiada kod: dwa rodzaje zdjęcia treści, zgoda na wizerunek, RODO, DSA, Dyżurnet |
+| `SECURITY.md` | stan bezpieczeństwa i zaakceptowane ryzyka |
+| `test.md` | każdy zestaw testów i skrypt przeglądarkowy: co sprawdza, jak go uruchomić |
+| `backend/MODERATION-API.md` | API warstwy zaufanych, moderacji, eskalacji, wysyłki do R2 i czatu |
+| `deploy/OVH.md` | jak serwis działa na produkcji i jak go wdrożyć |
+| `docs/` | dokumentacja techniczna po polsku (draw.io + PDF) i raporty badawcze Gemini z notatką, co z nich weszło do kodu |

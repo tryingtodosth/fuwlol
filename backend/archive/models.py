@@ -31,7 +31,7 @@ FORMAT_CHOICES = [('text', 'Tekst / Markdown'), ('latex', 'LaTeX')]
 # 'quarantined' / 'purged' — the CRIMINAL end states, and the reason this list has five
 #            entries rather than three. They are written by exactly one module,
 #            escalation/services.py, as a projection of the Escalation row that owns the
-#            workflow; nothing else may set them. See DESIGN.md "The two takedowns".
+#            workflow; nothing else may set them. See LEGAL.md "The two takedowns".
 STATUS_CHOICES = [('pending', 'Czeka na moderację'), ('published', 'Opublikowany'),
                   ('rejected', 'Odrzucony'), ('hidden', 'Ukryty'), ('nuked', 'Ukryty nuklearnie'),
                   ('quarantined', 'Kwarantanna krytyczna'), ('purged', 'Usunięty trwale')]

@@ -25,7 +25,7 @@ Three tables, and each of them is one of this project's standing rules made conc
   a third nullable target onto it would make every existing query wider for no gain.
 
 **Nothing is hard-deleted.** A rejected portrait stays as a row with its file held, for
-the same reason a nuked post does (DESIGN.md, "The two takedowns"): a decision about
+the same reason a nuked post does (LEGAL.md, "The two takedowns"): a decision about
 somebody's likeness is exactly the kind of thing that gets disputed later, and the file is
 the evidence of what was actually decided. Withdrawn consent does not delete either — it
 makes `rules.visible_q` match nothing, which is a filter every read goes through, so the

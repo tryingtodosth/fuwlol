@@ -77,7 +77,7 @@ gamble that.
 3. **R2.** Bucket (`fuwlol-media`), EU location hint. **Versioning OFF, and no lifecycle
    rule that retains deleted objects** — `escalation/shred.py` deletes an object to make a
    purge real, and a retained version would make the audit row a lie (art. 202 § 4b k.k.;
-   see DESIGN.md "The two takedowns"). Add a custom domain `pliki.fuw.lol` for the public
+   see LEGAL.md "The two takedowns"). Add a custom domain `pliki.fuw.lol` for the public
    prefix. Create an API token: Object Read & Write, scoped to this bucket.
 
    **And a second bucket, `fuwlol-quarantine`, with NO custom domain.** A custom domain
