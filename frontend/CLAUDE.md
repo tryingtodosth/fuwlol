@@ -14,7 +14,8 @@ column, which `.page` insets by 32/36 px; boxes with 1 px `#bbb` borders and **b
 (`#ee8d30`) title bars**; news headlines 15 px normal weight in rust behind the faculty's own
 asterisk (`static/img/asterisk-small.png`, a 16 px indent), justified text indented the same, the
 picture floated left at 170 px, "| Więcej" plain, nothing between items; on a phone the grey
-hamburger square inside the banner. An article is a `.mod_breadcrumb`, an `h1.ce_headline` behind
+hamburger square inside the banner. Every subpage opens with `<Breadcrumb trail=[…]>` (`lib/components/Breadcrumb.svelte`; the front
+page, like theirs, has none). An article is that breadcrumb, an `h1.ce_headline` behind
 the 10 px orange bar, a grey 14 px `.info` line, `.ce_text` with a 315 px picture floated left,
 and „Wróć". The front page is two columns (`.subcolumns`, 66/33). `/ludzie` copies
 `osoby-fuw.html` down to `table.employers` and the faculty's own silhouettes

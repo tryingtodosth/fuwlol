@@ -3,6 +3,7 @@
 	 * appears: a post that is not yours at all, and your own post that has already been
 	 * published — the API allows the second only for moderators, so there is no point letting
 	 * somebody rewrite it for ten minutes and then eat a 403. */
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import PostEditor from '$lib/components/editor/PostEditor.svelte';
@@ -53,8 +54,10 @@
 	<meta name="robots" content="noindex" />
 </svelte:head>
 
-<div class="container page">
-	<h1>Edycja wpisu</h1>
+<Breadcrumb trail={[{ label: 'Przeglądaj', href: '/przegladaj' }, { label: post ? post.title : 'Wpis', href: post ? `/wpis/${post.slug}` : undefined }, { label: 'Edycja' }]} />
+
+<div>
+	<h1 class="ce_headline">Edycja wpisu</h1>
 
 	{#if loading || !auth.ready}
 		<p class="muted">Ładowanie…</p>
@@ -92,7 +95,6 @@
 </div>
 
 <style>
-	h1 { margin-bottom: 4px; }
 	.lead { margin: 0 0 14px; }
 	.warn { border: 1px solid #c98f1e; background: #fffbe8; padding: 6px 9px; margin: 8px 0 14px; font-size: 12px; }
 </style>

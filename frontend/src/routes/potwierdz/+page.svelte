@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { api, ApiError } from '$lib/api';
@@ -19,6 +20,9 @@
 		} catch (e) { error = e instanceof ApiError ? e.message : String(e); phase = 'error'; }
 	});
 </script>
+
+
+<Breadcrumb trail={[{ label: 'Twoje konto', href: '/konto' }, { label: 'Potwierdzenie adresu' }]} />
 
 <h1>Potwierdzenie adresu</h1>
 <div class="box"><div class="box__body">

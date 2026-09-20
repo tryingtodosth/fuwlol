@@ -10,6 +10,7 @@
 	 * arrived with, so a shared link shows „prof. dr hab. Helena Hamiltonian”, not
 	 * „helena-hamiltonian”.
 	 */
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api, ApiError, qs } from '$lib/api';
@@ -145,10 +146,7 @@
 	<title>Przeglądaj — fuw.lol</title>
 </svelte:head>
 
-<div class="mod_breadcrumb">
-	<a href="/" title="fuw.lol — archiwum folkloru Wydziału Fizyki UW">fuw.lol</a> &gt;
-	<span class="active">Przeglądaj</span>
-</div>
+<Breadcrumb trail={[{ label: 'Przeglądaj' }]} />
 
 <div class="box">
 	<h1 class="box__title">Przeglądaj archiwum</h1>
@@ -260,19 +258,13 @@
 </div>
 
 {#if !loading && totalPages > 1}
-	<div class="pager">
-		<button type="button" class="btn btn--ghost" disabled={pageNo <= 1} onclick={() => goPage(pageNo - 1)}>
-			← Poprzednia
-		</button>
-		<span class="small muted">strona {pageNo} z {totalPages}</span>
-		<button
-			type="button"
-			class="btn btn--ghost"
-			disabled={pageNo >= totalPages}
-			onclick={() => goPage(pageNo + 1)}
-		>
-			Następna →
-		</button>
+	<!-- the faculty's .pagination: a hairline, „Strona x z y” on the left, plain links on the right -->
+	<div class="pagination">
+		<p>Strona {pageNo} z {totalPages}</p>
+		<ul>
+			{#if pageNo > 1}<li><button type="button" class="linky" onclick={() => goPage(pageNo - 1)}>« Poprzednia</button></li>{/if}
+			{#if pageNo < totalPages}<li><button type="button" class="linky" onclick={() => goPage(pageNo + 1)}>Następna »</button></li>{/if}
+		</ul>
 	</div>
 {/if}
 
@@ -282,12 +274,38 @@
 		gap: 8px;
 		margin-top: 12px;
 	}
-	.pager {
+	.pagination {
+		margin-top: 22px;
+		padding-top: 4px;
+		border-top: 1px solid #ece4d9;
 		display: flex;
-		align-items: center;
-		justify-content: center;
+		justify-content: space-between;
+		align-items: baseline;
+		font-size: 12px;
+	}
+	.pagination p {
+		margin: 0;
+		padding: 0 3px;
+	}
+	.pagination ul {
+		list-style: none;
+		margin: 0;
+		padding: 0 3px;
+		display: flex;
 		gap: 12px;
-		margin: 4px 0 16px;
+	}
+	.linky {
+		background: none;
+		border: 0;
+		padding: 0;
+		font-size: 12px;
+		color: var(--rust);
+		cursor: pointer;
+		font-family: inherit;
+	}
+	.linky:hover {
+		background: none;
+		text-decoration: underline;
 	}
 	/* The three pickers sit in a .row next to a <select>. Two things they need that a
 	   <select> does not: a floor, so an empty one is the same height as its neighbours; and

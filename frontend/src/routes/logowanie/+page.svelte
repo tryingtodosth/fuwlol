@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { ApiError } from '$lib/api';
@@ -32,6 +33,9 @@
 </script>
 
 <svelte:head><title>Logowanie — fuw.lol</title></svelte:head>
+
+<Breadcrumb trail={[{ label: 'Logowanie' }]} />
+
 
 <div class="box narrow">
 	<h1 class="box__title">Logowanie</h1>

@@ -1,5 +1,6 @@
 <script lang="ts">
 	/** Spin the wheel: ask the API for one published post and step aside. */
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api, ApiError } from '$lib/api';
@@ -27,6 +28,9 @@
 </script>
 
 <svelte:head><title>Losowy wpis — fuw.lol</title></svelte:head>
+
+<Breadcrumb trail={[{ label: 'Losowy wpis' }]} />
+
 
 <div class="box">
 	<h1 class="box__title">Losowy wpis</h1>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	/** Everything you have sent in, in whatever state it is — including the things nobody
 	 * else can see yet. */
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { goto } from '$app/navigation';
 	import { api, ApiError, qs } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
@@ -62,6 +63,9 @@
 </script>
 
 <svelte:head><title>Moje wpisy — fuw.lol</title></svelte:head>
+
+<Breadcrumb trail={[{ label: 'Moje wpisy' }]} />
+
 
 <div class="box">
 	<h1 class="box__title">

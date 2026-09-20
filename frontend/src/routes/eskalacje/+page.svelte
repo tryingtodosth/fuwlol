@@ -2,6 +2,7 @@
 	/** Head-admin only (is_superuser): the escalations to NASK. What is reviewed here is the
 	 * FROZEN evidence package, never the live content — the whole point of the package is
 	 * that it outlives whatever happens to the post/comment/message afterwards. */
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { api, ApiError, downloadBlob } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
 	import { dialog } from '$lib/dialog.svelte';
@@ -85,6 +86,9 @@
 </script>
 
 <svelte:head><title>Zgłoszenia do NASK — fuw.lol</title></svelte:head>
+
+<Breadcrumb trail={[{ label: 'Zgłoszenia do NASK' }]} />
+
 
 {#if !auth.ready}
 	<div class="box"><div class="box__body"><p class="muted">Chwileczkę…</p></div></div>

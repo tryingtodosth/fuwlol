@@ -3,6 +3,7 @@
 	 * headline, a grey info line, the text with its first picture floated left, then what is
 	 * ours — reactions, the details table, the report form, „Wróć” — and the discussion
 	 * underneath. */
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api, ApiError } from '$lib/api';
@@ -121,11 +122,7 @@
 {:else if error}
 	<div class="box"><div class="box__body"><div class="error">{error}</div></div></div>
 {:else if post}
-	<div class="mod_breadcrumb">
-		<a href="/" title="fuw.lol — archiwum folkloru Wydziału Fizyki UW">fuw.lol</a> &gt;
-		<a href="/przegladaj" title="Przeglądaj archiwum">Przeglądaj</a> &gt;
-		<span class="active">{post.category_name}</span>
-	</div>
+	<Breadcrumb trail={[{ label: 'Przeglądaj', href: '/przegladaj' }, { label: post.category_name }]} />
 
 	{#if statusNote}
 		<div class="box box--grey">

@@ -2,6 +2,7 @@
 	/** "Dodaj wpis" — the front door for a submission. Guests are turned away with a way in;
 	 * everybody else gets the editor and, afterwards, the truth about what happened to their
 	 * post: a moderator's own goes straight up, everybody else's waits in the queue. */
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import PostEditor from '$lib/components/editor/PostEditor.svelte';
 	import { auth } from '$lib/auth.svelte';
 	import type { Post } from '$lib/types';
@@ -24,7 +25,9 @@
 	<meta name="description" content="Dodaj do archiwum fuw.lol zdjęcie, kartkę z drzwi albo anegdotę z Wydziału Fizyki UW." />
 </svelte:head>
 
-<div class="container page">
+<Breadcrumb trail={[{ label: 'Dodaj wpis' }]} />
+
+<div>
 	{#if !auth.ready}
 		<p class="muted">Ładowanie…</p>
 	{:else if !auth.isAuthenticated}
@@ -39,7 +42,7 @@
 			</div>
 		</div>
 	{:else if saved}
-		<h1>Dodaj wpis do archiwum</h1>
+		<h1 class="ce_headline">Dodaj wpis do archiwum</h1>
 		{#if saved.status === 'published'}
 			<div class="ok">
 				<strong>Opublikowano.</strong>
@@ -56,7 +59,7 @@
 			<a class="btn btn--ghost" href="/moje">Moje wpisy</a>
 		</p>
 	{:else}
-		<h1>Dodaj wpis do archiwum</h1>
+		<h1 class="ce_headline">Dodaj wpis do archiwum</h1>
 		<p class="lead muted">Wpis trafi do moderacji; moderatorzy publikują od ręki.</p>
 		{#key round}
 			<PostEditor {onSaved} />
@@ -65,7 +68,6 @@
 </div>
 
 <style>
-	h1 { margin-bottom: 4px; }
 	.lead { margin: 0 0 14px; }
 	.acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
 	.acts a.btn:hover { text-decoration: none; }

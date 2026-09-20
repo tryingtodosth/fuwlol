@@ -3,11 +3,15 @@
 	 * badge MEANS, and a meaning that is fetched can be wrong in a way a meaning that is
 	 * written cannot. Every legal claim on it is sourced, because the whole page exists to
 	 * be read by somebody deciding whether to trust us with their face. */
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import ConsentBadge from '$lib/components/ConsentBadge.svelte';
 	import { WISHES } from '$lib/consent';
 </script>
 
 <svelte:head><title>Odznaka „zgoda na wizerunek” — fuw.lol</title></svelte:head>
+
+<Breadcrumb trail={[{ label: 'Osoby', href: '/ludzie' }, { label: 'Zgoda na wizerunek' }]} />
+
 
 <div class="box">
 	<h1 class="box__title">Odznaka „zgoda na wizerunek”</h1>

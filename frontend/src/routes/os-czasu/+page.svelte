@@ -1,5 +1,6 @@
 <script lang="ts">
 	/** Every year the archive knows about, tallest bar wins. */
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { api, ApiError } from '$lib/api';
 
 	interface Timeline {
@@ -45,6 +46,9 @@
 </script>
 
 <svelte:head><title>Oś czasu — fuw.lol</title></svelte:head>
+
+<Breadcrumb trail={[{ label: 'Oś czasu' }]} />
+
 
 <div class="box">
 	<h1 class="box__title">

@@ -1,8 +1,13 @@
 <script lang="ts">
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
+
 	// Static, and deliberately so: this page is the house rules, not data.
 </script>
 
 <svelte:head><title>O archiwum — fuw.lol</title></svelte:head>
+
+<Breadcrumb trail={[{ label: 'O archiwum' }]} />
+
 
 <div class="box">
 	<h1 class="box__title">O archiwum</h1>

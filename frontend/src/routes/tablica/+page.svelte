@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { onMount } from 'svelte';
 	import { api, ApiError } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
@@ -61,6 +62,9 @@
 	const when = (b: ModerationBlock) => (b.at ? fmtDate(b.at) : '');
 	function reload() { loadedFor = ''; load(); }
 </script>
+
+
+<Breadcrumb trail={[{ label: 'Tablica moderacji' }]} />
 
 <h1>Tablica moderacji</h1>
 {#if !auth.ready}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	/** The queue: everything waiting to be published, plus everything somebody has reported.
 	 * A decision either updates the row in place or takes it off the list. */
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { api, ApiError, qs } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
 	import { fmtDate, yearLabel, type Page as ApiPage, type Person, type Post, type Status } from '$lib/types';
@@ -151,6 +152,9 @@
 </script>
 
 <svelte:head><title>Moderacja — fuw.lol</title></svelte:head>
+
+<Breadcrumb trail={[{ label: 'Moderacja' }]} />
+
 
 {#if !auth.ready}
 	<div class="box"><div class="box__body"><p class="muted">Chwileczkę…</p></div></div>

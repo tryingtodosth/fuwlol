@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, ApiError } from '$lib/api';
@@ -31,6 +32,9 @@
 		busy = false;
 	}
 </script>
+
+
+<Breadcrumb trail={[{ label: 'Twoje konto' }]} />
 
 <h1>Twoje konto</h1>
 {#if auth.user}

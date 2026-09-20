@@ -11,6 +11,7 @@
 	 * Trusted tier, like /tablica — the same people who can hide a post. The server
 	 * re-checks every call; this page only decides what to draw.
 	 */
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { onMount } from 'svelte';
 	import { ApiError } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
@@ -120,6 +121,9 @@
 </script>
 
 <svelte:head><title>Portrety — moderacja — fuw.lol</title></svelte:head>
+
+<Breadcrumb trail={[{ label: 'Moderacja', href: '/moderacja' }, { label: 'Portrety' }]} />
+
 
 <h1>Portrety w kolejce</h1>
 

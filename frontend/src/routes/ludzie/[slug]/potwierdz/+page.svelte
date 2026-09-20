@@ -9,6 +9,7 @@
 	 * just asked to disappear needs to know which, in words, before they close the tab —
 	 * so the server composes that sentence (`consent.rules._confirm_message`) and this page
 	 * prints it rather than inventing a cheerful one of its own. */
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { ApiError } from '$lib/api';
@@ -40,6 +41,9 @@
 </script>
 
 <svelte:head><title>Potwierdzenie — fuw.lol</title></svelte:head>
+
+<Breadcrumb trail={[{ label: 'Osoby', href: '/ludzie' }, { label: result ? result.person.full_name : 'Osoba', href: `/ludzie/${page.params.slug}` }, { label: 'Potwierdzenie' }]} />
+
 
 <div class="box">
 	<h1 class="box__title">

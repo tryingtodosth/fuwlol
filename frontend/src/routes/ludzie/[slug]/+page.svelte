@@ -10,6 +10,7 @@
 	 * gallery component below reports it through `onCurrent`), else the faculty's own silhouette
 	 * for the person's `sex`, else the grey "Miejsce na foto" box the faculty shows when it has
 	 * nothing either. */
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { page } from '$app/state';
 	import { api, ApiError, qs } from '$lib/api';
 	import type { Page as ApiPage, Person, PostSummary } from '$lib/types';
@@ -82,11 +83,7 @@
 </svelte:head>
 
 <div class="osoby">
-	<div class="mod_breadcrumb">
-		<a href="/" title="fuw.lol — archiwum folkloru Wydziału Fizyki UW">fuw.lol</a> &gt;
-		<a href="/ludzie" title="Osoby">Osoby</a> &gt;
-		<span class="active">{person ? person.full_name : notFound ? 'Nie ma takiej osoby' : '…'}</span>
-	</div>
+	<Breadcrumb trail={[{ label: 'Osoby', href: '/ludzie' }, { label: person ? person.full_name : notFound ? 'Nie ma takiej osoby' : '…' }]} />
 	<h1 class="ce_headline">Osoby</h1>
 
 	{#if loading}

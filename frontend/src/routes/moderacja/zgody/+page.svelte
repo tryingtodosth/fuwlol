@@ -10,6 +10,7 @@
 	 * signals next to it are facts with known failure modes, not a score: an address rarely
 	 * matches a nickname, so „nazwisko w adresie” missing means nothing at all, while its
 	 * presence means something. Nothing on this page adds them up for you. */
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { ApiError } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
 	import { dialog } from '$lib/dialog.svelte';
@@ -95,6 +96,9 @@
 </script>
 
 <svelte:head><title>Zgody osób — fuw.lol</title></svelte:head>
+
+<Breadcrumb trail={[{ label: 'Moderacja', href: '/moderacja' }, { label: 'Zgody osób' }]} />
+
 
 {#if !auth.ready}
 	<div class="box"><div class="box__body"><p class="muted">Chwileczkę…</p></div></div>

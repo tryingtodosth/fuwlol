@@ -9,6 +9,7 @@
 	 * Filing is the backend's: the list arrives ordered by the folded surname and each row
 	 * carries its `letter` (with its diacritic — Ż is its own letter here, as in the faculty's
 	 * strip). This page only groups what it is given and filters it as you type. */
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { api, ApiError } from '$lib/api';
 	import type { Person } from '$lib/types';
 	import ConsentBadge from '$lib/components/ConsentBadge.svelte';
@@ -90,10 +91,7 @@
 </svelte:head>
 
 <div class="osoby">
-	<div class="mod_breadcrumb">
-		<a href="/" title="fuw.lol — archiwum folkloru Wydziału Fizyki UW">fuw.lol</a> &gt;
-		<a href="/ludzie" title="Osoby">Osoby</a> &gt; <span class="active">Wszyscy</span>
-	</div>
+	<Breadcrumb trail={[{ label: 'Osoby', href: '/ludzie' }, { label: 'Wszyscy' }]} />
 	<h1 class="ce_headline">Osoby</h1>
 	<div class="ce_text">
 		<p>

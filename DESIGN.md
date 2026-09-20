@@ -55,8 +55,9 @@ this is what the site copies since version 2:
 - **The front page** is two columns (`.c66l` / `.c33r`, a 10 px gutter): the news box left; right,
   a stack of small boxes with the same orange titles — a welcome paragraph, rows with a 65 px
   picture floated beside one line and `<hr>` between them, link lists. Stacked on a phone.
-- **Every subpage headline** carries the same 10 px orange left bar — ours too: `h1.ce_headline` and
-  any `h1` that is a page's own top-level heading (`.page > h1`).
+- **Every subpage** opens with the breadcrumb and gives its headline the same 10 px orange left bar —
+  ours too: `Breadcrumb.svelte` on every route but the front page, `h1.ce_headline` and any `h1` that
+  is a page's own top-level heading (`.page > h1`).
 - **An article** (`.mod_newsreader`): a breadcrumb (`.mod_breadcrumb`, 12 px, links `#5e6a94`,
   "Wydział Fizyki UW > Wydział > Aktualności", the active item `#444`); `h1` 16 px normal weight
   behind a **10 px `#ff8c00` left bar** (`padding-left: 5px`, `margin: 12px 0`); `p.info` — the

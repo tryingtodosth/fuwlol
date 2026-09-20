@@ -7,6 +7,7 @@
 	 * subject that exists, including one somebody named an hour ago on a post still in the
 	 * queue. There is no privacy interest in a course name, and a link that 404s is worse
 	 * than a page that says „jeszcze nic”. */
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { page } from '$app/state';
 	import { api, ApiError, qs } from '$lib/api';
 	import type { Page as ApiPage, PostSummary, Subject } from '$lib/types';
@@ -57,6 +58,9 @@
 		/>
 	{/if}
 </svelte:head>
+
+<Breadcrumb trail={[{ label: 'Przedmioty', href: '/przedmioty' }, { label: subject ? subject.name : notFound ? 'Nie ma takiego przedmiotu' : '…' }]} />
+
 
 {#if loading}
 	<div class="box"><div class="box__body"><p class="muted">Wczytuję…</p></div></div>

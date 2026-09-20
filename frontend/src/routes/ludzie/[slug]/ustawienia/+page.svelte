@@ -7,6 +7,7 @@
 	 * click in a mailbox. A queue in front of the withdrawal would make the taking-back
 	 * harder than the giving, which is the one thing that article names outright. The
 	 * change therefore applies the moment it is clicked, and the page says so before it is. */
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { ApiError } from '$lib/api';
@@ -91,6 +92,9 @@
 </script>
 
 <svelte:head><title>Twoje ustawienia — fuw.lol</title></svelte:head>
+
+<Breadcrumb trail={[{ label: 'Osoby', href: '/ludzie' }, { label: state_ ? state_.person.full_name : 'Osoba', href: `/ludzie/${page.params.slug}` }, { label: 'Twoje ustawienia' }]} />
+
 
 <div class="box">
 	<h1 class="box__title">

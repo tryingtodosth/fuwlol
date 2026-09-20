@@ -4,6 +4,7 @@
 	 * in their head. The list is the Faculty's own programme (seeded in migration 0008) plus
 	 * whatever people have named while writing; a named one appears here once something
 	 * published carries it, which is the same rule /ludzie uses for a named person. */
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { api, ApiError } from '$lib/api';
 	import type { Subject } from '$lib/types';
 	import { plural } from '$lib/plural';
@@ -49,6 +50,9 @@
 		content="Folklor Wydziału Fizyki UW poukładany po przedmiotach: analiza, mechanika klasyczna, kwanty, pracownie."
 	/>
 </svelte:head>
+
+<Breadcrumb trail={[{ label: 'Przedmioty' }]} />
+
 
 <div class="box">
 	<h1 class="box__title">
