@@ -34,7 +34,7 @@ export const SITE_VERSIONS: SiteVersion[] = [
 		component: VersionV1
 	},
 	{
-		// the branch date; move it to the day the redesign actually goes live
+		// went live with the deploy of 20.09.2026
 		id: 'v2',
 		from: '2026-09-20',
 		label: 'Wersja 2 — jeszcze bardziej jak fuw.edu.pl',
