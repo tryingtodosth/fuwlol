@@ -100,6 +100,18 @@ Named so that somebody can close them; the engineering-level gaps are in `CLAUDE
   receipt a DSA notice is owed, and the alert that tells a head-admin an escalation is waiting —
   today they learn by logging in. The SMTP for verification already exists; that alert is the first
   thing to build on it.
+- **We never learn whether a verification mail landed.** `send_mail` returns once Brevo accepts the
+  message, so the account page says „wysłaliśmy” and that is the last the site knows; a bounce, a
+  block or a greylist delay goes to Brevo and nobody reads it (22.09.2026: a `@fuw.edu.pl` tester
+  waited, assumed it was broken, and it arrived later — `deploy/OVH.md` step 3). Brevo posts
+  delivery events to a webhook; an endpoint for it, the event stored on `EmailVerification` and one
+  honest sentence — „nie doszło”, „czeka u odbiorcy” — would end the guessing, and would say it in
+  the one place the person is already looking.
+- **„Kontrowersyjne" is per post and nothing else.** No per-person or per-category equivalent, no
+  second tier between trusted and public, and a locked post may still be `featured` — nothing stops
+  the two, and the home strip prints a title and no picture for it. The time machine's own layout
+  versions (`VersionV1/V2.svelte`) draw their card markup themselves, so a locked post shows there
+  as a bare title with no lock pill; harmless (nothing leaks) and not yet pretty.
 - **No real-time anything.** The chat polls.
 - **No syntax highlighting in the LaTeX editor** — a textarea with a line gutter, by choice.
 - **LaTeX.js covers a subset**: no TikZ, no custom packages; the error panel says so.

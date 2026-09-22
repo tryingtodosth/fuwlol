@@ -298,6 +298,16 @@ found by looking at it. So, in a browser:
    is a forgeable header and every per-IP throttle is a fiction.
 3. Register with a real `@fuw.edu.pl` address; the verification mail arrives in the inbox,
    not spam. This is the trusted tier working, and it is the thing most likely to be broken.
+   **Give it an hour before calling it broken**: `fuw.edu.pl` is the Faculty's own
+   `mail.fuw.edu.pl`, which greylists Brevo's shared relay, while `uw.edu.pl` and
+   `student.uw.edu.pl` are on Google and arrive at once. A 202 from `verify/request/` only
+   means Brevo accepted the message — `send_mail` returns there and a later bounce goes to
+   Brevo, never to us — so **Brevo → Transactional → Logs**, filtered to the address, is the
+   only witness: `Delivered` puts it in the recipient's quarantine, `Soft bounce` is the
+   greylist, `Blocked`/`Hard bounce` carries the remote server's refusal, and nothing listed
+   at all is the one answer that points back at this box. Test it with an address you own —
+   a clicked link binds that address to whatever account asked for it, and `accounts/views.py`
+   `_taken_by_someone_else` then locks its real owner out until the row is deleted.
 4. Submit a post with a 20 MB video: the browser PUTs it to `pliki.fuw.lol` directly (watch
    the network tab — it must not go to `fuw.lol/api/`), and it plays back afterwards.
 5. Escalate something as a trusted user, confirm it vanishes for everyone but head-admin,
