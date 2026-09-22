@@ -142,7 +142,7 @@
 		{#if auth.isAuthenticated}
 			<li><a href="/moje">Moje wpisy</a></li>
 		{/if}
-		{#if auth.user?.is_trusted}
+		{#if auth.isTrusted}
 			<li><a href="/tablica">Tablica</a></li>
 		{/if}
 		{#if auth.isStaff}

@@ -28,7 +28,7 @@
 
 	const length = $derived(Array.from(body).length);
 	const over = $derived(length > MAX_LEN);
-	const canModerate = $derived(auth.isStaff || !!auth.user?.is_trusted);
+	const canModerate = $derived(auth.isTrusted);
 
 	function q(extra: Record<string, string | number> = {}) {
 		const u = new URLSearchParams();

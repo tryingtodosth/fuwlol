@@ -295,7 +295,7 @@ class PostViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated()]
         if self.action in ('queue', 'moderate'):
             return [IsAdminUser()]
-        if self.action in ('hide', 'restore', 'nuke', 'escalate', 'feature'):
+        if self.action in ('hide', 'restore', 'nuke', 'escalate', 'feature', 'lock'):
             return [rules.IsTrusted()]
         if self.action == 'suggestions':
             # GET is scoped by visible_suggestions_for (empty for a stranger); POST needs
@@ -326,7 +326,7 @@ class PostViewSet(viewsets.ModelViewSet):
                            'suggestions', 'revisions'):
             # who may read what — the one rule, in archive/moderation.py
             return qs.filter(rules.visible_posts_q(u))
-        if self.action in ('hide', 'restore', 'nuke', 'escalate', 'feature'):
+        if self.action in ('hide', 'restore', 'nuke', 'escalate', 'feature', 'lock'):
             # Trusted users (the permission class has already excluded everybody else) may
             # also RESOLVE a nuked post here, so that "restore" on one answers 403 — the
             # rules' honest refusal — instead of pretending it does not exist. They still
@@ -347,22 +347,38 @@ class PostViewSet(viewsets.ModelViewSet):
             # prose is compared folded (no case, no diacritics), formulas canonicalised —
             # archive/search.py; the raw lookups stay for tag and person names
             text, math = query_parts(q)
-            cond = (Q(tags__name__icontains=q) | Q(people__name__icontains=q)
-                    | Q(subjects__name__icontains=q) | Q(title__icontains=q))
+            # The title is public on a „kontrowersyjny" card, so matching it tells the
+            # searcher nothing they cannot already read. The filing axes are NOT: the card
+            # blanks them, and a hit here would hand back the name the blanking withheld.
+            cond = Q(title__icontains=q)
+            filed = (Q(tags__name__icontains=q) | Q(people__name__icontains=q)
+                     | Q(subjects__name__icontains=q))
+            # `search_text` / `search_math` are derived FROM THE BODY (Post.save →
+            # search.index_fields; `search_text` carries the summary too). A yes/no about
+            # text you may not read is an oracle, and yes/no answers bisect a sentence —
+            # so they are gated by the very rule the serializer blanks with.
+            body = Q()
             if text:
-                cond |= Q(search_text__icontains=text)
+                body |= Q(search_text__icontains=text)
             if math:
-                cond |= Q(search_math__icontains=math)
-            qs = qs.filter(cond).distinct()
+                body |= Q(search_math__icontains=math)
+            if text or math:  # not `if body:` — an empty Q collapses into what it meets
+                filed |= body
+            qs = qs.filter(cond | (filed & rules.readable_q(self.request.user))).distinct()
         if p.get('category'):
             qs = qs.filter(category__slug=p['category'])
+        # The three filing axes are content on a locked post (the card blanks them): a post
+        # must not be findable by filtering for what is inside it, or the filtered list is
+        # the oracle the blanked chip was hiding. Category, format and year stay open —
+        # those are printed on the card.
         if p.get('tag'):
-            qs = qs.filter(tags__slug=p['tag'])
+            qs = qs.filter(tags__slug=p['tag']).filter(rules.readable_q(self.request.user))
         if p.get('subject'):
-            qs = qs.filter(subjects__slug=p['subject'])
+            qs = qs.filter(subjects__slug=p['subject']).filter(rules.readable_q(self.request.user))
         if p.get('person'):
             # named directly OR tagged with one of the person's nicknames — archive/people.py
-            qs = qs.filter(people_rules.person_posts_slug_q(p['person'])).distinct()
+            qs = qs.filter(people_rules.person_posts_slug_q(p['person'])).filter(
+                rules.readable_q(self.request.user)).distinct()
         if p.get('format') in ('text', 'latex'):
             qs = qs.filter(format=p['format'])
         if p.get('featured'):
@@ -393,7 +409,9 @@ class PostViewSet(viewsets.ModelViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         post = self.get_object()
-        if post.status == 'published':
+        # A teaser is not a read: somebody who got the lock instead of the body did not
+        # look at the post, and counting it would inflate `sort=views` with strangers.
+        if post.status == 'published' and rules.can_read_body(request.user, post):
             Post.objects.filter(pk=post.pk).update(views=F('views') + 1)
             post.views += 1
         return Response(self.get_serializer(post).data)
@@ -522,7 +540,9 @@ class PostViewSet(viewsets.ModelViewSet):
 
     @action(detail=False)
     def random(self, request):
-        qs = self._filtered(self._base().filter(PUBLISHED))
+        # Not a leak fix (the lock would show honestly) but a promise: „Losowe" offers
+        # something to read, and a teaser is not something to read.
+        qs = self._filtered(self._base().filter(PUBLISHED).filter(rules.readable_q(request.user)))
         ids = list(qs.values_list('pk', flat=True))
         if not ids:
             return Response({'detail': 'Archiwum jest puste.'}, status=status.HTTP_404_NOT_FOUND)
@@ -553,6 +573,10 @@ class PostViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post', 'delete'])
     def react(self, request, slug=None):
         post = self.get_object()
+        # Reacting to content you cannot read is meaningless, and it would let a stranger
+        # push a locked post up `sort=top`, where the ordering is visible to everybody.
+        if not rules.can_read_body(request.user, post):
+            raise PermissionDenied(rules.LOCKED_NOTICE)
         if request.method == 'DELETE':
             Reaction.objects.filter(post=post, user=request.user).delete()
         else:
@@ -567,6 +591,12 @@ class PostViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get', 'post'])
     def comments(self, request, slug=None):
         post = self.get_object()
+        # The thread quotes the post: it is where a withheld body reappears verbatim. A
+        # refusal rather than an empty list, because an empty list reads as „nobody said
+        # anything", which is false — and the reason is no oracle here, the page announces
+        # the lock in the same breath. Read side and write side, both (house rule 4).
+        if not rules.can_read_body(request.user, post):
+            raise PermissionDenied(rules.LOCKED_NOTICE)
         if request.method == 'GET':
             qs = post.comments.select_related('author').prefetch_related('attachments')
             return Response(CommentSerializer(qs, many=True, context={'request': request}).data)
@@ -598,7 +628,7 @@ class PostViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def moderate(self, request, slug=None):
-        """Staff: {decision: publish|reject|hide|nuke|feature|unfeature|resolve_reports, note}.
+        """Staff: {decision: publish|reject|hide|nuke|feature|unfeature|lock|unlock|resolve_reports, note}.
         hide/nuke go through the rules module like everybody else's, so they leave an audit
         line; publish/reject write one too, so the board can show a post's whole history."""
         post = self.get_object()
@@ -625,6 +655,8 @@ class PostViewSet(viewsets.ModelViewSet):
             # Through the same rule as the button on the post page, so there is one
             # definition of "may this be pinned" and one place that writes the audit line.
             rules.set_featured(post, request.user, decision == 'feature')
+        elif decision in ('lock', 'unlock'):
+            rules.set_trusted_only(post, request.user, decision == 'lock')
         elif decision == 'resolve_reports':
             post.reports.update(resolved=True)
         else:
@@ -678,6 +710,19 @@ class PostViewSet(viewsets.ModelViewSet):
         wanted = data.get('featured')
         wanted = (not post.featured) if wanted is None else bool(wanted)
         rules.set_featured(post, request.user, wanted)
+        post = self._base().get(pk=post.pk)
+        return Response(PostDetailSerializer(post, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'])
+    def lock(self, request, slug=None):
+        """POST {trusted_only?: bool} — „kontrowersyjne" on or off. Omitting the key
+        toggles, the same shape as `feature/` above and for the same reason: the button on
+        the post page toggles, the board passes the state it saw."""
+        post = self.get_object()
+        data = request.data if hasattr(request.data, 'get') else {}
+        wanted = data.get('trusted_only')
+        wanted = (not post.trusted_only) if wanted is None else bool(wanted)
+        rules.set_trusted_only(post, request.user, wanted)
         post = self._base().get(pk=post.pk)
         return Response(PostDetailSerializer(post, context={'request': request}).data)
 

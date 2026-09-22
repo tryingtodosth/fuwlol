@@ -9,11 +9,13 @@
 	import { dialog } from '$lib/dialog.svelte';
 	import type { ModerationState } from '$lib/types';
 
-	let { kind, id, status, featured = null, onChanged }: {
+	let { kind, id, status, featured = null, trustedOnly = null, onChanged }: {
 		kind: 'post' | 'comment'; id: string | number; status: ModerationState;
 		/** Posts only, and only when the caller knows the current state — null hides the
 		 * pin button entirely rather than guessing and drawing the wrong label. */
 		featured?: boolean | null;
+		/** „Kontrowersyjne”, same contract as `featured`: null hides the button. */
+		trustedOnly?: boolean | null;
 		onChanged: () => void;
 	} = $props();
 	let busy = $state(false);
@@ -62,6 +64,26 @@
 		busy = false;
 	}
 
+	async function toggleLock() {
+		// This one DOES ask, unlike the pin right above it: it changes who can read the
+		// post, and that is exactly the line this dialog exists to draw.
+		const ok = await dialog.ask(
+			trustedOnly
+				? { title: 'Zdejmij ograniczenie',
+					text: 'Treść, pliki i komentarze znowu zobaczą wszyscy — także niezalogowani.',
+					confirm: 'Zdejmij ograniczenie' }
+				: { title: 'Oznacz jako kontrowersyjny',
+					text: 'Wpis zostaje na listach: tytuł, kategoria i rok będą dalej publiczne. Treść, opis, pliki, osoby i przedmioty oraz komentarze zobaczą tylko osoby z potwierdzonym adresem (FUW, UW, PAN). Pliki wysłane wcześniej zostają pod swoimi adresami — to nie jest usunięcie.',
+					confirm: 'Ogranicz do zweryfikowanych' });
+		if (ok === null) return;
+		busy = true; error = null;
+		try {
+			await api.post(`${base}/lock/`, { trusted_only: !trustedOnly });
+			onChanged();
+		} catch (e) { error = e instanceof ApiError ? e.message : String(e); }
+		busy = false;
+	}
+
 	async function escalate() {
 		const reason = await dialog.ask({
 			title: '🚨 Zgłoszenie do NASK (Dyżurnet.pl)', danger: true,
@@ -89,6 +111,13 @@
 			{featured ? '📌 Odepnij' : '📌 Przypnij'}
 		</button>
 	{/if}
+	{#if kind === 'post' && trustedOnly !== null}
+		<button type="button" class="btn btn--sm" class:locked={trustedOnly} disabled={busy}
+			onclick={toggleLock}
+			title={trustedOnly ? 'Treść znowu dla wszystkich' : 'Treść tylko dla osób z potwierdzonym adresem; tytuł zostaje publiczny'}>
+			{trustedOnly ? '🔓 Zdejmij ograniczenie' : '🔒 Ogranicz do zweryfikowanych'}
+		</button>
+	{/if}
 	<span class="sep" aria-hidden="true">·</span>
 	<button type="button" class="btn btn--sm nask" disabled={busy} onclick={escalate}
 		title="Treść nielegalna — zgłoszenie do NASK, decyduje head-admin">🚨 Zgłoś do NASK</button>
@@ -100,6 +129,7 @@
 	.err { color: #b00020; font-size: 11px; }
 	.sep { color: var(--muted); padding: 0 2px; }
 	.pinned { background: #fff8e1; border-color: #c89a00; color: #6b5200; }
+	.locked { background: #fdf1ea; border-color: var(--rust); color: var(--rust); }
 	.nask { background: #fff; color: #7a2f02; border: 1px dashed #7a2f02; }
 	.nask:hover { background: #fff0f0; }
 </style>

@@ -128,12 +128,20 @@ class _Over(Subquery):
 
 
 def _public_posts():
-    """What counts towards a person: published, and not under escalation — a person whose
-    only post is in quarantine must not carry a count that says the post exists
-    (`views._published_count` keeps the same clause for categories and tags)."""
+    """What counts towards a person: published, not under escalation, and not restricted to
+    the trusted tier — a person whose only post is in quarantine must not carry a count that
+    says the post exists (`views._published_count` keeps the same clause for categories and
+    tags).
+
+    `trusted_only` is here for the same reason and one more: the count is viewer-independent
+    on purpose (every card, every preview and the sitemap print the same number), and a
+    „kontrowersyjny" post is blanked of its people and unreachable through `?person=` for a
+    stranger. Counting it would put the one number that says „there is something about this
+    person" back on a public page. A trusted reader therefore sees a count lower than the
+    list they can open — the honest direction, and `archive/CLAUDE.md` says so."""
     from escalation.visibility import active_escalation_ids
     from .models import Post
-    qs = Post.objects.filter(status='published')
+    qs = Post.objects.filter(status='published', trusted_only=False)
     escalated = active_escalation_ids(Post)
     if escalated:
         qs = qs.exclude(pk__in=escalated)

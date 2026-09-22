@@ -102,6 +102,10 @@ every journey to before fuw.lol existed. Only the home page has one.
 ## Mirrors of backend values (say so in both files)
 
 `types.ts` `Status` has five values — the critical statuses are never sent to the client;
+`PostSummary.trusted_only` mirrors `archive/models.py::Post.trusted_only` („kontrowersyjne") while
+`locked` / `lock_notice` are **derived per caller** by `moderation.can_read_body` — draw the badge
+from the first and the wall from the second, and never re-derive `locked` here, or the author's own
+exception drifts from the server's;
 `EscalationStatus` has three (no `purged`). `REACTIONS`, `Sex`, `ImageConsent`, the two
 report-reason lists (`routes/wpis/[slug]`, `routes/moderacja`, `board/types.ts`), `board/types.ts`
 `MAX_LEN` 2048, `lib/consent.ts` `WISHES` (labels byte-identical to `consent/rules.WISH_LABELS`),

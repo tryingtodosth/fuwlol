@@ -1,4 +1,6 @@
 export type Format = 'text' | 'latex';
+/** The lock badge, shown wherever a post is listed. One constant, four call sites. */
+export const LOCK_PILL = '🔒 Dla zweryfikowanych';
 export type Status = 'pending' | 'published' | 'rejected' | 'hidden' | 'nuked';
 export type ReactionKind = 'lol' | 'classic' | 'wow' | 'cringe';
 
@@ -38,11 +40,22 @@ export interface PostSummary {
 	people: Person[]; subjects?: Subject[]; tags: Tag[]; submitted_by: string; status: Status; featured: boolean; views: number;
 	cover: string | null; reaction_counts: Record<ReactionKind, number>; comment_count: number;
 	published_at: string | null; created_at: string;
+	/** „Kontrowersyjne" — mirrors archive/models.py::Post.trusted_only. Public: the badge
+	 * says so on every card, to everybody. */
+	trusted_only: boolean;
+	/** Derived by the server per caller (archive/moderation.can_read_body): THIS reader may
+	 * not see body, summary, cover, files, filing or comments. **Never re-derive it from
+	 * `trusted_only` here** — the author's own exception lives in that rule and nowhere
+	 * else, and a second definition would drift from it. */
+	locked: boolean;
 }
 export interface Post extends PostSummary {
 	body: string; source_note: string; source_url: string; attachments: Attachment[];
 	my_reaction: ReactionKind | null; can_edit: boolean; review_note: string;
 	can_moderate?: boolean; moderation_notice?: string | null; moderation?: ModerationBlock | null;
+	/** The Polish sentence to show in place of the body, written by archive/moderation.py
+	 * (LOCKED_NOTICE) and displayed verbatim; null when the reader may read the post. */
+	lock_notice?: string | null;
 	reports?: { id: number; reason: string; note: string; contact_email: string; created_at: string; formal?: boolean }[];
 }
 export interface Comment {

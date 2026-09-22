@@ -5,7 +5,7 @@
 	import { goto } from '$app/navigation';
 	import { api, ApiError, qs } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
-	import { fmtDate, yearLabel, type Page as ApiPage, type PostSummary, type Status } from '$lib/types';
+	import { LOCK_PILL, fmtDate, yearLabel, type Page as ApiPage, type PostSummary, type Status } from '$lib/types';
 
 	/** `/posts/mine/` uses the list serializer, which does not carry `review_note` today —
 	 * so it is optional here rather than assumed present. */
@@ -101,6 +101,7 @@
 							</td>
 							<td class="s">
 								<span class="pill {PILL[p.status]}">{LABEL[p.status]}</span>
+								{#if p.trusted_only}<span class="pill pill--rust">{LOCK_PILL}</span>{/if}
 							</td>
 							<td class="e"><a class="small" href="/edytuj/{p.slug}">Edytuj</a></td>
 						</tr>

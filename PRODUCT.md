@@ -23,7 +23,7 @@ as ordinary posts with a `source_url`; the data model already carries fuzzy date
 |---|---|---|
 | public | anybody | read everything published; write in the chat under a nick; report |
 | user | any account | post (into the moderation queue), comment, react, upload portraits, add a subject or propose a person |
-| trusted | an account with a confirmed e-mail at an FUW / UW / PAN domain (`TrustedDomain`) | posts publish at once; hide / restore / nuke in one click; escalate to NASK; attach nicknames to people |
+| trusted | an account with a confirmed e-mail at an FUW / UW / PAN domain (`TrustedDomain`) | posts publish at once; hide / restore / nuke in one click; escalate to NASK; attach nicknames to people; **read the posts marked „kontrowersyjne"** and mark any post so |
 | staff | Django `is_staff` — the real administration | the moderation queues, consent decisions, portrait review, the Django admin |
 | head-admin | `is_superuser`, or the grantable `escalation.can_manage_critical_quarantine` | the only tier that sees escalated content; decides and purges |
 
@@ -77,6 +77,18 @@ them once.
 - **Trust is an institutional e-mail, not a reputation.** A confirmed FUW / UW / PAN address gives the
   moderation tools; the moderation queue is what it removes. The domain list is curated, one row per
   institution, subdomains per row (`uw.edu.pl` deliberately without).
+- **„Kontrowersyjne" is the middle state between public and gone.** A post marked so keeps its
+  place on every list with its title, category and year, and its content — body, description,
+  files, the people and subjects it is filed under, and the comments — is for the trusted tier and
+  the post's own author. The author ticks the box while the post is still theirs to edit; after
+  that only a trusted moderator moves it, audited like every other transition. Two consequences
+  were chosen deliberately: a locked post cannot be *found* by what is inside it (search over the
+  body, and the person / subject / tag filters, skip it for everybody else — otherwise the filtered
+  list would say what the blanked chip hid), and it gets **no rich link preview and no sitemap
+  entry**, because a preview card lands in somebody else's cache and a search index outlives every
+  later decision. It is **not** a takedown and not an answer to a consent request or a DSA notice:
+  files uploaded before the lock stay fetchable under their own addresses, and `consent` /
+  `escalation` remain the paths for content that should not be here at all.
 - **Consensus hides on the chat, one click on posts.** Three reports from distinct trusted accounts
   hide a chat message on their own; a post is hidden by any one trusted user (and lands on the board
   where the others can put it back). Consensus for posts was considered and not taken — a product

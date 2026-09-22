@@ -217,6 +217,23 @@ class SharePreviewTests(TestCase):
         self.assertEqual(head.meta['robots'], 'noindex, follow')
         self.assertNotIn('canonical', head.links)
 
+    def test_a_restricted_post_looks_the_same_as_a_slug_that_never_existed(self):
+        """The site shows a stranger the title and a lock; a scraper gets neither.
+
+        A preview carries the summary (a body excerpt) and the cover into somebody else's
+        cache and Google's index, where they outlive any later decision — so the teaser
+        stops at the edge of the site (`previews._post`, house rule 5)."""
+        nothing = self._generic_404('/wpis/nie-ma-takiego-wpisu')
+        Post.objects.filter(pk=self.post.pk).update(trusted_only=True)
+        self.assertEqual(self._generic_404('/wpis/' + self.post.slug), nothing)
+
+    def test_a_restricted_post_is_gone_from_every_count(self):
+        second = Post.objects.create(title='Drugi', category=self.cat, status='published',
+                                     trusted_only=True)
+        second.tags.add(self.tag)
+        _, head = self.head('/przegladaj', category='memy')
+        self.assertIn('1 wpis ', head.meta['og:description'])
+
     def test_a_hidden_post_is_gone_from_every_count(self):
         second = Post.objects.create(title='Drugi', category=self.cat, status='hidden')
         second.tags.add(self.tag)
@@ -462,6 +479,10 @@ class SharePreviewTests(TestCase):
         self.assertIn(f'{SITE}/o-archiwum', locations)
         self.assertIn('<lastmod>', body)
         self.assertEqual(response['Cache-Control'], 'public, max-age=3600')
+
+    def test_sitemap_does_not_invite_a_search_engine_to_a_restricted_post(self):
+        Post.objects.filter(pk=self.post.pk).update(trusted_only=True)
+        self.assertNotIn(self.post.slug, self.client.get('/share/sitemap.xml').content.decode())
 
     def test_sitemap_hides_an_escalated_post(self):
         Escalation.objects.create(content_type=ContentType.objects.get_for_model(Post),

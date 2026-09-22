@@ -4,7 +4,7 @@
 	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { api, ApiError, qs } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
-	import { fmtDate, yearLabel, type Page as ApiPage, type Person, type Post, type Status } from '$lib/types';
+	import { LOCK_PILL, fmtDate, yearLabel, type Page as ApiPage, type Person, type Post, type Status } from '$lib/types';
 	import PostBody from '$lib/components/PostBody.svelte';
 	import TagPicker from '$lib/components/editor/TagPicker.svelte';
 	import type { Chip } from '$lib/components/editor/chips';
@@ -190,6 +190,7 @@
 						<a href="/wpis/{p.slug}">{p.title}</a>
 						<span class="pill {PILL[p.status]}">{LABEL[p.status]}</span>
 						{#if p.featured}<span class="pill pill--amber">Wyróżnione</span>{/if}
+						{#if p.trusted_only}<span class="pill pill--rust">{LOCK_PILL}</span>{/if}
 					</h3>
 					<div class="small muted">
 						{p.submitted_by || 'ktoś'} · dodano {fmtDate(p.created_at)} · {p.category_name} ·
@@ -316,6 +317,17 @@
 							onclick={() => act(p, p.featured ? 'unfeature' : 'feature')}
 						>
 							{p.featured ? 'Cofnij wyróżnienie' : 'Wyróżnij'}
+						</button>
+						<!-- Restricting something still IN the queue is a decision about what
+						     will be published — the one a moderator most often wants here. -->
+						<button
+							type="button"
+							class="btn btn--ghost"
+							disabled={busySlug === p.slug}
+							onclick={() => act(p, p.trusted_only ? 'unlock' : 'lock')}
+							title="Treść tylko dla osób z potwierdzonym adresem; tytuł zostaje publiczny"
+						>
+							{p.trusted_only ? '🔓 Zdejmij ograniczenie' : '🔒 Tylko dla zweryfikowanych'}
 						</button>
 						{#if p.reports?.length}
 							<button

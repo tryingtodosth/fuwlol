@@ -137,8 +137,14 @@ erase the trail.
 A reporter's e-mail and note are staff-only; a moderator's review note goes to the author only;
 a nuked post is a stub (id, catalogue number, moderation block) to a non-staff trusted caller and
 a 404 to everybody else; the consent audit line never carries the person's address; the
-evidence-audit register, which holds uploader addresses, is head-admin only. The serializers
-blank what a caller may not see rather than trusting views to filter.
+evidence-audit register, which holds uploader addresses, is head-admin only. A post marked
+**„kontrowersyjne"** (`Post.trusted_only`) is its title, category and year to everybody and its
+content — body, summary, cover, files, people/subjects/tags, comments — to the trusted tier and its
+own author: `moderation.can_read_body` is the single rule, the serializer blanks on it, `?q=` and
+the person / subject / tag filters are gated by its queryset twin `readable_q` so the body cannot
+be probed for a yes/no, `suggestions` refuses (a suggestion's `base` is a frozen copy of the body),
+and `share/` gives a scraper the generic card and no sitemap entry. The serializers blank what a
+caller may not see rather than trusting views to filter.
 
 ## Accepted, not forgotten
 
@@ -147,6 +153,14 @@ blank what a caller may not see rather than trusting views to filter.
 - One trusted account can escalate — and thereby freeze — any content, 10 a day, fully logged.
   That is the price of acting fast on the worst material.
 - Throttles count attempts, not failures.
+- „Kontrowersyjne" is a **payload** gate, not a storage gate. The attachment URLs stop being served,
+  but the bytes stay where they were under their unguessable UUID names: anybody who kept a link
+  from before the lock keeps it, and a link preview cached before it stays in that cache. Pulling
+  bytes back is the escalation path's job (`move_to_held`) and deliberately stays there — the
+  editor's own help text and the moderator's dialog both say the flag is not a takedown.
+- A locked post's *position* under `sort=top` is still ordered by its real reaction count, so the
+  ordering carries one small integer about content the reader may not see. The counts themselves
+  come back zeroed; a second ordering was judged to cost more than the leak is worth.
 - The 60 000-character and 400-environment caps are a compromise against a pathologically large
   *legal* document, not a proof; LaTeX.js runs on the main thread because it builds a DOM and a
   Web Worker would need a DOM emulation in the bundle (`docs/gemini/note.md`).

@@ -44,7 +44,9 @@ MODERATION_ACTION_CHOICES = [('hide', 'ukrycie'), ('restore', 'przywrócenie'), 
                              ('unnuke', 'przywrócenie po opcji nuklearnej'), ('publish', 'publikacja'),
                              ('reject', 'odrzucenie'), ('quarantine', 'kwarantanna krytyczna'),
                              ('purge', 'trwałe usunięcie po zgłoszeniu do NASK'),
-                             ('feature', 'wyróżnienie'), ('unfeature', 'cofnięcie wyróżnienia')]
+                             ('feature', 'wyróżnienie'), ('unfeature', 'cofnięcie wyróżnienia'),
+                             # `action` is max_length=12 — a longer name needs a column change
+                             ('lock', 'ograniczenie do zweryfikowanych'), ('unlock', 'zdjęcie ograniczenia')]
 PRECISION_CHOICES = [('exact', 'dokładnie'), ('approx', 'około'),
                      ('decade', 'dekada'), ('unknown', 'nieznany')]
 REACTION_CHOICES = [('lol', 'lol'), ('classic', 'klasyk'), ('wow', 'wow'), ('cringe', 'cringe')]
@@ -253,6 +255,12 @@ class Post(models.Model):
     reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                     related_name='+', on_delete=models.SET_NULL)
     featured = models.BooleanField(default=False)
+    # „Kontrowersyjne" in the interface: the post keeps its place in every public list, and
+    # its content — body, summary, cover, files, filing, comments — is for the trusted tier
+    # and its own author. NOT a status: the lifecycle above is untouched and a locked post
+    # is still published / hidden / pending like any other. `moderation.can_read_body` is
+    # the one reader of this field; nothing else may test it by hand.
+    trusted_only = models.BooleanField(default=False)
     views = models.PositiveIntegerField(default=0)
     # The uploader's declaration (regulamin, /o-archiwum): they hold the rights or act within
     # parody/pastiche (art. 29¹ pr. aut.), and have consent for every recognisable person

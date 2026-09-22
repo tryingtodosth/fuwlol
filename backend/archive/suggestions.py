@@ -109,9 +109,15 @@ def can_decide(user, post) -> bool:
 
 @transaction.atomic
 def create_suggestion(post, user, changes, rationale):
-    from .moderation import require_not_escalated
+    from .moderation import LOCKED_NOTICE, can_read_body, require_not_escalated
 
     require_not_escalated(post)
+    # You cannot propose an edit to text you may not read — and if you could, `base` below
+    # would hand the whole of it straight back to you: it freezes the current value of
+    # every field the suggestion touches, and `_suggestion_row` returns `base` to the
+    # suggester. A „kontrowersyjny" post's body is exactly what that would leak.
+    if not can_read_body(user, post):
+        raise PermissionDenied(LOCKED_NOTICE)
     rationale = (rationale or '').strip()
     if not rationale:
         raise ValidationError({'rationale': [RATIONALE_REQUIRED]})
@@ -183,9 +189,16 @@ def visible_suggestions_for(user, post):
     own. Nobody else sees any — a rejected "this quote is actually about X" is a claim
     about a named person that was looked at and not accepted, and publishing those would
     make the suggestion box a way to say things the moderation queue would have stopped."""
+    from .moderation import can_read_body
+
     qs = EditSuggestion.objects.filter(post=post).select_related('suggested_by', 'decided_by')
     if can_decide(user, post):
         return qs
+    # A post can be suggested against while open and locked afterwards, and an old
+    # suggestion's `base` is a frozen copy of the body. So this is not covered by the
+    # refusal in `create_suggestion` — both halves are needed.
+    if not can_read_body(user, post):
+        return EditSuggestion.objects.none()
     if user is not None and getattr(user, 'is_authenticated', False):
         return qs.filter(suggested_by=user)
     return EditSuggestion.objects.none()

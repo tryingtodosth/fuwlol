@@ -150,7 +150,45 @@ class PostListSerializer(serializers.ModelSerializer):
         model = Post
         fields = ['id', 'slug', 'catalog_no', 'title', 'summary', 'category', 'category_name', 'format',
                  'year', 'year_precision', 'date_note', 'people', 'subjects', 'tags', 'submitted_by', 'status',
-                 'featured', 'views', 'cover', 'reaction_counts', 'comment_count', 'published_at', 'created_at']
+                 'featured', 'trusted_only', 'locked', 'views', 'cover', 'reaction_counts', 'comment_count',
+                 'published_at', 'created_at']
+
+    # Whether the post is locked is public (the card says so); whether YOU may read it is
+    # derived per caller. The frontend must never re-derive `locked` from `trusted_only` —
+    # the author's own exception lives in `can_read_body` and nowhere else.
+    locked = serializers.SerializerMethodField()
+
+    def get_locked(self, obj):
+        return not rules.can_read_body(self._user(), obj)
+
+    def _user(self):
+        req = self.context.get('request')
+        return req.user if req else None
+
+    def to_representation(self, obj):
+        """A „kontrowersyjny" post keeps its place in the list and loses what it is about.
+
+        The same shape as `CommentSerializer.to_representation` below: the row stays, the
+        content goes. The filing (people, subjects, tags) goes with the body — a post is
+        usually locked precisely because of whom it names, and `views._filtered` refuses to
+        match those axes for the same caller, so the chip and the filter agree.
+
+        `summary` goes because `auto_summary` builds it out of the first 200 characters of
+        the body: keeping it would be theatre. The counts are zeroed because „47 × cringe"
+        characterises content the caller may not read."""
+        d = super().to_representation(obj)
+        if not d.get('locked'):
+            return d
+        # Only keys this serializer actually declares — the list and the detail shapes
+        # differ, and inventing a key here would put `body` on a card that has none.
+        blanked = {'body': '', 'summary': '', 'source_note': '', 'source_url': '',
+                   'cover': None, 'my_reaction': None, 'attachments': [],
+                   'people': [], 'subjects': [], 'tags': [],
+                   'reaction_counts': dict.fromkeys(REACTION_KINDS, 0), 'comment_count': 0}
+        for key, empty in blanked.items():
+            if key in d:
+                d[key] = empty
+        return d
 
     def get_submitted_by(self, obj):
         return _display(obj.submitted_by)
@@ -177,10 +215,18 @@ class PostDetailSerializer(PostListSerializer):
     moderation_notice = serializers.SerializerMethodField()
     moderation = serializers.SerializerMethodField()
 
+    lock_notice = serializers.SerializerMethodField()
+
     class Meta(PostListSerializer.Meta):
         fields = PostListSerializer.Meta.fields + ['body', 'source_note', 'source_url', 'attachments',
                                                    'my_reaction', 'can_edit', 'review_note',
-                                                   'can_moderate', 'moderation_notice', 'moderation']
+                                                   'can_moderate', 'moderation_notice', 'moderation',
+                                                   'lock_notice']
+
+    def get_lock_notice(self, obj):
+        """The sentence the page shows in place of the body. Polish, written here, displayed
+        verbatim — a refusal carries its reason."""
+        return rules.LOCKED_NOTICE if not rules.can_read_body(self._user(), obj) else None
 
     def _trusted(self):
         # One trust lookup per serializer (the context dict is shared by a many=True list),
@@ -275,7 +321,7 @@ class PostWriteSerializer(serializers.ModelSerializer):
         model = Post
         fields = ['title', 'category', 'format', 'body', 'summary', 'year', 'year_precision',
                   'date_note', 'source_note', 'source_url', 'people', 'subjects', 'tags',
-                  'rights_confirmed']
+                  'rights_confirmed', 'trusted_only']
 
     @staticmethod
     def _items(raw):
@@ -321,6 +367,13 @@ class PostWriteSerializer(serializers.ModelSerializer):
         problem = latexguard.check_source(body or '', max_chars=latexguard.MAX_POST_CHARS)
         if problem:
             raise serializers.ValidationError({'body': problem})
+        # „Kontrowersyjne" goes on freely — it only ever takes reach away. Taking it OFF is
+        # a moderation decision the moment a moderator made it, or the author would answer
+        # „ogranicz to" by clicking it back. `author_may_unlock` reads the audit trail;
+        # there is no second flag to keep in step.
+        if (self.instance is not None and 'trusted_only' in data and not data['trusted_only']
+                and self.instance.trusted_only and not rules.author_may_unlock(self.instance, self._actor())):
+            raise serializers.ValidationError({'trusted_only': rules.LOCKED_BY_MODERATOR})
         if self.instance is None and not data.get('rights_confirmed'):
             raise serializers.ValidationError({'rights_confirmed': 'Potwierdź, że masz prawo opublikować tę treść (regulamin w „O archiwum”).'})
         if 'summary' in data and not (data.get('summary') or '').strip():

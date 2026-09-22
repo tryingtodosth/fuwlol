@@ -8,7 +8,7 @@
 	import { goto } from '$app/navigation';
 	import { api, ApiError } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
-	import { fmtDate, yearLabel, type Post } from '$lib/types';
+	import { LOCK_PILL, fmtDate, yearLabel, type Post } from '$lib/types';
 	import PostBody from '$lib/components/PostBody.svelte';
 	import Reactions from '$lib/components/Reactions.svelte';
 	import ModTools from '$lib/components/ModTools.svelte';
@@ -148,14 +148,34 @@
 			{/if}
 			{#if post.catalog_no}<span class="stamp">{post.catalog_no}</span>{/if}
 			{#if post.featured}<span class="pill pill--amber">Wyróżnione</span>{/if}
+			<!-- `trusted_only`, not `locked`: a trusted reader reads the post AND must see
+			     that it is restricted. -->
+			{#if post.trusted_only}<span class="pill pill--rust">{LOCK_PILL}</span>{/if}
 		</p>
 
-		<div class="ce_text">
-			{#if post.summary}<p class="lead"><strong><MathText text={post.summary} /></strong></p>{/if}
-			<PostBody format={post.format} body={post.body} attachments={post.attachments} article />
-		</div>
+		{#if post.locked}
+			<div class="box box--grey locked">
+				<div class="box__body">
+					<p><strong>🔒 {post.lock_notice}</strong></p>
+					{#if !auth.isAuthenticated}
+						<p class="small">Masz adres w domenie FUW, UW albo PAN? <a href="/logowanie">Zaloguj się</a>
+						i potwierdź go na stronie konta — wtedy ten wpis (i każdy inny taki) otworzy się sam.</p>
+					{:else}
+						<p class="small">Potwierdź swój adres instytucjonalny na <a href="/konto">stronie konta</a>
+						— zajmuje minutę i odblokowuje wszystkie takie wpisy naraz.</p>
+					{/if}
+					<p class="small muted">Tytuł, kategoria i rok zostają widoczne dla każdego. Ukryta jest
+					treść, opis, pliki, przedmioty i osoby oraz dyskusja.</p>
+				</div>
+			</div>
+		{:else}
+			<div class="ce_text">
+				{#if post.summary}<p class="lead"><strong><MathText text={post.summary} /></strong></p>{/if}
+				<PostBody format={post.format} body={post.body} attachments={post.attachments} article />
+			</div>
 
-		<Reactions {post} />
+			<Reactions {post} />
+		{/if}
 
 		<table class="meta">
 			<tbody>
@@ -211,6 +231,7 @@
 				<ModTools kind="post" id={post.slug}
 					status={post.status === 'hidden' ? 'hidden' : post.status === 'nuked' ? 'nuked' : 'visible'}
 					featured={post.featured}
+					trustedOnly={post.trusted_only}
 					onChanged={() => location.reload()} />
 			</p>
 		{/if}
@@ -271,7 +292,9 @@
 		<p class="back"><button type="button" class="linky linky--back" onclick={back} title="Wróć">Wróć</button></p>
 	</div>
 
-	<Comments slug={post.slug} />
+	<!-- The thread quotes the post; the API refuses it for a locked reader, so asking would
+	     draw an error box under a lock that already explains itself. -->
+	{#if !post.locked}<Comments slug={post.slug} />{/if}
 {/if}
 
 <style>

@@ -36,7 +36,7 @@
 	/** The draft kept in localStorage. `ppl`/`sub`/`tg` are chip lists now; drafts written
 	 * before the pickers existed hold `ppl` as a list of slugs and `tg` as one comma-separated
 	 * string, and `chipsFrom` reads both so an unsaved post survives the upgrade. */
-	interface Draft { t: string; c: string; f: Format; b: string; s: string; y: string; yp: string; dn: string; sn: string; su: string; ppl: Chip[]; sub: Chip[]; tg: Chip[]; at: number }
+	interface Draft { t: string; c: string; f: Format; b: string; s: string; y: string; yp: string; dn: string; sn: string; su: string; ppl: Chip[]; sub: Chip[]; tg: Chip[]; to?: boolean; at: number }
 
 	/* ---------- form state ---------- */
 	let title = $state(seed?.title ?? '');
@@ -50,6 +50,9 @@
 	let sourceNote = $state(seed?.source_note ?? '');
 	let sourceUrl = $state(seed?.source_url ?? '');
 	let rightsOk = $state(!!seed); // an edit does not re-ask; a new post must declare
+	// „Kontrowersyjne" — archive/models.py::Post.trusted_only. It rides in the draft too: a
+	// draft that forgot the flag is a draft that publishes the post wide open.
+	let trustedOnly = $state(seed?.trusted_only ?? false);
 	let peopleChips = $state<Chip[]>(seed?.people.map(personChip) ?? []);
 	let subjectChips = $state<Chip[]>(seed?.subjects?.map(subjectChip) ?? []);
 	let tagChips = $state<Chip[]>(seed?.tags.map(tagChip) ?? []);
@@ -105,7 +108,7 @@
 	const extras = $derived(mediaRefs.filter((r) => r.kind !== 'image').map((r) => r.name));
 	const texStatus = $derived(compiling ? 'busy' : latexError ? 'err' : latexHtml ? 'ok' : 'idle');
 	const draftJson = $derived(
-		JSON.stringify({ t: title, c: category, f: format, b: body, s: summary, y: yearText, yp: yearPrec, dn: dateNote, sn: sourceNote, su: sourceUrl, ppl: peopleChips, sub: subjectChips, tg: tagChips })
+		JSON.stringify({ t: title, c: category, f: format, b: body, s: summary, y: yearText, yp: yearPrec, dn: dateNote, sn: sourceNote, su: sourceUrl, ppl: peopleChips, sub: subjectChips, tg: tagChips, to: trustedOnly })
 	);
 
 	/* ---------- helpers ---------- */
@@ -373,6 +376,7 @@
 		title = d.t; category = d.c; format = d.f; body = d.b; summary = d.s;
 		yearText = d.y; yearPrec = d.yp; dateNote = d.dn; sourceNote = d.sn; sourceUrl = d.su;
 		peopleChips = chipsFrom(d.ppl, true); subjectChips = chipsFrom(d.sub); tagChips = chipsFrom(d.tg);
+		trustedOnly = !!d.to; // absent in a draft written before the flag existed — off, as it was
 		draftOffer = null;
 	}
 	function discardDraft() {
@@ -490,6 +494,7 @@
 		fd.set('subjects', JSON.stringify(namePayload(subjectChips)));
 		fd.set('tags', JSON.stringify(namePayload(tagChips)));
 		fd.set('rights_confirmed', rightsOk ? 'true' : 'false');
+		fd.set('trusted_only', trustedOnly ? 'true' : 'false');
 		for (const f of newFiles) fd.append('files', f.file, f.name);
 		fd.set('captions', JSON.stringify(newFiles.map((f) => f.caption.trim().slice(0, 200))));
 		for (const id of removeIds) fd.append('remove_attachments', String(id));
@@ -857,6 +862,16 @@
 			{/if}
 		</div>
 	</div>
+
+	<label class="rights">
+		<input type="checkbox" bind:checked={trustedOnly} />
+		<span><strong>Kontrowersyjne — treść tylko dla zweryfikowanych.</strong> Wpis zostaje w archiwum
+		i na listach: tytuł, kategoria i rok będą widoczne dla wszystkich. Ukryte będą treść, opis,
+		pliki, przedmioty i osoby oraz komentarze — otworzą je tylko osoby z potwierdzonym adresem
+		FUW, UW lub PAN. <strong>To nie jest usunięcie:</strong> pliki wysłane wcześniej zostają pod
+		swoimi adresami. Jeśli wpisu w ogóle nie powinno tu być, nie zaznaczaj tego, tylko
+		<a href="/o-archiwum" target="_blank">zgłoś go moderacji</a>.</span>
+	</label>
 
 	{#if !seed}
 		<label class="rights">

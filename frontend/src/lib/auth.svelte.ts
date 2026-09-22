@@ -9,6 +9,11 @@ export const auth = {
 	get ready() { return ready; },
 	get isAuthenticated() { return user !== null; },
 	get isStaff() { return !!user?.is_staff; },
+	/** Staff is always trusted — the same rule as archive/moderation.is_trusted. The five
+	 * call sites that spelled this out by hand did not all agree (Header.svelte left the
+	 * staff half out). It decides which BUTTONS appear; what is shown of a post is the
+	 * server's `locked`, never this. */
+	get isTrusted() { return !!user?.is_staff || !!user?.is_trusted; },
 	get isHeadAdmin() { return !!user?.is_superuser; },
 	async init() {
 		if (getToken()) {

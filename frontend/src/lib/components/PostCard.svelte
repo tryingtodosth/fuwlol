@@ -20,7 +20,7 @@
 	 * the paragraph — and, ours alone, a grey meta line underneath. A post without a picture
 	 * simply has no picture; the faculty puts no placeholder there and neither do we. */
 	import MathText from './MathText.svelte';
-	import { yearLabel, type PostSummary } from '$lib/types';
+	import { LOCK_PILL, yearLabel, type PostSummary } from '$lib/types';
 
 	let { post }: { post: PostSummary } = $props();
 
@@ -42,7 +42,8 @@
 	{/if}
 	<div class="item__text">
 		<p>
-			{#if post.summary}<MathText text={post.summary} />{:else}Bez opisu — zajrzyj do środka.{/if}
+			{#if post.locked}<em class="muted">Treść tylko dla zweryfikowanych — tytuł zostaje, reszta czeka na potwierdzony adres.</em>
+			{:else if post.summary}<MathText text={post.summary} />{:else}Bez opisu — zajrzyj do środka.{/if}
 			| <a class="more" href="/wpis/{post.slug}">Więcej</a>
 		</p>
 	</div>
@@ -65,5 +66,8 @@
 		{#if reactions}· {reactions} reakcji{/if}
 		{#if post.comment_count}· {post.comment_count} kom.{/if}
 		{#if post.featured}· <span class="pill pill--amber">Wyróżnione</span>{/if}
+		<!-- `trusted_only`, not `locked`: a trusted reader must see that the post is restricted,
+		     and for them `locked` is false. -->
+		{#if post.trusted_only}· <span class="pill pill--rust">{LOCK_PILL}</span>{/if}
 	</div>
 </div>

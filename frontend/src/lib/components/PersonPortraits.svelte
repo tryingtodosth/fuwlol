@@ -154,7 +154,7 @@
 	const remaining = $derived(Math.max(0, count - items.length));
 	/** The trusted tier, read the same way /tablica reads it — the server re-checks every
 	 * call, so this only decides whether to draw the controls. */
-	const moderator = $derived(auth.isStaff || !!auth.user?.is_trusted);
+	const moderator = $derived(auth.isTrusted);
 	/** The backend writes the explainer's path into the sentence itself; we print the
 	 * sentence exactly as it came and turn that bare path into a real link. Splitting on
 	 * the path rather than on the Polish words means a reworded refusal still links. */

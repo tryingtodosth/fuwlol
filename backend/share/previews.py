@@ -169,11 +169,12 @@ def clean_text(text: str, limit: int = MAX_DESCRIPTION) -> str:
 
 def public_posts():
     """Every post an anonymous visitor may read, as a queryset — the twin of
-    `can_see_post(None, …)`, asked rather than rewritten. Every count on every card is
-    taken over exactly this, so a hidden or escalated post cannot show up as the +1 that
-    says it exists."""
-    from archive.moderation import visible_posts_q
-    return Post.objects.filter(visible_posts_q(None))
+    `can_see_post(None, …)` AND `can_read_body(None, …)`, asked rather than rewritten. Every
+    count on every card is taken over exactly this, so a hidden, escalated or trusted-only
+    post cannot show up as the +1 that says it exists. It is also what the sitemap walks:
+    a locked post has nothing to offer a search engine but a title and a name."""
+    from archive.moderation import readable_q, visible_posts_q
+    return Post.objects.filter(visible_posts_q(None)).filter(readable_q(None))
 
 
 def _count_for(**filters) -> int:
@@ -255,12 +256,19 @@ def _home() -> Preview:
 
 
 def _post(slug: str) -> Preview | None:
-    from archive.moderation import can_see_post
+    from archive.moderation import can_read_body, can_see_post
     post = (Post.objects.filter(slug=slug)
             .select_related('category').prefetch_related('attachments', 'tags').first())
     # The queryset found it; the rule decides. Both, because a slug in a URL never meets a
     # queryset filter on its own — house rule: visibility is a filter, authority is a check.
     if post is None or not can_see_post(None, post):
+        return None
+    # A „kontrowersyjny" post is a teaser to a human ON the site, who can read the lock and
+    # go and confirm an address. A scraper is neither: the summary it would take is a body
+    # excerpt (`auto_summary`) and the picture IS the content, and both land in somebody
+    # else's cache and Google's index, where they outlive any later decision to lock or take
+    # down. So: the generic card and the 404, exactly as for a hidden post.
+    if not can_read_body(None, post):
         return None
     summary = clean_text(post.summary)
     if not summary:

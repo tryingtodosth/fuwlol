@@ -41,6 +41,7 @@ browser scripts spend, and a 429 in the middle of a test looks exactly like a re
 | `accounts/tests.py` | 24 | registration, login (per-IP and per-username throttles), `/me/`, trusted-domain matching (`x@fuw.edu.pl.evil.com` does not match), verification request/confirm, 24 h single-use tokens, masking |
 | `archive/tests.py` | 19 | posts, attachments referenced by original name in one multipart request, reactions, comments, reports, timeline, random, catalogue numbers |
 | `archive/test_content_guards.py` | 14 | `latexguard.check_source` on posts, comments and chat: the `\def` family, recursive `\newcommand`, length, environment count, the depth cap that touches no forbidden primitive |
+| `archive/test_locked.py` | 22 | „kontrowersyjne" (`trusted_only`): the teaser keeps the title and loses body, summary, cover, filing and counts; the author and the trusted tier read it; the body is not searchable (prose **and** formulas) and not reachable through the person filter; comments, reactions and suggestions refuse (a suggestion's `base` is a frozen body); a teaser is no view; who may set and unset it, and that every turn is audited |
 | `archive/test_moderation.py` | 15 | the trusted tier: hide / restore / nuke on posts and comments, the board payload, what a non-staff caller sees of a nuked item, restore to the previous status |
 | `archive/test_people.py` | 11 | filing by surname (`split_degree`, `derive_surname`, `sort_key_for`, `letter`), nicknames as alias tags, `annotate_people` counting a post once across both joins, alias ownership 409 |
 | `archive/test_people_naming.py` | 22 | naming a person into existence: reuse on `name_key`, visibility derived from a published post, opted-out match refused, five-per-post cap, `is_new` on the queue card, `sweep_people` |
@@ -53,9 +54,9 @@ browser scripts spend, and a 429 in the middle of a test looks exactly like a re
 | `escalation/test_hardening.py` | 22 | the 19.09 closures: R2 objects moved to the private `held/` bucket, CDN purge called (and logged when unconfigured), grantable head-admin permission, 5-minute previews |
 | `escalation/test_purge.py` | 24 | the purge: refuses unless approved and `confirmed_dispatch`, audit rows before bytes, every copy destroyed, 409 with survivors on a partial shred, retry does not duplicate audit rows, `EvidenceAuditLog` append-only |
 | `portraits/tests.py` | 31 | gallery gated on `granted`, `visible_q` re-checks for everyone, one movable vote, election with the older winning a tie, trusted publish at once, caps, `PortraitAction`, queue |
-| `share/tests.py` | 43 | link previews: every route kind, hidden / nuked / escalated posts get the generic card and a 404 byte-identical to a missing slug, absolute image URLs, person cards, sitemap, crawler detection, human redirect, `FUWLOL_SPA_INDEX` splice mode |
+| `share/tests.py` | 46 | link previews: every route kind, hidden / nuked / escalated / restricted posts get the generic card and a 404 byte-identical to a missing slug, absolute image URLs, person cards, sitemap, crawler detection, human redirect, `FUWLOL_SPA_INDEX` splice mode |
 
-The counts are `def test_` per file as of 2026-09-20; re-count rather than trust them after adding tests.
+The counts are `def test_` per file as of 2026-09-22; re-count rather than trust them after adding tests.
 
 ### Conventions
 

@@ -42,7 +42,7 @@
 	 * people actually present in what has been loaded, which is the useful subset. */
 	let personSlug = $state('');
 
-	const allowed = $derived(auth.isStaff || !!auth.user?.is_trusted);
+	const allowed = $derived(auth.isTrusted);
 	const count = $derived(page?.count ?? 0);
 	const remaining = $derived(Math.max(0, count - items.length));
 	/** Every person with something in the loaded pages, for the filter. Kept from the

@@ -28,7 +28,7 @@
 	let open = $state<Set<number>>(new Set());
 	let loadedFor = '';
 
-	const allowed = $derived(auth.isStaff || !!auth.user?.is_trusted);
+	const allowed = $derived(auth.isTrusted);
 	const isStub = (p: BoardPost): p is PostStub => typeof p.title !== 'string';
 	const isCStub = (c: BoardComment): c is CommentStub => typeof c.body !== 'string';
 

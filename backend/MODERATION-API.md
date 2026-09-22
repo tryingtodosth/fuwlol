@@ -42,7 +42,20 @@ and `x@gmail.com@fuw.edu.pl` do not match.
 - `GET /api/posts/{slug}/comments/` → a hidden/nuked comment stays in the thread as a placeholder
   (`body: ""`, `author: ""`, `moderation: "hidden"|"nuked"`); trusted callers get a hidden
   comment's real body, staff a nuked one's.
-- Public lists, search, random, timeline and stats only ever count `published`.
+- `POST /api/posts/{slug}/lock/` `{trusted_only?: bool}` — „kontrowersyjne" on or off (omitted =
+  toggle, like `feature/`). Audited as `lock`/`unlock`; 400 if it is already in that state.
+  `moderate` takes the same two as decisions, so it can be set on something still in the queue.
+- A locked post answers **200 with a teaser** to everybody else: title, catalogue number, category,
+  year, `trusted_only: true`, `locked: true` and `lock_notice`; `body`, `summary`, `cover`,
+  `attachments`, `source_*`, `people`, `subjects`, `tags` are blank and the counts are zero. Its
+  author reads it in full whatever their tier. `comments/` (GET and POST), `react/` and
+  `suggestions/` (POST, and GET of older ones) answer **403** with that sentence; `reports/` still
+  works, because the title is readable and that is what somebody recognises.
+- Public lists, search, random, timeline and stats only ever count `published` — and `?q=`, plus the
+  `person` / `tag` / `subject` filters, skip a locked post for a caller who may not read it (those
+  match on the body-derived columns and on the filing the card blanks). `random` skips it too, and
+  a teaser does not count as a view. `share/` gives a scraper the generic 404 card and leaves the
+  post out of the sitemap.
 - Staff-only `POST /api/posts/{slug}/moderate/` gained decisions `hide` and `nuke` (audited).
 - `reports` on a board/hide/nuke payload: every trusted caller gets `{id, reason, created_at}`;
   `note` and `contact_email` are filled for staff only. `review_note` on a post is returned to

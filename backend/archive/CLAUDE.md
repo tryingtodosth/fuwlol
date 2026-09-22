@@ -14,6 +14,11 @@ Eight test files, 136 tests (`test.md`). The reasoning for all of it is in `DESI
   lists, search, random, timeline and stats count `published` only.
 - A fuzzy date is `year` + `year_precision` (`exact|approx|decade|unknown`) + `date_note`;
   `catalog_no` is `FUW-0001`; `featured` is staff's (`set_featured`, actions `feature`/`unfeature`).
+- `trusted_only` („kontrowersyjne") is the **second axis**, not an eighth status: the post keeps its
+  lifecycle and its place in every list, and its content goes to the trusted tier and its author
+  (`set_trusted_only`, actions `lock`/`unlock`; the author's own tick is undone through
+  `author_may_unlock`, derived from the audit trail). No index on it — a ~99/1 boolean is not
+  selective and never stands alone in a query, exactly as for `featured`.
 - `rights_confirmed` is **required** and is the uploader's own declaration, never consent from the
   people depicted (`LEGAL.md` §3). `submitter_ip` / user-agent are recorded for the art. 18 DSA
   report and blanked by `manage.py forget_submitter_ips` after `FUWLOL_SUBMITTER_IP_RETENTION_DAYS`.
@@ -77,7 +82,15 @@ and `nuked`; every call goes through `record` → `ModerationAction`. A restore 
 A nuke needs a reason (`NUKE_NEEDS_REASON`); un-nuking is staff only (`ONLY_STAFF_UNNUKE`); every
 action first calls `require_not_escalated`. `can_see_post` / `can_see_comment` / `visible_posts_q`
 are what the views and `share/previews.py` ask; the serializers blank `review_note`, reporter
-`note` and `contact_email` for callers who may not see them. `MODERATION-API.md` has the payloads.
+`note` and `contact_email` for callers who may not see them.
+**`can_read_body` / `readable_q` are the second, narrower layer under that first pair** — „may you
+read it", asked once the first pair has said „does it exist for you" — and the two must stay in
+step the same way. Everything that hands out content asks them: the post serializers, `_filtered`
+(`?q=` matches `search_text`/`search_math`, which are built FROM THE BODY, so they are gated — read
+that before touching the search clause), the `person`/`tag`/`subject` filters, `comments`, `react`,
+`suggestions`, `share/previews.public_posts` and `people._public_posts`. A person's `post_count`
+stays viewer-independent and does **not** count locked posts, so a trusted reader sees a count lower
+than the list they can open — the honest direction. `MODERATION-API.md` has the payloads.
 
 ## Suggestions and revisions (`suggestions.py`)
 

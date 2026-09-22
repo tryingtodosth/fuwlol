@@ -33,6 +33,9 @@ NUKE_NEEDS_REASON = 'Opcja nuklearna wymaga podania powodu.'
 ONLY_STAFF_UNNUKE = 'Treść ukrytą nuklearnie może przywrócić tylko administracja.'
 NOT_TRUSTED = 'Ta czynność wymaga potwierdzonego adresu instytucjonalnego (FUW, UW, PAN).'
 ESCALATED = 'Ta treść czeka na decyzję administracji.'
+LOCKED_NOTICE = ('Ten wpis jest oznaczony jako kontrowersyjny — treść, pliki i komentarze widzą '
+                 'tylko osoby z potwierdzonym adresem instytucjonalnym (FUW, UW, PAN).')
+LOCKED_BY_MODERATOR = 'Ograniczenie nałożył moderator — zdjąć je może tylko moderator.'
 
 # The public status a restore may put a post back into. 'hidden' / 'nuked' are never a
 # restore target — see `_restore_target`.
@@ -130,6 +133,42 @@ def visible_posts_q(user):
     if escalated:
         base &= ~Q(pk__in=escalated)
     return base
+
+
+def can_read_body(user, post):
+    """The CONTENT of a post whose existence the caller may already see.
+
+    A second, narrower question than `can_see_post`, and it presupposes it. A `trusted_only`
+    („kontrowersyjny") post keeps its place in every public list — title, category, year,
+    catalogue number — and withholds what it is about: body, summary, cover, files, filing
+    and the comment thread. `readable_q` is the queryset twin; keep the two in step, the
+    same way `can_see_post` and `visible_posts_q` are.
+
+    The author is inside whatever their tier: they wrote it, they may still be editing it,
+    and /moje would otherwise show them a lock over their own submission. Staff arrive
+    through `is_trusted`, which they always are."""
+    if not getattr(post, 'trusted_only', False):
+        return True
+    if is_trusted(user):
+        return True
+    return bool(user is not None and getattr(user, 'is_authenticated', False)
+                and post.submitted_by_id == user.id)
+
+
+def readable_q(user):
+    """`can_read_body` as a Q, for the clauses that must not match a body nobody may read.
+
+    NOT a bare `Q()` in the trusted branch: an empty Q collapses into whatever it is
+    combined with (the trap `visible_posts_q` documents above), and here that would quietly
+    turn the gate it guards into a no-op."""
+    from django.db.models import Q
+
+    if is_trusted(user):
+        return Q(pk__isnull=False)
+    q = Q(trusted_only=False)
+    if user is not None and getattr(user, 'is_authenticated', False):
+        q |= Q(submitted_by=user)
+    return q
 
 
 def can_see_comment(user, comment):
@@ -340,3 +379,38 @@ def set_featured(post, actor, featured: bool):
     post.save(update_fields=['featured'])
     return record('feature' if featured else 'unfeature', actor, post=post,
                   previous_status=post.status)
+
+
+@transaction.atomic
+def set_trusted_only(post, actor, trusted_only: bool):
+    """Lock / unlock a post to the trusted tier — the trusted tier's own, audited, like
+    `set_featured`.
+
+    Not a `status`: the post stays exactly where it is in its lifecycle and this decides
+    only who reads its content (`can_read_body`). Unlike pinning there is no published-only
+    rule — restricting something still in the queue is a decision about what will be
+    published, and it is the one a moderator most often wants to make.
+
+    It IS audited, and the row is what `author_may_unlock` later reads: an author may undo
+    their own tick, never a moderator's."""
+    _require_trusted(actor)
+    require_not_escalated(post)
+    if post.trusted_only == trusted_only:
+        raise ValidationError({'detail': 'Ten wpis już jest w tym stanie.'})
+    post.trusted_only = trusted_only
+    post.save(update_fields=['trusted_only'])
+    return record('lock' if trusted_only else 'unlock', actor, post=post,
+                  previous_status=post.status)
+
+
+def author_may_unlock(post, user):
+    """May this caller take „kontrowersyjne" off through the ordinary edit form?
+
+    Derived from the audit trail rather than carried in a second flag — the way
+    `_restore_target` derives where a restore goes. A moderator's lock is a moderation
+    decision, and an author answering it by unticking the box would undo it silently;
+    their own tick is theirs to undo. Trusted callers use `set_trusted_only` and never
+    reach this."""
+    if is_trusted(user):
+        return True
+    return not post.actions.filter(action='lock').exclude(actor=user).exists()
