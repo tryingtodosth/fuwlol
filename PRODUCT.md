@@ -132,6 +132,11 @@ Named so that somebody can close them; the engineering-level gaps are in `CLAUDE
   other pages to get one.
 - **Portraits**: no escalation path for a portrait, no direct-to-R2 upload, no per-photo report
   button — the person's own consent entry is the door today.
+- **Only the admin can choose a person's silhouette.** `Person.sex` exists solely to pick the
+  faculty's male or female placeholder; the editor's "add a person" mini-form does not ask, and the
+  person's own settings page (`/ludzie/<slug>/ustawienia`) does not offer it either, so everybody
+  named into existence from a post shows the neutral bust until staff sets the field in the Django
+  admin. The people-settings page is the natural place for the person to say it themself.
 - **Consensus moderation for posts**, as on the chat — see above.
 - **Search on Postgres** (`hunspell-pl` + `pg_trgm` on the two derived columns) — half built: the
   columns exist and the query shape is portable; the other half needs Postgres locally

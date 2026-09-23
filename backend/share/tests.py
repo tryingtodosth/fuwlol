@@ -261,13 +261,14 @@ class SharePreviewTests(TestCase):
             _, head = self.head('/ludzie/helena-hamiltonian')
             self.assertIn(expected, head.meta['og:description'])
 
-    def test_a_man_gets_the_other_silhouette_and_an_unknown_sex_the_site_card(self):
+    def test_a_man_gets_the_other_silhouette_and_an_unknown_sex_the_neutral_one(self):
         Person.objects.create(slug='kwant-niepewny', name='Kwant Niepewny', sex='m')
         Person.objects.create(slug='pani-z-portierni', name='Pani z portierni', sex='')
         _, head = self.head('/ludzie/kwant-niepewny')
         self.assertEqual(head.meta['og:image'], f'{SITE}/og-osoba-m.png')
         _, head = self.head('/ludzie/pani-z-portierni')
-        self.assertEqual(head.meta['og:image'], f'{SITE}/og-default.png')
+        self.assertEqual(head.meta['og:image'], f'{SITE}/og-osoba.png')
+        self.assertIn('sylwetka zastępcza', head.meta['og:image:alt'])
 
     def test_an_unlisted_person_has_no_preview(self):
         self.person.is_listed = False

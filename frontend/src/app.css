@@ -181,8 +181,7 @@ table.employers a.letter { color: var(--text); text-decoration: none; }
 table.single_record { border-collapse: separate; border-spacing: 20px; margin: 0 -20px; }
 table.single_record table.single_record { border-spacing: 0; margin: 0; }
 table.single_record td.img { padding: 10px 0 0; vertical-align: bottom; width: 146px; }
-table.single_record td.img img, table.single_record td.img .nophoto { width: 130px; max-width: none; height: 130px; margin-right: 16px; display: block; object-fit: cover; }
-table.single_record td.img .nophoto { background: #eee; border: 1px solid var(--line); color: #999; font-size: 11px; display: flex; align-items: center; justify-content: center; text-align: center; }
+table.single_record td.img img { width: 130px; max-width: none; height: 130px; margin-right: 16px; display: block; object-fit: cover; }
 table.single_record td.name { font-size: 15px; font-weight: bold; color: #0a0a00; padding-top: 8px; }
 table.single_record td.header { padding: 0 0 10px; }
 table.single_record td.label { width: 100px; padding: 1px 8px 1px 0; vertical-align: top; white-space: nowrap; }
@@ -196,7 +195,7 @@ table.single_record td.value { padding: 1px 0; }
 	/* the faculty keeps photo and details side by side on a phone; so do we — with a smaller
 	   photo and tighter spacing, because our value column carries sentences, not room numbers */
 	table.single_record { border-spacing: 10px; margin: 0 -10px; }
-	table.single_record td.img img, table.single_record td.img .nophoto { width: 100px; height: 100px; margin-right: 0; }
+	table.single_record td.img img { width: 100px; height: 100px; margin-right: 0; }
 	table.single_record > tbody > tr > td.img { vertical-align: top; padding-top: 4px; width: 100px; }
 	table.single_record td.label { width: 96px; white-space: normal; }
 }

@@ -119,7 +119,7 @@ def _person_card(out: Path, silhouette: Path, label: str):
 
 
 class Command(BaseCommand):
-    help = 'Rysuje karty podglądu (og-default.png, og-osoba-m.png, og-osoba-f.png) w frontend/static/.'
+    help = 'Rysuje karty podglądu (og-default.png, og-osoba-m.png, og-osoba-f.png, og-osoba.png) w frontend/static/.'
 
     def add_arguments(self, parser):
         parser.add_argument('--out', default='', help='katalog docelowy (domyślnie frontend/static)')
@@ -130,11 +130,15 @@ class Command(BaseCommand):
             raise CommandError(f'Nie ma katalogu {out_dir}.')
         img_dir = out_dir / 'img'
         written = [_default_card(out_dir / 'og-default.png')]
+        # The first two silhouettes are the faculty directory's own; the third is ours, drawn
+        # in their style for a person whose `sex` nobody has set (previews.PERSON_CARDS).
         for sex, filename, label in (('m', 'anonymousmabw.png', 'Osoba bez zdjęcia w archiwum.'),
-                                     ('f', 'anonymousfebw.png', 'Osoba bez zdjęcia w archiwum.')):
+                                     ('f', 'anonymousfebw.png', 'Osoba bez zdjęcia w archiwum.'),
+                                     ('', 'anonymousbw.png', 'Osoba bez zdjęcia w archiwum.')):
             silhouette = img_dir / filename
             if not silhouette.exists():
                 raise CommandError(f'Brakuje sylwetki {silhouette} — to plik ze spisu osób FUW.')
-            written.append(_person_card(out_dir / f'og-osoba-{sex}.png', silhouette, label))
+            card = out_dir / (f'og-osoba-{sex}.png' if sex else 'og-osoba.png')
+            written.append(_person_card(card, silhouette, label))
         for path in written:
             self.stdout.write(self.style.SUCCESS(f'zapisano {path}'))

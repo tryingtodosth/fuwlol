@@ -7,9 +7,12 @@
 	 * known person — what the person themself said about their image (law).
 	 *
 	 * The photo is the winner of the portrait vote when there is one (the portraits app; the
-	 * gallery component below reports it through `onCurrent`), else the faculty's own silhouette
-	 * for the person's `sex`, else the grey "Miejsce na foto" box the faculty shows when it has
-	 * nothing either. */
+	 * gallery component below reports it through `onCurrent`), else a silhouette titled
+	 * "Miejsce na foto" exactly as the faculty's page does for everybody without a photo: its
+	 * own two for a known `sex`, and a neutral one drawn in the same style when `sex` is
+	 * unknown — which is every person named into existence from the editor, since only the
+	 * admin sets that field. Before 23.09.2026 the unknown case was a grey text box, and on
+	 * production, where nobody had a `sex`, every profile showed it and looked broken. */
 	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { page } from '$app/state';
 	import { api, ApiError, qs } from '$lib/api';
@@ -57,7 +60,7 @@
 	}
 
 	const placeholder = $derived(
-		person?.sex === 'm' ? '/img/anonymousmabw.png' : person?.sex === 'f' ? '/img/anonymousfebw.png' : null
+		person?.sex === 'm' ? '/img/anonymousmabw.png' : person?.sex === 'f' ? '/img/anonymousfebw.png' : '/img/anonymousbw.png'
 	);
 	const years = $derived.by(() => {
 		if (!person) return '';
@@ -103,10 +106,8 @@
 						<td class="img">
 							{#if portraitUrl}
 								<img src={portraitUrl} alt={person.full_name} title="Zdjęcie profilowe — wybrane głosowaniem" />
-							{:else if placeholder}
-								<img src={placeholder} alt="" title="Miejsce na foto" />
 							{:else}
-								<div class="nophoto" title="Miejsce na foto">Miejsce<br />na foto</div>
+								<img src={placeholder} alt="" title="Miejsce na foto" />
 							{/if}
 						</td>
 						<td class="value">

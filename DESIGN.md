@@ -103,8 +103,12 @@ table with the 130 px photo, the bold name with its title, the function in itali
 label/value rows. Where the faculty prints a room, a phone and an e-mail icon, we print **nicknames**
 and the number of posts; where it links USOSweb, we link the person's posts chronologically. The
 placeholders are the faculty's own silhouettes (`static/img/anonymous{ma,fe}bw.png`, picked by
-`Person.sex`), and a grey "Miejsce na foto" box when neither applies — the same three outcomes the
-faculty's page has.
+`Person.sex`), every one titled "Miejsce na foto" as theirs are, and a neutral bust drawn in the same
+style (`anonymousbw.png`) when `sex` is unset — which is the common case, since only the admin sets
+that field and a person named from the editor never has it. Until 23.09.2026 the unset case was a
+grey "Miejsce na foto" text box; production, where no person had a `sex`, showed it on every profile
+and it read as a missing picture, while the faculty's own page never shows anything but a silhouette
+(twelve profiles sampled, all `anonymous{ma,fe}bw.png`).
 
 **Filing is a rule, not a collation** (`archive/people.py`). `split_degree` peels the title off a name
 ("dr Kwant Niepewny" → `degree='dr'`), `derive_surname` takes the last word (editable — "Pani z

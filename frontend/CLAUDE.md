@@ -19,7 +19,8 @@ page, like theirs, has none). An article is that breadcrumb, an `h1.ce_headline`
 the 10 px orange bar, a grey 14 px `.info` line, `.ce_text` with a 315 px picture floated left,
 and „Wróć". The front page is two columns (`.subcolumns`, 66/33). `/ludzie` copies
 `osoby-fuw.html` down to `table.employers` and the faculty's own silhouettes
-(`static/img/anonymous{ma,fe}bw.png`). **`src/app.css` holds all of it as reusable classes** and
+(`static/img/anonymous{ma,fe}bw.png`, plus our neutral `anonymousbw.png` for an unset `sex` — never a
+text box, their page always shows a picture). **`src/app.css` holds all of it as reusable classes** and
 `DESIGN.md` "Look" has every number and where it was read; a new measurement goes into both. The
 point is recognition, so "nicer" is wrong. **A redesign is a new `VersionV<n>.svelte`** registered
 in `timemachine/versions.ts`, with the previous version's styles pinned inside its own file — that

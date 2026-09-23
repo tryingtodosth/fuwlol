@@ -280,8 +280,8 @@ caches the same way: send the link to [@WebpageBot](https://t.me/WebpageBot) and
 refreshes. WhatsApp, Slack and Discord expire on their own within a day or so, and a URL
 nobody has shared yet is fetched fresh, so this is only about the links already out there.
 
-**The three fallback pictures** (`frontend/static/og-default.png`, `og-osoba-m.png`,
-`og-osoba-f.png`) are drawn by `manage.py make_share_images` and committed — 1200×630,
+**The four fallback pictures** (`frontend/static/og-default.png`, `og-osoba-m.png`,
+`og-osoba-f.png`, `og-osoba.png`) are drawn by `manage.py make_share_images` and committed — 1200×630,
 because Facebook drops any image below 200×200 and the faculty's own silhouettes are
 130×130. Re-run the command if the wording on them should change.
 

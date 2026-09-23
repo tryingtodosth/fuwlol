@@ -53,7 +53,9 @@ LOCALE = 'pl_PL'
 # Messenger — the exact client this whole module was written for. The silhouette is inside
 # the card instead, on the site's own white/green, so the faculty look survives the floor.
 DEFAULT_IMAGE = '/og-default.png'
-PERSON_CARDS = {'m': '/og-osoba-m.png', 'f': '/og-osoba-f.png'}
+# One card per silhouette, the neutral one for an unknown `sex` — the profile page shows the
+# same three, so a link preview never promises a picture the page then lacks.
+PERSON_CARDS = {'m': '/og-osoba-m.png', 'f': '/og-osoba-f.png', '': '/og-osoba.png'}
 DEFAULT_IMAGE_ALT = 'fuw.lol — archiwum folkloru Wydziału Fizyki UW'
 MAX_DESCRIPTION = 200
 

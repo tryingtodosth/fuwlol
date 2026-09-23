@@ -23,8 +23,9 @@ subjects, categories, the standing pages), named from `robots.txt`.
   generic site card **and a 404 byte-identical to a slug that never existed** — a leak here would
   outlive the takedown, because a preview is cached on somebody else's servers.
 - Images are absolute: R2 URLs as-is, `/media` prefixed with `FUWLOL_SITE_URL`. A person without a
-  portrait gets a 1200×630 card with the faculty silhouette (`og-osoba-{m,f}.png`), because Facebook
-  drops any image under 200×200 and the silhouettes are 130×130. The three fallback cards are drawn
+  portrait gets a 1200×630 card with the faculty silhouette (`og-osoba-{m,f}.png`, and `og-osoba.png`
+  with the neutral bust when `sex` is unset — `PERSON_CARDS`, the same three the profile page shows),
+  because Facebook drops any image under 200×200 and the silhouettes are 130×130. The fallback cards are drawn
   by `manage.py make_share_images` into `frontend/static/` and committed; re-run it if their wording
   changes.
 - `strip_math` / `clean_text` cut a description to `MAX_DESCRIPTION` 200 without half a formula;
