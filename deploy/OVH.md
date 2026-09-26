@@ -291,16 +291,23 @@ After the first deploy of it, in a browser:
    on — that is the whole point of the endpoint.
 5. `docker compose exec web nginx -t`, as after any change to `frontend/nginx.conf`.
 
-**If `/fwumu/` answers 502 while the container is demonstrably healthy**, it is nginx's DNS cache,
-not the app. Prove it from inside the web container —
+**If `/fwumu/` answers 502, read the error log before anything else** — the container being
+healthy proves nothing, and two plausible-sounding theories (a stale DNS cache; the wrong image)
+were both wrong on 26.09.2026:
 
 ```bash
-docker compose -f docker-compose.prod.yml --env-file .env exec web wget -qO- -T3 http://skoki:3000/fwumu/today | head -c 200
+docker compose -f docker-compose.prod.yml --env-file .env logs --tail=20 web
 ```
 
-— and if that returns HTML, reload nginx: `docker compose … exec web nginx -s reload`. An nginx
-that was running before the side app's container existed caches the failed lookup, and `valid=`
-does not cover failed answers. Any deploy that ships a new `web` image clears it by itself.
+- `upstream sent too big header` — **the one that actually happened.** SvelteKit's `Link:`
+  modulepreload header is up to 6.9 kB on this app and nginx's default buffer is 4 kB, so every
+  page 502s while the app is perfectly healthy. `frontend/nginx.conf` raises the buffers to 32 kB
+  and carries the measurements. A `wget` from inside the web container SUCCEEDS in this state,
+  which is why it misleads: wget does not care how big a header is.
+- `could not be resolved` — DNS. An nginx that was running before the side app's container existed
+  caches the failure, and `valid=` does not cover failed answers; `nginx -s reload` clears it, and
+  any deploy that ships a new `web` image does it by itself.
+- `connect() failed` — the app is down or on another network; check `docker compose ps skoki`.
 
 ## Link previews (`backend/share/`)
 
