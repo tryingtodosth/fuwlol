@@ -26,6 +26,14 @@
 		{ label: 'Przed Wielkim Wybuchem', value: '-13800000001' }
 	];
 
+	/** The one jump that is not a date. FwUMU — the medical app that shares this origin
+	 *  (`/fwumu`, root `CLAUDE.md`) — is labelled **WUM** here, which is the joke: the archive's
+	 *  time machine offers a stop at the other university. It leaves the timeline, so it sits in
+	 *  its own group and is navigated to with a full page load: `/fwumu` is a different
+	 *  application behind the same nginx, not a route of this SPA, and `goto()` would look for it
+	 *  in this app's router and find nothing. */
+	const WUM = { label: 'WUM', value: 'wum', href: '/fwumu/' };
+
 	let dateVal = $state(todayIso);
 	let yearVal = $state('');
 	let jumpVal = $state('');
@@ -39,6 +47,10 @@
 		const value = (e.currentTarget as HTMLSelectElement).value;
 		jumpVal = '';
 		if (!value) return;
+		if (value === WUM.value) {
+			window.location.href = WUM.href;
+			return;
+		}
 		const d = parseTravel(value);
 		if (!d) return;
 		// A modern, complete date belongs in the picker; everything else in the text field,
@@ -97,8 +109,11 @@
 						{#each JUMPS as j (j.value)}
 							<option value={j.value}>{j.label}</option>
 						{/each}
+						<optgroup label="Poza osią czasu">
+							<option value={WUM.value}>{WUM.label}</option>
+						</optgroup>
 					</select>
-					<p class="help">Gotowe przystanki na osi czasu.</p>
+					<p class="help">Gotowe przystanki na osi czasu — i jeden poza nią.</p>
 				</div>
 			</div>
 
