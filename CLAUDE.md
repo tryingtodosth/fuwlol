@@ -32,16 +32,24 @@ frontend/  SvelteKit 2 + Svelte 5 runes + TS, adapter-static SPA (ssr=false, pre
              routes/ + lib/components/  →  lib/api.ts (the only fetch())  →  HTTP
              lib/render/{markdown,latex,guard,media}.ts — the two renderers and their guard
              nginx.conf — the production web server: CSP, /media sandbox, scraper routing
-backend/   Django 5.2 + DRF. 7 apps + config/. SQLite locally, Postgres in production.
+backend/   Django 5.2 + DRF. 8 apps + config/. SQLite locally, Postgres in production.
              views  →  a rule module  →  models
 deploy/    OVH runbook, Caddyfile, firewall.sh, backup.sh.   .github/workflows/deploy.yml IS the deploy.
 docs/      the Polish draw.io documentation deck and the Gemini research reports.
 ```
 
-The 7 apps, each with its own `CLAUDE.md`: `accounts` (tiers) · `archive` (everything about a post:
+The 8 apps, each with its own `CLAUDE.md`: `accounts` (tiers) · `archive` (everything about a post:
 models, API, people, subjects, search, uploads, guards, suggestions) · `board` (the chat) ·
-`consent` (a person's own say about their image) · `escalation` (NASK) · `portraits` (elected
-profile photos) · `share` (link previews + sitemap, no models).
+`consent` (a person's own say about their image) · `escalation` (NASK) · `feedback` (notes about a
+screen, from the side app) · `portraits` (elected profile photos) · `share` (link previews +
+sitemap, no models).
+
+**One thing on this origin is not the archive.** `fuw.lol/fwumu` is **FwUMU** — MedApp, a patient
+prototype from `github.com/tryingtodosth/medapp`, run as the `skoki` container and put on the
+origin by `frontend/nginx.conf`. It shares nothing with the archive but the hostname and one
+endpoint (`POST /api/feedback/`), and it is a separate repository with its own deploy:
+`deploy/OVH.md` "FwUMU". **The app is called MedApp; only the copy that runs here is FwUMU** —
+keep that true of anything added later unless told otherwise.
 
 **Two boundaries are load-bearing and everything else follows from them:**
 
@@ -158,6 +166,7 @@ of `archive/latexguard.py`; the exact order, options and limits are in `frontend
 /api/comments/<id>/{hide,restore,nuke,escalate}/   /api/moderation/board/   /api/uploads/presign/   /api/wayback/
 /api/people/<slug>/{aliases,claims,portraits}/    /api/claims/…    /api/portraits/…    /api/suggestions/…
 /api/board/  (+ rss/, <id>/{hide,restore,report,escalate}/)    /api/moderation/{escalations,evidence-audit}/…
+/api/feedback/   POST only — a note about a screen of the side app (feedback/); no GET anywhere
 /share/<any path>  + /share/sitemap.xml   — scrapers only, routed by User-Agent in nginx
 ```
 

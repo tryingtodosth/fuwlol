@@ -97,9 +97,35 @@ services:
     restart: unless-stopped
     depends_on:
       - api
+    # NOT depends_on: skoki. nginx looks the name up per request through a variable
+    # (frontend/nginx.conf), so the archive starts and serves whether or not the side app is
+    # there; /fwumu/ alone answers 502 while it is away. A hard dependency would let a side app
+    # keep the archive down.
     volumes:
       - media:/media:ro
     # No published port: Caddy is the only way in.
+
+  # FwUMU — MedApp, served at fuw.lol/fwumu (frontend/nginx.conf, location /fwumu/).
+  #
+  # A SEPARATE REPOSITORY (github.com/tryingtodosth/medapp) builds and pushes this image from its
+  # own workflow, so `IMAGE_TAG` — which is a commit of THIS repository — would be a tag that does
+  # not exist for it. Hence its own variable. Roll it back on its own, by putting an older
+  # SKOKI_TAG in /srv/fuwlol/.env and running `docker compose up -d skoki`; the archive is not
+  # touched by that, and the archive's own deploy does not touch this.
+  #
+  # It stores NOTHING: no volume, no database, no writable path. Everything a visitor does stays
+  # in their browser, except a note about a screen, which goes to the api service's
+  # POST /api/feedback/ over the same origin (backend/feedback/).
+  skoki:
+    image: ghcr.io/tryingtodosth/fuwlol-skoki:${SKOKI_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      # adapter-node needs its public URL, or anything that checks the origin answers 403 behind
+      # the proxy. It is the SITE's URL, not the app's path.
+      ORIGIN: https://fuw.lol
+      # The app is mounted under /fwumu at BUILD time (its Dockerfile); nothing here can move it.
+    # No published port: nginx is the only way in, exactly like the api service.
 
   caddy:
     image: caddy:2-alpine

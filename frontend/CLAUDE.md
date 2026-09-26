@@ -122,6 +122,11 @@ gets `default-src 'none'; sandbox` and PDF/TXT/TEX as attachments; `client_max_b
 There is no nginx locally — `docker compose exec web nginx -t` on the box is the first check after a
 change (`deploy/OVH.md`).
 
+It also carries `location /fwumu/`, which is **not this app**: it proxies FwUMU (the `skoki`
+container, a separate repository) onto this origin. The `proxy_pass` goes through a variable with a
+`resolver` so that a missing side app cannot stop nginx — and therefore the archive — from starting;
+that is the one line to leave alone if you touch it.
+
 ## Copy
 
 Polish, in the component that shows it; no catalogue. Refusals from the backend are Polish sentences

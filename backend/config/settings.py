@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'board',
     'consent',
     'escalation',
+    'feedback',
     'portraits',
     'share',
 ]
@@ -138,6 +139,12 @@ REST_FRAMEWORK = {
         'board_user': '60/hour',
         'board_report': '20/hour',
         'escalate': '10/day',
+        # Notes from MedApp (feedback/views.py). Deliberately generous: a feedback session
+        # is thirty people on one venue wifi, so every note in the room arrives from ONE
+        # address. At 20/hour the fourth person to speak up gets a 429 and the session
+        # loses the thing it was held for. A note is one short row — no mail, no file, no
+        # moderator's attention — so the cost of a flood here is kilobytes.
+        'feedback': '120/hour',
         'presign': '60/hour',  # one per file; a six-file post costs six
         'suggest': '20/hour',  # edit suggestions: a real correction is rare, a flood is not
         'verify': '5/hour',  # institutional-address confirmation mails, per user

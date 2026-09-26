@@ -137,6 +137,7 @@ FUWLOL_EMAIL_USER=
 FUWLOL_EMAIL_PASSWORD=
 FUWLOL_FROM_EMAIL="FUW <no-reply@fuw.lol>"   # quoted: deploy/backup.sh SOURCES this file, and < is a redirect
 FUWLOL_CONTACT_EMAIL=admin@fuw.lol           # the one OVH mailbox — what a human reads
+SKOKI_TAG=latest             # FwUMU (fuw.lol/fwumu) — a commit of the MEDAPP repository, not this one
 RESTIC_REPOSITORY=s3:https://<account-id>.r2.cloudflarestorage.com/fuwlol-backup
 RESTIC_PASSWORD_FILE=/srv/fuwlol/secrets/restic.pass
 AWS_ACCESS_KEY_ID=          # the same R2 token, or one scoped to the backup bucket
@@ -233,6 +234,49 @@ every commit is still in GHCR:
 cd /srv/fuwlol && IMAGE_TAG=<older-sha> docker compose -f docker-compose.prod.yml --env-file .env up -d
 ```
 
+## FwUMU — the side app at `fuw.lol/fwumu`
+
+MedApp, a patient-facing prototype from **a different repository**
+(`github.com/tryingtodosth/medapp`), is served from this origin under `/fwumu` and calls itself
+**FwUMU** there. It is here because the people whose opinion it needs are the people who already
+have this site's address, and the one thing it sends anywhere is a note about a screen.
+
+Three pieces, and they are deliberately independent of the archive's own deploy:
+
+| Piece | Where | Note |
+|---|---|---|
+| `skoki` service | `docker-compose.prod.yml` | its own `SKOKI_TAG`, because `IMAGE_TAG` is a commit of THIS repository |
+| `location /fwumu/` | `frontend/nginx.conf` | proxies to `skoki:3000` **through a variable**, so a missing side app cannot stop nginx from starting |
+| `POST /api/feedback/` | `backend/feedback/` | the only call it makes; anonymous, 120/hour per IP, read in the Django admin |
+
+**Deploying it** is a push to `main` in the medapp repository: its own workflow type-checks it,
+builds it mounted, pushes `ghcr.io/tryingtodosth/fuwlol-skoki:<sha>`, and prints the tag. Then here:
+
+```bash
+cd /srv/fuwlol
+sed -i 's/^SKOKI_TAG=.*/SKOKI_TAG=<sha>/' .env     # or leave it at latest and just pull
+docker compose -f docker-compose.prod.yml --env-file .env pull skoki
+docker compose -f docker-compose.prod.yml --env-file .env up -d skoki
+```
+
+Rolling it back is the same two lines with an older sha, and it touches nothing else on the box.
+**Taking it down entirely** — `docker compose stop skoki` — leaves the archive untouched and makes
+`/fwumu/` answer 502; removing the location from `nginx.conf` is the tidy version and needs a
+`web` image, so it is not the emergency move.
+
+After the first deploy of it, in a browser:
+
+1. `https://fuw.lol/fwumu` redirects to `/fwumu/` and the app opens — **styled**. Unstyled means
+   the base path and the build disagree, and everything else will be wrong too.
+2. Click through two or three screens and change the language: every URL keeps `/fwumu` on it. A
+   link that drops to `https://fuw.lol/today` is the base path leaking (`src/hooks.ts` there).
+3. `https://fuw.lol/` is still the archive, and `https://fuw.lol/wpis/<slug>` still opens a post:
+   the new location must not have swallowed anything.
+4. Send a note from the app's own button, then look for it in
+   `https://fuw.lol/admin/feedback/feedback/`. The `location` column must name the screen you were
+   on — that is the whole point of the endpoint.
+5. `docker compose exec web nginx -t`, as after any change to `frontend/nginx.conf`.
+
 ## Link previews (`backend/share/`)
 
 Every URL here is served the same `200.html` and titled by JavaScript, and **no scraper
@@ -321,7 +365,11 @@ found by looking at it. So, in a browser:
 
 Written on a machine with no Docker: the compose file parses and the Python side is
 covered by 186 tests, but the first `docker compose pull` and the first Caddy start happen
-on the server. If `caddy` will not start, `docker compose logs caddy` names the reason —
+on the server. The same is true of **everything about `skoki`**: its Dockerfile, the
+`location /fwumu/` block and the variable-resolver trick have never been run — the app itself was
+driven in a browser behind a Node stand-in for nginx (`scripts/mounted-preview.mjs` in the medapp
+repository), which is not the same thing. `docker compose exec web nginx -t` and the five checks in
+the FwUMU section above are what stands in for that. If `caddy` will not start, `docker compose logs caddy` names the reason —
 usually the origin certificate paths.
 
 The link-preview rewrite is in the same position: the Django half has its own tests, but

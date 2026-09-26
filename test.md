@@ -53,6 +53,7 @@ browser scripts spend, and a 429 in the middle of a test looks exactly like a re
 | `escalation/tests.py` | 25 | escalate → invisible to everyone but head-admin (lists, detail, RSS, board, admin), evidence frozen in the same transaction, decide, files quarantined and released, no oracle |
 | `escalation/test_hardening.py` | 22 | the 19.09 closures: R2 objects moved to the private `held/` bucket, CDN purge called (and logged when unconfigured), grantable head-admin permission, 5-minute previews |
 | `escalation/test_purge.py` | 24 | the purge: refuses unless approved and `confirmed_dispatch`, audit rows before bytes, every copy destroyed, 409 with survivors on a partial shred, retry does not duplicate audit rows, `EvidenceAuditLog` append-only |
+| `feedback/tests.py` | 17 | the side app's one endpoint: the four kinds, the hidden `location` stored as given, an over-long or non-path `location` and an odd `locale` **dropped rather than refused**, blank text refused, honeypot, the address hashed, a token caller recorded, **a session cookie is not a CSRF 403**, no GET, 429 |
 | `portraits/tests.py` | 31 | gallery gated on `granted`, `visible_q` re-checks for everyone, one movable vote, election with the older winning a tie, trusted publish at once, caps, `PortraitAction`, queue |
 | `share/tests.py` | 46 | link previews: every route kind, hidden / nuked / escalated / restricted posts get the generic card and a 404 byte-identical to a missing slug, absolute image URLs, person cards, sitemap, crawler detection, human redirect, `FUWLOL_SPA_INDEX` splice mode |
 
@@ -89,6 +90,20 @@ cd frontend
 E2E_FRONT=http://localhost:5273 E2E_API=http://localhost:8100/api npm run e2e
 E2E_FRONT=http://localhost:5273 E2E_API=http://localhost:8100/api node e2e/survey.mjs /tmp/survey
 ```
+
+### The side app is tested in its own repository
+
+FwUMU (`fuw.lol/fwumu`) has its own suites in `github.com/tryingtodosth/medapp` (`npm test`
+there). What matters to **this** repository is the pair that only breaks when the app is mounted on
+this origin, and neither can be checked from here:
+
+- the app under a base path with its links, locales and service worker intact, and
+- a note reaching `POST /api/feedback/` **same-origin**, with the screen it was written on.
+
+Both were driven in a real browser (phone and desktop profiles, 34 checks, 0 failures) against a
+mounted build behind `scripts/mounted-preview.mjs` in that repository — a Node stand-in for nginx,
+because there is no nginx on a development machine here either. The production wiring itself is
+checked by hand after a deploy: `deploy/OVH.md`, "FwUMU".
 
 ### Traps
 

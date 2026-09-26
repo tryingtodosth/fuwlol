@@ -146,6 +146,29 @@ be probed for a yes/no, `suggestions` refuses (a suggestion's `base` is a frozen
 and `share/` gives a scraper the generic card and no sitemap entry. The serializers blank what a
 caller may not see rather than trusting views to filter.
 
+## The side app on this origin (`fuw.lol/fwumu`)
+
+FwUMU is a different application from a different repository, sharing this hostname. That sharing
+is the security-relevant part, and three decisions follow from it:
+
+- **Its one endpoint drops session authentication.** `POST /api/feedback/` accepts
+  `TokenAuthentication` only. Same-origin means a visitor signed in to the archive sends its
+  session cookie to the side app's endpoint without meaning to; with session auth in the list DRF
+  would then enforce CSRF and refuse a bug report with 403. The widget also sends
+  `credentials: 'omit'`. Neither half alone is enough to reason about, so both are written down in
+  `backend/feedback/views.py` and `src/lib/feedback/api.ts`.
+- **It runs under the archive's own CSP**, repeated inside `location /fwumu/` because `add_header`
+  does not inherit. Everything it loads is same-origin, it decodes no wasm, and its single network
+  call is to this origin, so `default-src 'self'` with `connect-src 'self'` holds. **An app that
+  later needs `wasm-unsafe-eval` or a third-party origin does not get it by loosening the archive's
+  CSP** — it gets its own header inside its own location.
+- **It stores nothing and is not trusted by anything.** No volume, no database, no shared secret,
+  no token. The worst a compromise of that container does to the archive is answer its own path
+  with something else — which is also why it is a path and not a place with an account.
+
+The notes themselves are plain text, never rendered by `lib/render/`, and read in the Django admin;
+`backend/feedback/CLAUDE.md` says what has to change first if that ever stops being true.
+
 ## Accepted, not forgotten
 
 - The API token lives in `localStorage` (`fuwlol.token`). CSP is the second line; an httpOnly

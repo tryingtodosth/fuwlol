@@ -73,11 +73,20 @@ Porty zajęte? `FUWLOL_CORS_ORIGINS` + `frontend/.env` (`PUBLIC_API_BASE_URL`) s
   wcześniej → gazeta po polsku, po niemiecku, notatki Kopernika po łacinie, malowidła
   naskalne, dinozaury, a przed Wielkim Wybuchem — nic.
 
+- **FwUMU pod `/fwumu`** — to *nie* jest archiwum. Pod adresem `fuw.lol/fwumu` stoi osobna
+  aplikacja (prototyp zdrowotny MedApp z innego repozytorium), wpuszczona na ten sam adres, żeby
+  ludzie, którzy już tu są, mogli ją obejrzeć i powiedzieć, co o niej myślą. Jedyne, co wysyła na
+  serwer, to **uwaga o konkretnym ekranie**: rodzaj (błąd / sugestia / pomysł / komentarz) i tekst —
+  a to, na którym ekranie ktoś był, dopisuje się samo, bez pytania piszącego. Uwagi czyta się w
+  panelu Django (`/admin/feedback/feedback/`). Szczegóły: `deploy/OVH.md` („FwUMU") i
+  `backend/feedback/CLAUDE.md`.
+
 ## Struktura
 
 ```
 backend/   config/ (settings, urls, middleware — adres za proxy)  accounts/ (rejestracja, logowanie, zaufani)  archive/ (modele, API, walidacja plików, wayback, seed_demo, testy)
            board/ (czat, zgłoszenia, reputacja)  escalation/ (eskalacja do NASK: dowody, kwarantanna plików, widoczność, mixin panelu Django)
+           feedback/ (uwagi o ekranach aplikacji FwUMU spod /fwumu — jedno POST, bez odczytu przez API)
            consent/ (zgoda na wizerunek: wnioski osób, kolejka, dowód zgody)  portraits/ (zdjęcia osób i głosowanie na zdjęcie profilowe)
            share/ (podglądy linków dla scraperów pod /share/…, sitemap.xml)
 frontend/  src/lib/{api,types,auth}  src/lib/render/{markdown,latex,media}  src/lib/components/{editor,timemachine,…}  src/routes/…

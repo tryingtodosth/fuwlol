@@ -1,4 +1,4 @@
-# backend/ — Django 5.2 + DRF, 7 apps + `config/`, SQLite locally / Postgres in production
+# backend/ — Django 5.2 + DRF, 8 apps + `config/`, SQLite locally / Postgres in production
 
 Scoped context for backend work. The cross-cutting rules are in the root `CLAUDE.md`; the reasoning
 is in `DESIGN.md`; each app's own `CLAUDE.md` has its rules; `MODERATION-API.md` documents the
@@ -63,6 +63,14 @@ ViewSet needs `FixedScopeThrottle`** (`archive/views.py`) — DRF's `ScopedRateT
 `throttle_scope` off the view, so per-`@action` scopes were a silent no-op until it existed. Login is
 limited per IP *and* per submitted username (`LoginUsernameThrottle`). Counters are in the file
 cache: when a test or a browser run hits 429, it is the cache, not the code.
+
+## The side app's one endpoint
+
+`feedback/` exists for FwUMU (`fuw.lol/fwumu`), which has no backend of its own. `POST
+/api/feedback/`, anonymous, `TokenAuthentication` only — **not** the project default, because the
+app is same-origin with the archive and a visitor's stray session cookie would otherwise trip DRF's
+CSRF check and answer 403 to somebody filing a bug report. Scope `feedback` is 120/hour, which is
+high on purpose: a feedback session is a room behind one NAT. `feedback/CLAUDE.md` has the rest.
 
 ## URL include order (`config/urls.py`)
 

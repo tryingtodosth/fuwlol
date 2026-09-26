@@ -108,6 +108,17 @@ them once.
 
 Named so that somebody can close them; the engineering-level gaps are in `CLAUDE.md`.
 
+- **Notes from FwUMU are read in the Django admin and nowhere else.** `POST /api/feedback/` has no
+  read path on purpose (one person at a session must not be able to read what everybody else
+  wrote), so there is no queue in `/moderacja`, no count anywhere, no way to reply and no mail when
+  one arrives — somebody opens `/admin/feedback/feedback/` and looks. For a session run by the
+  people who also run the site that is enough; if the notes start arriving when nobody is watching,
+  a staff-only list endpoint and the head-admin alert are the two things to build, in that order.
+- **The person writing a note is not shown what rides along with it.** The screen path is attached
+  silently, which is what makes a one-line note worth reading — and it is still something the app
+  does not say out loud. It carries no health data (`backend/feedback/models.py` is explicit), but
+  a line in FwUMU's own privacy screen naming it would cost nothing and is not written yet.
+
 - **No e-mail beyond address verification.** Password reset, any notification, the confirmation of
   receipt a DSA notice is owed, and the alert that tells a head-admin an escalation is waiting —
   today they learn by logging in. The SMTP for verification already exists; that alert is the first
