@@ -128,23 +128,32 @@ jobs:
           rsync -e ssh -av deploy/Caddyfile \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/srv/fuwlol/deploy/"
       - name: Pull and restart
-        # The four services of the archive are pulled by name, and the side app (`skoki`, FwUMU at
-        # /fwumu) separately — because its image is built and published by ANOTHER repository and
-        # may be absent, still building, or a private package this box has no credentials for. On
-        # 26.09.2026 exactly that happened: a missing `fuwlol-skoki` failed `docker compose pull`,
-        # and with it a deploy in which nothing about the archive was wrong. A side app may make
-        # its own path answer 502; it may not hold the archive's own changes back.
+        # THE ARCHIVE ONLY. The four services are named explicitly, and the side app (`skoki`,
+        # FwUMU at /fwumu) is handled afterwards, best effort, never fatal.
+        #
+        # Learned on 26.09.2026, twice in one afternoon. First `docker compose pull` with no
+        # arguments failed because `fuwlol-skoki` — an image ANOTHER repository publishes, into a
+        # private package — could not be pulled, and took with it a deploy in which nothing about
+        # the archive was wrong. Then `up --scale skoki=0` failed the same way: scaling a service
+        # to zero does not stop Compose resolving its image while it plans the run. Naming the
+        # services is what actually keeps the side app out of the archive's critical path.
         run: |
           ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -euo pipefail <<EOF
             cd /srv/fuwlol
             echo "IMAGE_TAG=${{ github.sha }}" > .image
             export IMAGE_TAG=${{ github.sha }}
+            # Context for whoever reads this log after a failure: which Compose, and is the disk full.
+            docker compose version
+            df -h /var/lib/docker | tail -1 || true
             docker compose -f docker-compose.prod.yml --env-file .env pull db api web caddy
+            docker compose -f docker-compose.prod.yml --env-file .env up -d --remove-orphans db api web caddy
+            # The side app, if its image can be had. `|| true` on the `if` is deliberate: this block
+            # may fail in any way it likes without the archive's deploy noticing.
             if docker compose -f docker-compose.prod.yml --env-file .env pull skoki; then
-              docker compose -f docker-compose.prod.yml --env-file .env up -d --remove-orphans
+              docker compose -f docker-compose.prod.yml --env-file .env up -d skoki \
+                || echo "::warning::skoki image pulled but would not start — /fwumu answers 502. deploy/OVH.md, FwUMU."
             else
-              echo "::warning::skoki image could not be pulled — the archive is deployed without it and /fwumu will answer 502. See deploy/OVH.md, FwUMU."
-              docker compose -f docker-compose.prod.yml --env-file .env up -d --remove-orphans --scale skoki=0
+              echo "::warning::skoki image could not be pulled (absent, or a private package this box has no credentials for) — the archive is deployed and /fwumu answers 502. deploy/OVH.md, FwUMU."
             fi
             docker image prune -f
           EOF

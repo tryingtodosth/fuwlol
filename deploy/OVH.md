@@ -249,11 +249,12 @@ Three pieces, and they are deliberately independent of the archive's own deploy:
 | `location /fwumu/` | `frontend/nginx.conf` | proxies to `skoki:3000` **through a variable**, so a missing side app cannot stop nginx from starting |
 | `POST /api/feedback/` | `backend/feedback/` | the only call it makes; anonymous, 120/hour per IP, read in the Django admin |
 
-**The archive's deploy no longer depends on it.** `.github/workflows/deploy.yml` pulls the four
-archive services by name and tries `skoki` separately; if that image cannot be pulled the deploy
-says so as a warning and brings the archive up with `--scale skoki=0`, leaving `/fwumu` at 502.
-This was learned the hard way on 26.09.2026, when a missing `fuwlol-skoki` failed a deploy in which
-nothing about the archive was wrong.
+**The archive's deploy no longer depends on it.** `.github/workflows/deploy.yml` pulls and starts
+the four archive services **by name**, then tries `skoki` separately and warns instead of failing
+if it cannot. Learned twice on 26.09.2026: a plain `docker compose pull` died on the missing
+side-app image, and so did `up --scale skoki=0` — **scaling a service to zero does not stop Compose
+resolving its image while it plans the run**, so only naming the services keeps it out of the
+archive's path.
 
 **The image is a private package by default**, because the medapp repository is private, and this
 box pulls from GHCR anonymously — so a pull of it fails with `denied` even once it exists. Two ways
