@@ -128,13 +128,24 @@ jobs:
           rsync -e ssh -av deploy/Caddyfile \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/srv/fuwlol/deploy/"
       - name: Pull and restart
+        # The four services of the archive are pulled by name, and the side app (`skoki`, FwUMU at
+        # /fwumu) separately — because its image is built and published by ANOTHER repository and
+        # may be absent, still building, or a private package this box has no credentials for. On
+        # 26.09.2026 exactly that happened: a missing `fuwlol-skoki` failed `docker compose pull`,
+        # and with it a deploy in which nothing about the archive was wrong. A side app may make
+        # its own path answer 502; it may not hold the archive's own changes back.
         run: |
           ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -euo pipefail <<EOF
             cd /srv/fuwlol
             echo "IMAGE_TAG=${{ github.sha }}" > .image
             export IMAGE_TAG=${{ github.sha }}
-            docker compose -f docker-compose.prod.yml --env-file .env pull
-            docker compose -f docker-compose.prod.yml --env-file .env up -d --remove-orphans
+            docker compose -f docker-compose.prod.yml --env-file .env pull db api web caddy
+            if docker compose -f docker-compose.prod.yml --env-file .env pull skoki; then
+              docker compose -f docker-compose.prod.yml --env-file .env up -d --remove-orphans
+            else
+              echo "::warning::skoki image could not be pulled — the archive is deployed without it and /fwumu will answer 502. See deploy/OVH.md, FwUMU."
+              docker compose -f docker-compose.prod.yml --env-file .env up -d --remove-orphans --scale skoki=0
+            fi
             docker image prune -f
           EOF
       - name: Wait for the API to report healthy
