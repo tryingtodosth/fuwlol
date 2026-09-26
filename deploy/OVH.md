@@ -291,6 +291,17 @@ After the first deploy of it, in a browser:
    on — that is the whole point of the endpoint.
 5. `docker compose exec web nginx -t`, as after any change to `frontend/nginx.conf`.
 
+**If `/fwumu/` answers 502 while the container is demonstrably healthy**, it is nginx's DNS cache,
+not the app. Prove it from inside the web container —
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env exec web wget -qO- -T3 http://skoki:3000/fwumu/today | head -c 200
+```
+
+— and if that returns HTML, reload nginx: `docker compose … exec web nginx -s reload`. An nginx
+that was running before the side app's container existed caches the failed lookup, and `valid=`
+does not cover failed answers. Any deploy that ships a new `web` image clears it by itself.
+
 ## Link previews (`backend/share/`)
 
 Every URL here is served the same `200.html` and titled by JavaScript, and **no scraper
