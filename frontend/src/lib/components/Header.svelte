@@ -76,6 +76,10 @@
 		<span class="brand__txt">
 			<span class="brand__name">fuw.lol</span>
 			<span class="brand__sub">ARCHIWUM WYDZIAŁU FIZYKI UW</span>
+			<!-- The faculty's banner has two lines; this third one is the whole disclaimer in
+			     four words, in the one place nobody can miss it. `PRODUCT.md`: the site copies
+			     fuw.edu.pl on purpose and must never be mistaken FOR it. -->
+			<span class="brand__tag">100% legit nieoficjalne</span>
 		</span>
 	</a>
 
@@ -199,6 +203,12 @@
 		font-size: 10px;
 		letter-spacing: 1px;
 		color: #333;
+	}
+	.brand__tag {
+		display: block;
+		font-size: 10px;
+		font-style: italic;
+		color: var(--rust);
 	}
 	.banner__grow {
 		flex: 1 1 auto;
@@ -370,6 +380,11 @@
 		}
 		.brand__name {
 			font-size: 20px;
+		}
+		/* the disclaimer stays where the description goes: it is four words, and it is the
+		   line a reader who landed here from a search result needs to see */
+		.brand__tag {
+			font-size: 9px;
 		}
 	}
 </style>
