@@ -249,6 +249,18 @@ Three pieces, and they are deliberately independent of the archive's own deploy:
 | `location /fwumu/` | `frontend/nginx.conf` | proxies to `skoki:3000` **through a variable**, so a missing side app cannot stop nginx from starting |
 | `POST /api/feedback/` | `backend/feedback/` | the only call it makes; anonymous, 120/hour per IP, read in the Django admin |
 
+**The one coupling this creates:** the archive's own deploy runs `docker compose pull`, which now
+includes `skoki` — an image **another repository** publishes. If that image does not exist yet (the
+first deploy of the pair, in the wrong order) or has been deleted, the pull fails and the archive's
+deploy goes red without the archive itself being touched: the site stays on the previous version.
+Fix it by publishing the image and re-running the job, or deploy the archive alone with
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env up -d --remove-orphans --scale skoki=0
+```
+
+Deploy the two in the order **medapp first, archive second** and the question does not arise.
+
 **Deploying it** is a push to `main` in the medapp repository: its own workflow type-checks it,
 builds it mounted, pushes `ghcr.io/tryingtodosth/fuwlol-skoki:<sha>`, and prints the tag. Then here:
 
