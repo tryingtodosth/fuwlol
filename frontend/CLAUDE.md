@@ -131,10 +131,12 @@ because `return` needs the capture; keep them after `location /fum/`, and keep
 `absolute_redirect off` on all of them — TLS is terminated two hops up, so an absolute `Location:`
 comes out as `http://`.
 
-The one place this app names the side app is `WUM.href` in
-`lib/components/timemachine/TimeMachine.svelte` — the „Skoki" stop that leaves the timeline. It
-holds the **canonical** `/fum/`, not an address that redirects, and it is a `window.location.href`
-rather than `goto()` because the target is not a route of this SPA.
+**This app no longer links to the side app anywhere.** The „Skoki" list in
+`lib/components/timemachine/TimeMachine.svelte` used to carry a **WUM** stop that left the
+timeline; it was taken out on 27.09.2026 and a comment where it stood says so. The app is still
+served and still answers every one of its addresses — it is simply not advertised from here, so
+`nginx.conf` is now the only file in this repository that knows where it is mounted. If you are
+adding a link to it back, that comment is the thing to read first.
 
 ## Copy
 

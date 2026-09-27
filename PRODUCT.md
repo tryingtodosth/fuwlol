@@ -118,6 +118,12 @@ Named so that somebody can close them; the engineering-level gaps are in `CLAUDE
   silently, which is what makes a one-line note worth reading — and it is still something the app
   does not say out loud. It carries no health data (`backend/feedback/models.py` is explicit), but
   a line in WUM's own privacy screen naming it would cost nothing and is not written yet.
+- **The side app is served but not advertised, and nothing decides when that ends.** The archive's
+  time machine carried a **WUM** stop until 27.09.2026; it was taken out so a visitor to the
+  archive does not find the app, while anybody with the address still opens it. That is a
+  deliberate half-state with no plan on either side: no page says the app exists, and nothing stops
+  it being found. Either linking it again or putting it behind something is a decision nobody has
+  made.
 - **The side app's old addresses redirect forever, because nothing measures them.** `/wum` and
   `/fwumu` answer 308 to `/fum` (it was FwUMU at `/fwumu` until 27.09.2026), and that stays true
   until somebody looks at an access log and finds nobody uses them. There is no plan for retiring a

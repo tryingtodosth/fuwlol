@@ -79,8 +79,9 @@ Porty zajęte? `FUWLOL_CORS_ORIGINS` + `frontend/.env` (`PUBLIC_API_BASE_URL`) s
   ludzie, którzy już tu są, mogli ją obejrzeć i powiedzieć, co o niej myślą. Jedyne, co wysyła na
   serwer, to **uwaga o konkretnym ekranie**: rodzaj (błąd / sugestia / pomysł / komentarz) i tekst —
   a to, na którym ekranie ktoś był, dopisuje się samo, bez pytania piszącego. Uwagi czyta się w
-  panelu Django (`/admin/feedback/feedback/`). Szczegóły: `deploy/OVH.md` („WUM") i
-  `backend/feedback/CLAUDE.md`.
+  panelu Django (`/admin/feedback/feedback/`). **Archiwum nigdzie do niej nie linkuje** — od
+  27.09.2026 nie ma jej w „Skokach" wehikułu czasu, więc trzeba znać adres; kto go zna, wchodzi jak
+  dawniej. Szczegóły: `deploy/OVH.md` („WUM") i `backend/feedback/CLAUDE.md`.
 
 ## Struktura
 

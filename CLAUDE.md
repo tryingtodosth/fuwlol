@@ -90,9 +90,9 @@ every file on both sides.
   (the server's copy counts); `archive/search.normalize_text` ↔ `editor/chips.ts` `fold`;
   `share/previews.plural` ↔ `lib/plural.ts`; `consent/rules.WISH_LABELS` ↔ `lib/consent.ts`
   `WISHES`; `share/views.CRAWLER_UA` ↔ the `map` in `frontend/nginx.conf`; `board.MAX_LEN` 2048;
-  the side app's mount `/fum` ↔ `location /fum/` in `frontend/nginx.conf` ↔ `WUM.href` in
-  `timemachine/TimeMachine.svelte` ↔ `MEDAPP_BASE_PATH` in the **medapp** repository's `Dockerfile`
-  and `.github/workflows/image.yml`; the report-reason lists. Change one, change the other, keep
+  the side app's mount `/fum` ↔ `location /fum/` in `frontend/nginx.conf` ↔ `MEDAPP_BASE_PATH` in
+  the **medapp** repository's `Dockerfile` and `.github/workflows/image.yml` (the frontend used to
+  be a fourth copy and no longer links there at all); the report-reason lists. Change one, change the other, keep
   the comment that names it.
 
 ---

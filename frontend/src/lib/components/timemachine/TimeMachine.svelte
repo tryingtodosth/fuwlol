@@ -26,17 +26,15 @@
 		{ label: 'Przed Wielkim Wybuchem', value: '-13800000001' }
 	];
 
-	/** The one jump that is not a date. WUM — the medical app that shares this origin
-	 *  (`/fum`, root `CLAUDE.md`) — is labelled **WUM** here, which is the joke: the archive's
-	 *  time machine offers a stop at the other university. It leaves the timeline, so it sits in
-	 *  its own group and is navigated to with a full page load: `/fum` is a different
-	 *  application behind the same nginx, not a route of this SPA, and `goto()` would look for it
-	 *  in this app's router and find nothing.
+	/* This list used to carry one stop that was not a date: **WUM**, the side app at `/fum`
+	 * (root `CLAUDE.md`). It was taken out on purpose on 27.09.2026 — the app stays served and
+	 * keeps every one of its addresses, it is simply not advertised from the archive's own front
+	 * page any more. Anybody with the link opens it exactly as before.
 	 *
-	 *  The href is the CANONICAL address. `/wum/` and `/fwumu/` still redirect there
-	 *  (`frontend/nginx.conf`), but sending a visitor through a redirect we control is a wasted
-	 *  round trip, so this is the one place that must stay in step when the mount moves. */
-	const WUM = { label: 'WUM', value: 'wum', href: '/fum/' };
+	 * Leaving this note because the alternative is somebody reading `deploy/OVH.md`, noticing the
+	 * archive never links to the thing it hosts, and "fixing" it. It is not a bug. Restoring the
+	 * stop is `git show 17d01c7 -- frontend/src/lib/components/timemachine/TimeMachine.svelte`:
+	 * an entry with an href, a branch in `pickJump` and an `<optgroup>`. */
 
 	let dateVal = $state(todayIso);
 	let yearVal = $state('');
@@ -51,10 +49,6 @@
 		const value = (e.currentTarget as HTMLSelectElement).value;
 		jumpVal = '';
 		if (!value) return;
-		if (value === WUM.value) {
-			window.location.href = WUM.href;
-			return;
-		}
 		const d = parseTravel(value);
 		if (!d) return;
 		// A modern, complete date belongs in the picker; everything else in the text field,
@@ -113,11 +107,8 @@
 						{#each JUMPS as j (j.value)}
 							<option value={j.value}>{j.label}</option>
 						{/each}
-						<optgroup label="Poza osią czasu">
-							<option value={WUM.value}>{WUM.label}</option>
-						</optgroup>
 					</select>
-					<p class="help">Gotowe przystanki na osi czasu — i jeden poza nią.</p>
+					<p class="help">Gotowe przystanki na osi czasu.</p>
 				</div>
 			</div>
 

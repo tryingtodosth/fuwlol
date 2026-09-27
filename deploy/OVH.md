@@ -250,9 +250,9 @@ nothing inside the app ever builds an old-name URL, so a redirect is only ever t
 repository carries `scripts/deployment.mjs` (`npm run deployment -- --name … --base … --aliases …`),
 which prints the exact nginx block, the build arguments and the by-hand checks, and a
 `deployment-mount` skill that lists every file on both sides. Paste what it prints into
-`frontend/nginx.conf`, change `WUM.href` in `frontend/src/lib/components/timemachine/TimeMachine.svelte`
-to the new canonical path, and rebuild the `web` image — the mount is baked into the app's image at
-BUILD time, so `docker-compose.prod.yml` cannot move it.
+`frontend/nginx.conf` and rebuild the `web` image — the mount is baked into the app's image at
+BUILD time, so `docker-compose.prod.yml` cannot move it. Nothing in the archive's own frontend
+names the path any more, so that config is the only place here that has to change.
 
 Three pieces, and they are deliberately independent of the archive's own deploy:
 
@@ -261,7 +261,6 @@ Three pieces, and they are deliberately independent of the archive's own deploy:
 | `skoki` service | `docker-compose.prod.yml` | its own `SKOKI_TAG`, because `IMAGE_TAG` is a commit of THIS repository |
 | `location /fum/` | `frontend/nginx.conf` | proxies to `skoki:3000` **through a variable**, so a missing side app cannot stop nginx from starting |
 | `/wum`, `/fwumu` → `/fum` | `frontend/nginx.conf` | 308, sub-paths and query preserved; the old names are kept alive, not supported |
-| `WUM` in the time machine | `frontend/src/lib/components/timemachine/TimeMachine.svelte` | the „Skoki" stop that leaves the timeline — its `href` is the canonical `/fum/`, so it never goes through a redirect |
 | `POST /api/feedback/` | `backend/feedback/` | the only call it makes; anonymous, 120/hour per IP, read in the Django admin |
 
 **The archive's deploy no longer depends on it.** `.github/workflows/deploy.yml` pulls and starts
@@ -314,8 +313,10 @@ After the first deploy of it, in a browser:
 4. The old names still land: `curl -sI https://fuw.lol/fwumu/en/today` and `.../wum/care?q=1` must
    each answer `308` with a `Location:` of the same path under `/fum` — **relative**, not
    `http://…`, or somebody typing the old address takes an unencrypted hop.
-5. The archive's own front page offers **WUM** under „Skoki" in the time machine, and picking it
-   opens the app in one request — no redirect in the network panel.
+5. **The archive does not link to it, and must not start.** `https://fuw.lol/` has no path to the
+   app: the „Skoki" list in the time machine carried a **WUM** stop until 27.09.2026 and no longer
+   does. Somebody with the address still opens it; a visitor to the archive does not find it. This
+   is deliberate — the comment where the stop stood says so, so nobody restores it as a bug fix.
 6. Send a note from the app's own button, then look for it in
    `https://fuw.lol/admin/feedback/feedback/`. The `location` column must name the screen you were
    on — that is the whole point of the endpoint.
