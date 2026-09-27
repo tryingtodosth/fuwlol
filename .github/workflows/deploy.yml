@@ -129,7 +129,7 @@ jobs:
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/srv/fuwlol/deploy/"
       - name: Pull and restart
         # THE ARCHIVE ONLY. The four services are named explicitly, and the side app (`skoki`,
-        # FwUMU at /fwumu) is handled afterwards, best effort, never fatal.
+        # WUM at /fum) is handled afterwards, best effort, never fatal.
         #
         # Learned on 26.09.2026, twice in one afternoon. First `docker compose pull` with no
         # arguments failed because `fuwlol-skoki` — an image ANOTHER repository publishes, into a
@@ -151,9 +151,9 @@ jobs:
             # may fail in any way it likes without the archive's deploy noticing.
             if docker compose -f docker-compose.prod.yml --env-file .env pull skoki; then
               docker compose -f docker-compose.prod.yml --env-file .env up -d skoki \
-                || echo "::warning::skoki image pulled but would not start — /fwumu answers 502. deploy/OVH.md, FwUMU."
+                || echo "::warning::skoki image pulled but would not start — /fum answers 502. deploy/OVH.md, WUM."
             else
-              echo "::warning::skoki image could not be pulled (absent, or a private package this box has no credentials for) — the archive is deployed and /fwumu answers 502. deploy/OVH.md, FwUMU."
+              echo "::warning::skoki image could not be pulled (absent, or a private package this box has no credentials for) — the archive is deployed and /fum answers 502. deploy/OVH.md, WUM."
             fi
             docker image prune -f
           EOF

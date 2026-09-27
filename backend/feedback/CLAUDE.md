@@ -1,6 +1,6 @@
 # feedback — one note about one screen, from an app that has no backend of its own
 
-MedApp (deployed here as **FwUMU**, container `skoki`, served at `fuw.lol/fwumu`) calls exactly
+MedApp (deployed here as **WUM**, container `skoki`, served at `fuw.lol/fum`) calls exactly
 one endpoint on this server, and this is it. 16 tests.
 
 ## Rules
@@ -8,7 +8,7 @@ one endpoint on this server, and this is it. 16 tests.
 - `Feedback`: `app` (`skoki` today), `kind` `bug|suggestion|idea|comment`, `text` ≤ `MAX_LEN`
   4096, `location` (the screen path, **filled in by the app, hidden from the person writing**),
   `locale`, `ip_hash` (`board.models.hash_ip` — the one place in this project that hashes an
-  address; not a second copy of the salt logic), `author` (null in practice: FwUMU has no
+  address; not a second copy of the salt logic), `author` (null in practice: WUM has no
   accounts and sends no token), `status` `new|triaged|done|spam`, `created_at`.
 - **Only `text` can refuse a note.** `location` and `locale` are hidden fields with no
   `max_length` and `allow_null`, and anything that is not a path / not a language tag is dropped

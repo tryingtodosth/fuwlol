@@ -122,10 +122,19 @@ gets `default-src 'none'; sandbox` and PDF/TXT/TEX as attachments; `client_max_b
 There is no nginx locally — `docker compose exec web nginx -t` on the box is the first check after a
 change (`deploy/OVH.md`).
 
-It also carries `location /fwumu/`, which is **not this app**: it proxies FwUMU (the `skoki`
+It also carries `location /fum/`, which is **not this app**: it proxies WUM (the `skoki`
 container, a separate repository) onto this origin. The `proxy_pass` goes through a variable with a
 `resolver` so that a missing side app cannot stop nginx — and therefore the archive — from starting;
-that is the one line to leave alone if you touch it.
+that is the one line to leave alone if you touch it. Next to it, `/wum` and `/fwumu` (the mount's
+old name, until 27.09.2026) answer 308 to the same path under `/fum`. They are a **regex** location
+because `return` needs the capture; keep them after `location /fum/`, and keep
+`absolute_redirect off` on all of them — TLS is terminated two hops up, so an absolute `Location:`
+comes out as `http://`.
+
+The one place this app names the side app is `WUM.href` in
+`lib/components/timemachine/TimeMachine.svelte` — the „Skoki" stop that leaves the timeline. It
+holds the **canonical** `/fum/`, not an address that redirects, and it is a `window.location.href`
+rather than `goto()` because the target is not a route of this SPA.
 
 ## Copy
 

@@ -22,8 +22,8 @@ from .serializers import FeedbackWriteSerializer
 class FeedbackView(APIView):
     """Anonymous, throttled per IP, one row per call.
 
-    **Token authentication only — deliberately not the project default.** FwUMU is served from
-    fuw.lol itself (`/fwumu`), so a visitor who happens to be signed in to the archive in the
+    **Token authentication only — deliberately not the project default.** WUM is served from
+    fuw.lol itself (`/fum`), so a visitor who happens to be signed in to the archive in the
     same browser sends the archive's session cookie with this POST whether they meant to or
     not. With `SessionAuthentication` in the list, DRF would then enforce CSRF on a request that
     carries no CSRF token and answer **403 to somebody trying to file a bug report** — the one

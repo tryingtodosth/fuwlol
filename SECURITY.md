@@ -146,9 +146,9 @@ be probed for a yes/no, `suggestions` refuses (a suggestion's `base` is a frozen
 and `share/` gives a scraper the generic card and no sitemap entry. The serializers blank what a
 caller may not see rather than trusting views to filter.
 
-## The side app on this origin (`fuw.lol/fwumu`)
+## The side app on this origin (`fuw.lol/fum`)
 
-FwUMU is a different application from a different repository, sharing this hostname. That sharing
+WUM is a different application from a different repository, sharing this hostname. That sharing
 is the security-relevant part, and three decisions follow from it:
 
 - **Its one endpoint drops session authentication.** `POST /api/feedback/` accepts
@@ -157,7 +157,7 @@ is the security-relevant part, and three decisions follow from it:
   would then enforce CSRF and refuse a bug report with 403. The widget also sends
   `credentials: 'omit'`. Neither half alone is enough to reason about, so both are written down in
   `backend/feedback/views.py` and `src/lib/feedback/api.ts`.
-- **It runs under the archive's own CSP**, repeated inside `location /fwumu/` because `add_header`
+- **It runs under the archive's own CSP**, repeated inside `location /fum/` because `add_header`
   does not inherit. Everything it loads is same-origin, it decodes no wasm, and its single network
   call is to this origin, so `default-src 'self'` with `connect-src 'self'` holds. **An app that
   later needs `wasm-unsafe-eval` or a third-party origin does not get it by loosening the archive's

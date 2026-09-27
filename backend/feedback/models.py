@@ -1,6 +1,6 @@
 """fuw.lol — one note about a page of an app, sent by whoever was looking at it.
 
-Built for MedApp, which is deployed beside the archive as `skoki` (fuw.lol/fwumu) and has
+Built for MedApp, which is deployed beside the archive as `skoki` (fuw.lol/fum) and has
 no backend of its own: the *only* call that app makes to a server is this one. Somebody at a
 feedback session taps a button, says what they mean in one field, and the note arrives here
 with the place it came from already attached.
@@ -62,7 +62,7 @@ class Feedback(models.Model):
     kind = models.CharField(max_length=10, choices=KIND_CHOICES)
     text = models.TextField()
     # The screen the note was written on, as the app's own router spells it and with the
-    # locale prefix taken off: `/care/medicines`, not `/fwumu/pl/care/medicines`. Blank when
+    # locale prefix taken off: `/care/medicines`, not `/fum/pl/care/medicines`. Blank when
     # the app could not tell.
     location = models.CharField(max_length=200, blank=True)
     # The interface language the reporter was reading, so a note in Ukrainian is not a mystery.

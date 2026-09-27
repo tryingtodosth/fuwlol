@@ -114,7 +114,7 @@ class FeedbackWriteTests(TestCase):
         self.assertEqual(Feedback.objects.get().author, user)
 
     def test_a_session_cookie_does_not_turn_a_note_into_a_csrf_403(self):
-        """The endpoint is same-origin with the archive (`fuw.lol/fwumu`), so a visitor signed
+        """The endpoint is same-origin with the archive (`fuw.lol/fum`), so a visitor signed
         in to fuw.lol sends its session cookie with this POST whether they meant to or not. With
         SessionAuthentication in the list DRF would enforce CSRF and refuse the note with 403;
         `views.FeedbackView` drops session auth for exactly that reason. `enforce_csrf_checks`

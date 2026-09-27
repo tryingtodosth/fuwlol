@@ -66,7 +66,7 @@ cache: when a test or a browser run hits 429, it is the cache, not the code.
 
 ## The side app's one endpoint
 
-`feedback/` exists for FwUMU (`fuw.lol/fwumu`), which has no backend of its own. `POST
+`feedback/` exists for WUM (`fuw.lol/fum`), which has no backend of its own. `POST
 /api/feedback/`, anonymous, `TokenAuthentication` only — **not** the project default, because the
 app is same-origin with the archive and a visitor's stray session cookie would otherwise trip DRF's
 CSRF check and answer 403 to somebody filing a bug report. Scope `feedback` is 120/hour, which is

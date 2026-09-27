@@ -93,7 +93,7 @@ E2E_FRONT=http://localhost:5273 E2E_API=http://localhost:8100/api node e2e/surve
 
 ### The side app is tested in its own repository
 
-FwUMU (`fuw.lol/fwumu`) has its own suites in `github.com/tryingtodosth/medapp` (`npm test`
+WUM (`fuw.lol/fum`) has its own suites in `github.com/tryingtodosth/medapp` (`npm test`
 there). What matters to **this** repository is the pair that only breaks when the app is mounted on
 this origin, and neither can be checked from here:
 
@@ -103,7 +103,7 @@ this origin, and neither can be checked from here:
 Both were driven in a real browser (phone and desktop profiles, 34 checks, 0 failures) against a
 mounted build behind `scripts/mounted-preview.mjs` in that repository — a Node stand-in for nginx,
 because there is no nginx on a development machine here either. The production wiring itself is
-checked by hand after a deploy: `deploy/OVH.md`, "FwUMU".
+checked by hand after a deploy: `deploy/OVH.md`, "WUM".
 
 ### Traps
 

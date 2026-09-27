@@ -108,7 +108,7 @@ them once.
 
 Named so that somebody can close them; the engineering-level gaps are in `CLAUDE.md`.
 
-- **Notes from FwUMU are read in the Django admin and nowhere else.** `POST /api/feedback/` has no
+- **Notes from WUM are read in the Django admin and nowhere else.** `POST /api/feedback/` has no
   read path on purpose (one person at a session must not be able to read what everybody else
   wrote), so there is no queue in `/moderacja`, no count anywhere, no way to reply and no mail when
   one arrives — somebody opens `/admin/feedback/feedback/` and looks. For a session run by the
@@ -117,7 +117,11 @@ Named so that somebody can close them; the engineering-level gaps are in `CLAUDE
 - **The person writing a note is not shown what rides along with it.** The screen path is attached
   silently, which is what makes a one-line note worth reading — and it is still something the app
   does not say out loud. It carries no health data (`backend/feedback/models.py` is explicit), but
-  a line in FwUMU's own privacy screen naming it would cost nothing and is not written yet.
+  a line in WUM's own privacy screen naming it would cost nothing and is not written yet.
+- **The side app's old addresses redirect forever, because nothing measures them.** `/wum` and
+  `/fwumu` answer 308 to `/fum` (it was FwUMU at `/fwumu` until 27.09.2026), and that stays true
+  until somebody looks at an access log and finds nobody uses them. There is no plan for retiring a
+  path, and the next move will add a third redirect rather than replace the first two.
 
 - **No e-mail beyond address verification.** Password reset, any notification, the confirmation of
   receipt a DSA notice is owed, and the alert that tells a head-admin an escalation is waiting —

@@ -99,13 +99,13 @@ services:
       - api
     # NOT depends_on: skoki. nginx looks the name up per request through a variable
     # (frontend/nginx.conf), so the archive starts and serves whether or not the side app is
-    # there; /fwumu/ alone answers 502 while it is away. A hard dependency would let a side app
+    # there; /fum/ alone answers 502 while it is away. A hard dependency would let a side app
     # keep the archive down.
     volumes:
       - media:/media:ro
     # No published port: Caddy is the only way in.
 
-  # FwUMU — MedApp, served at fuw.lol/fwumu (frontend/nginx.conf, location /fwumu/).
+  # WUM — MedApp, served at fuw.lol/fum (frontend/nginx.conf, location /fum/).
   #
   # A SEPARATE REPOSITORY (github.com/tryingtodosth/medapp) builds and pushes this image from its
   # own workflow, so `IMAGE_TAG` — which is a commit of THIS repository — would be a tag that does
@@ -124,7 +124,7 @@ services:
       # adapter-node needs its public URL, or anything that checks the origin answers 403 behind
       # the proxy. It is the SITE's URL, not the app's path.
       ORIGIN: https://fuw.lol
-      # The app is mounted under /fwumu at BUILD time (its Dockerfile); nothing here can move it.
+      # The app is mounted under /fum at BUILD time (its Dockerfile); nothing here can move it.
     # No published port: nginx is the only way in, exactly like the api service.
 
   caddy:
