@@ -301,9 +301,12 @@ After the first deploy of it, in a browser:
    compiled in — the medapp repository's `Dockerfile`, and no variable on this box can change it).
 2. Click through two or three screens and change the language: every URL keeps `/fum` on it. A
    link that drops to `https://fuw.lol/today` is the base path leaking (`src/hooks.ts` there).
-   **`/fum/` itself is Polish** — fuw.lol is a Polish site, so that deployment is built with
-   `MEDAPP_DEFAULT_LOCALE=pl` and English lives at `/fum/en/`. The language is compiled into that
-   image; nothing here can change it.
+   **`/fum/` itself is staropolszczyzna** — 17th-century Polish, the joke for this audience. That
+   deployment is built with `MEDAPP_DEFAULT_LOCALE=lol`, so the three real languages live at
+   `/fum/pl/`, `/fum/en/` and `/fum/uk/`, and all four are in its switcher. It is an overlay on
+   modern Polish, so a screen nobody has rendered into staropolszczyzna yet reads as ordinary
+   Polish and **never** as English. The language is compiled into that image; nothing here can
+   change it, and no other deployment of that app offers it.
    Polish is the unprefixed path, so English is `/fum/en/…`, Ukrainian `/fum/uk/…`, and
    **`/fum/pl/…` is a 404** — that is correct, not a routing bug.
 3. `https://fuw.lol/` is still the archive, and `https://fuw.lol/wpis/<slug>` still opens a post:
