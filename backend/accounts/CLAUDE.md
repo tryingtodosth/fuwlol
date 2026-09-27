@@ -7,10 +7,25 @@ grantable escalation permission — `escalation/visibility.py`, not here). Reaso
 ## Rules
 
 - **Trust is a confirmed e-mail at a curated domain** (`TrustedDomain`: `domain`, `institution`,
-  `kind` `fuw|uw|pan|other`, `match_subdomains`, `is_active`; lowercased on save). Seeded by
-  migration 0002 from `trust.TRUSTED_DOMAINS_SEED` (14 rows; `mimuw.edu.pl` inactive;
-  `uw.edu.pl` deliberately **without** subdomains — `student.uw.edu.pl` is its own row). Curate in
-  the admin, not in code.
+  `kind` `fuw|uw|pan|other`, `match_subdomains`, `is_active`; lowercased on save). Seeded from
+  `trust.TRUSTED_DOMAINS_SEED` — **22 rows**, by migration 0002 and then 0004 (Chemia UW, WUM and
+  the Biocentrum Ochota institutes, 27.09.2026). `mimuw.edu.pl` ships inactive. Curate in the
+  admin, not in code.
+- **The list is the Ochota campus, not a ranking of universities.** FUW, Chemia UW, CeNT, WUM and
+  the six Biocentrum Ochota institutes (MIBMiK, IMDiK, IBB, IBIB, IPPT, Nencki) are within walking
+  distance of each other and share people; anything further away belongs in the admin, switched on
+  by a person.
+- **`match_subdomains` says what the row's SCOPE is, and the two cases look opposite on purpose.**
+  `uw.edu.pl` is OFF — matching its subdomains would admit every unit of the university, so
+  `student.uw.edu.pl` and `chem.uw.edu.pl` are their own rows. `wum.edu.pl` is ON — a separate
+  university where the institution IS the scope, so one row covers staff (`wum.edu.pl`,
+  `lekarski.wum.edu.pl`) and students, whose addresses sit two levels down at
+  `s012345@webmail.student.wum.edu.pl`. Splitting it into three rows would miss the next faculty
+  that gets its own subdomain.
+- **Every addition to the seed needs its own migration.** 0002 does not re-run, so growing the list
+  alone only reaches a fresh database. 0004 re-runs the same `get_or_create` seed; it is
+  idempotent, and its reverse deletes only rows still **exactly** as it created them, so a domain
+  the owner has since renamed or switched off survives both directions (pinned by test).
 - **Matching is strict** (`trust.match_domain`): lowercase ASCII, exactly one `@`, Django's
   `EmailValidator`, exact match, then a `.domain` suffix only where the row allows it.
   `x@fuw.edu.pl.evil.com` and `x@gmail.com@fuw.edu.pl` do not match. A refused domain's 400 names the

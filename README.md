@@ -54,7 +54,8 @@ Porty zajęte? `FUWLOL_CORS_ORIGINS` + `frontend/.env` (`PUBLIC_API_BASE_URL`) s
   cofnięcie idzie jednym linkiem na tę samą skrzynkę. Odznaka ✓ przy nazwisku to właśnie to.
 - **Portrety**: przy potwierdzonej zgodzie każdy zalogowany może dodać zdjęcie osoby, a zdjęcie profilowe
   wybiera głosowanie (jeden głos na osobę, można przenieść); kolejka moderacji w `/moderacja/portrety`.
-- **Zaufani użytkownicy**: potwierdzenie adresu w domenie FUW/UW/PAN (`/konto`) daje wyższe
+- **Zaufani użytkownicy**: potwierdzenie adresu w domenie z kampusu Ochoty — FUW, Chemia UW, CeNT,
+  WUM, instytuty PAN z Biocentrum Ochota (pełna lista pod `/konto`) — daje wyższe
   uprawnienia — wpisy bez kolejki, ukrywanie treści jednym kliknięciem (trafiają na **tablicę
   moderacji** `/tablica`, widoczną dla wszystkich zaufanych) i opcja nuklearna dla treści
   nielegalnych lub obrzydliwie obraźliwych (wtedy treść widzi już tylko administracja).

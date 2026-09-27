@@ -59,6 +59,30 @@ class MatchDomainTests(Base):
                     'fuw.edu.pl', '', None, '@fuw.edu.pl']:
             self.assertIsNone(match_domain(bad), bad)
 
+    def test_ochota_campus_domains(self):
+        """Chemia UW, WUM and the Biocentrum Ochota institutes (migration 0004).
+
+        The two shapes differ on purpose. `chem.uw.edu.pl` needs its OWN row because
+        `uw.edu.pl` matches no subdomain; `wum.edu.pl` is a whole separate university, so one
+        row with subdomains covers its staff, its faculties and its students — whose addresses
+        live two levels down at `webmail.student.wum.edu.pl`."""
+        self.assertEqual(match_domain('x@chem.uw.edu.pl').institution, 'Wydział Chemii UW')
+        self.assertEqual(match_domain('x@lab.chem.uw.edu.pl').domain, 'chem.uw.edu.pl')
+        self.assertEqual(match_domain('x@wum.edu.pl').institution, 'Warszawski Uniwersytet Medyczny')
+        self.assertEqual(match_domain('x@lekarski.wum.edu.pl').domain, 'wum.edu.pl')
+        self.assertEqual(match_domain('s012345@webmail.student.wum.edu.pl').domain, 'wum.edu.pl')
+        for pan in ['icho.edu.pl', 'ibb.waw.pl', 'ibib.waw.pl', 'nencki.edu.pl',
+                    'imdik.pan.pl', 'iimcb.gov.pl']:
+            self.assertEqual(match_domain(f'x@{pan}').kind, 'pan', pan)
+
+    def test_new_domains_do_not_widen_the_suffix_match(self):
+        """A suffix match is on '.' + domain, never on the bare string — so a lookalike
+        registered by somebody else does not inherit the trust."""
+        for bad in ['x@wum.edu.pl.evil.com', 'x@notwum.edu.pl', 'x@evilwum.edu.pl',
+                    'x@chem.uw.edu.pl.evil.com', 'x@nienencki.edu.pl',
+                    'x@foo.uw.edu.pl']:   # still not swallowed: chem is its own row, not uw's
+            self.assertIsNone(match_domain(bad), bad)
+
     def test_deactivating_a_domain_switches_it_off(self):
         TrustedDomain.objects.filter(domain='fuw.edu.pl').update(is_active=False)
         self.assertIsNone(match_domain(FUW))
@@ -213,6 +237,9 @@ class VerificationFlowTests(Base):
         domains = {d['domain'] for d in r.data}
         self.assertIn('fuw.edu.pl', domains)
         self.assertIn('ippt.pan.pl', domains)
+        self.assertIn('chem.uw.edu.pl', domains)
+        self.assertIn('wum.edu.pl', domains)
+        self.assertIn('imdik.pan.pl', domains)
         self.assertNotIn('mimuw.edu.pl', domains)
         self.assertEqual(set(r.data[0]), {'domain', 'institution', 'kind'})
 

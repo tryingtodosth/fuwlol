@@ -16,13 +16,24 @@ from .models import Profile, TrustedDomain
 # `uw.edu.pl` deliberately does NOT match subdomains: that would swallow every unit of the
 # university, which is exactly the opposite of "people around FUW". `mimuw.edu.pl` ships
 # switched off — a neighbour, not the Faculty.
+#
+# THE SHAPE OF THE LIST IS THE OCHOTA CAMPUS, not "universities we like". FUW, Chemia UW, CeNT,
+# WUM and the six Biocentrum Ochota institutes sit within a few hundred metres of each other and
+# share students, seminars and corridors — which is the thing this archive is about. A domain
+# further away than that belongs in the admin, switched on by a person, not here.
 TRUSTED_DOMAINS_SEED = [
     ('fuw.edu.pl', 'Wydział Fizyki UW', 'fuw', True, True),          # also okwf/igf/… .fuw.edu.pl
     ('uw.edu.pl', 'Uniwersytet Warszawski', 'uw', False, True),       # staff addresses only, no subdomains
     ('student.uw.edu.pl', 'Studenci UW', 'uw', True, True),
+    ('chem.uw.edu.pl', 'Wydział Chemii UW', 'uw', True, True),        # its own row: uw.edu.pl matches no subdomain
     ('cent.uw.edu.pl', 'CeNT UW', 'uw', True, True),
     ('astrouw.edu.pl', 'Obserwatorium Astronomiczne UW', 'uw', True, True),
     ('mimuw.edu.pl', 'MIM UW', 'uw', True, False),                    # off by default
+    # WUM is a whole separate university, so — unlike uw.edu.pl — subdomains are ON and that is the
+    # point: staff write from wum.edu.pl and lekarski.wum.edu.pl, students from
+    # s012345@webmail.student.wum.edu.pl. One row covers all of it; three rows would miss the next
+    # faculty that gets its own. The scope IS the institution here, not a unit inside one.
+    ('wum.edu.pl', 'Warszawski Uniwersytet Medyczny', 'other', True, True),
     ('ifpan.edu.pl', 'Instytut Fizyki PAN', 'pan', True, True),
     ('cft.edu.pl', 'Centrum Fizyki Teoretycznej PAN', 'pan', True, True),
     ('camk.edu.pl', 'CAMK PAN', 'pan', True, True),
@@ -30,7 +41,17 @@ TRUSTED_DOMAINS_SEED = [
     ('ifpilm.pl', 'IFPiLM', 'pan', True, True),
     ('unipress.waw.pl', 'Instytut Wysokich Ciśnień PAN', 'pan', True, True),
     ('ichf.edu.pl', 'IChF PAN', 'pan', True, True),
+    ('icho.edu.pl', 'IChO PAN', 'pan', True, True),
+    # Biocentrum Ochota is a real consortium of six PAN institutes, not a grouping invented here:
+    # MIBMiK, IMDiK, IBB, IBIB, IPPT and Nencki. IPPT and IChF were already on the list for the
+    # physics side; the rest arrive with WUM because they are the medical and chemical half of the
+    # same campus and the same people.
     ('ippt.pan.pl', 'IPPT PAN', 'pan', True, True),
+    ('ibb.waw.pl', 'IBB PAN', 'pan', True, True),
+    ('ibib.waw.pl', 'IBIB PAN', 'pan', True, True),
+    ('nencki.edu.pl', 'Instytut Nenckiego PAN', 'pan', True, True),
+    ('imdik.pan.pl', 'IMDiK PAN', 'pan', True, True),
+    ('iimcb.gov.pl', 'MIBMiK', 'pan', True, True),
 ]
 
 _email_validator = EmailValidator()

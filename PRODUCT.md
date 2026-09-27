@@ -23,7 +23,7 @@ as ordinary posts with a `source_url`; the data model already carries fuzzy date
 |---|---|---|
 | public | anybody | read everything published; write in the chat under a nick; report |
 | user | any account | post (into the moderation queue), comment, react, upload portraits, add a subject or propose a person |
-| trusted | an account with a confirmed e-mail at an FUW / UW / PAN domain (`TrustedDomain`) | posts publish at once; hide / restore / nuke in one click; escalate to NASK; attach nicknames to people; **read the posts marked „kontrowersyjne"** and mark any post so |
+| trusted | an account with a confirmed e-mail at an Ochota-campus domain — FUW, UW (incl. Chemia and CeNT), WUM, the PAN institutes (`TrustedDomain`, 22 seeded rows) | posts publish at once; hide / restore / nuke in one click; escalate to NASK; attach nicknames to people; **read the posts marked „kontrowersyjne"** and mark any post so |
 | staff | Django `is_staff` — the real administration | the moderation queues, consent decisions, portrait review, the Django admin |
 | head-admin | `is_superuser`, or the grantable `escalation.can_manage_critical_quarantine` | the only tier that sees escalated content; decides and purges |
 
