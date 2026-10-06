@@ -118,6 +118,13 @@ Named so that somebody can close them; the engineering-level gaps are in `CLAUDE
   silently, which is what makes a one-line note worth reading — and it is still something the app
   does not say out loud. It carries no health data (`backend/feedback/models.py` is explicit), but
   a line in WUM's own privacy screen naming it would cost nothing and is not written yet.
+- **The side app now has accounts, and they are for three things only.** Since 2026-10 WUM can
+  create an account (`backend/wum/`), hold four optional profile fields, publish ONE anonymised
+  record per account and withdraw it, and start from a staff-written example patient. Health data
+  does not sync: it stays in the browser as before, and a person who loses the phone loses the
+  record, account or no account. No e-mail verification, no password reset, no self-service
+  deletion, and a single person's record cannot be k-anonymous however much the app strips —
+  the publish screen says so, and `LEGAL.md` §9 says what a lawyer still has to read.
 - **The side app is served but not advertised, and nothing decides when that ends.** The archive's
   time machine carried a **WUM** stop until 27.09.2026; it was taken out so a visitor to the
   archive does not find the app, while anybody with the address still opens it. That is a

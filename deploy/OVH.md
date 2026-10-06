@@ -239,7 +239,9 @@ cd /srv/fuwlol && IMAGE_TAG=<older-sha> docker compose -f docker-compose.prod.ym
 MedApp, a patient-facing prototype from **a different repository**
 (`github.com/tryingtodosth/medapp`), is served from this origin under `/fum` and calls itself
 **WUM** there. It is here because the people whose opinion it needs are the people who already
-have this site's address, and the one thing it sends anywhere is a note about a screen.
+have this site's address. It sends two things to this server: a note about a screen, and — since
+2026-10 — its own accounts and the anonymised records people choose to publish (`backend/wum/`,
+`LEGAL.md` §9). Health data stays in the browser; the container itself still stores nothing.
 
 **It was `/fwumu`, called FwUMU, until 27.09.2026.** The address is now `/fum` and the app calls
 itself **WUM**; `/wum` and `/fwumu` — with their sub-paths and query strings — answer 308 to the
@@ -261,7 +263,8 @@ Three pieces, and they are deliberately independent of the archive's own deploy:
 | `skoki` service | `docker-compose.prod.yml` | its own `SKOKI_TAG`, because `IMAGE_TAG` is a commit of THIS repository |
 | `location /fum/` | `frontend/nginx.conf` | proxies to `skoki:3000` **through a variable**, so a missing side app cannot stop nginx from starting |
 | `/wum`, `/fwumu` → `/fum` | `frontend/nginx.conf` | 308, sub-paths and query preserved; the old names are kept alive, not supported |
-| `POST /api/feedback/` | `backend/feedback/` | the only call it makes; anonymous, 120/hour per IP, read in the Django admin |
+| `POST /api/feedback/` | `backend/feedback/` | a note about a screen; anonymous, 120/hour per IP, read in the Django admin |
+| `/api/wum/…` | `backend/wum/` | accounts, example templates, anonymised publications; token-only auth; `/admin/wum/` is where templates are written and publications taken down. The restic dump of Postgres now holds these rows too |
 
 **The archive's deploy no longer depends on it.** `.github/workflows/deploy.yml` pulls and starts
 the four archive services **by name**, then tries `skoki` separately and warns instead of failing
@@ -278,7 +281,11 @@ web app and no secrets; or `docker login ghcr.io` on the box with a `read:packag
 then has to be kept alive.
 
 **Deploying it** is a push to `main` in the medapp repository: its own workflow type-checks it,
-builds it mounted, pushes `ghcr.io/tryingtodosth/fuwlol-skoki:<sha>`, and prints the tag. Then here:
+builds it mounted, pushes `ghcr.io/tryingtodosth/fuwlol-skoki:<sha>` **and `:latest`**, and prints
+the tag. Nothing on this box pulls by itself: the archive's own deploy re-pulls whatever
+`SKOKI_TAG` says (`latest` unless pinned), and otherwise it is the two lines below. The box was
+found 40 commits behind on 2026-10-06 for exactly that reason. The api side (`wum/0001`) migrates
+on container start (`backend/entrypoint.sh`), so the archive's deploy carries it. Then here:
 
 ```bash
 cd /srv/fuwlol
@@ -294,10 +301,11 @@ Rolling it back is the same two lines with an older sha, and it touches nothing 
 
 After the first deploy of it, in a browser:
 
-1. `https://fuw.lol/fum` redirects to `/fum/` and the app opens — **styled**, and **in Polish**.
-   Unstyled means the base path and the build disagree, and everything else will be wrong too;
-   English at the bare path means the image was built without `MEDAPP_DEFAULT_LOCALE=pl` (it is
-   compiled in — the medapp repository's `Dockerfile`, and no variable on this box can change it).
+1. `https://fuw.lol/fum` redirects to `/fum/` and the app opens — **styled**, and **in
+   staropolszczyzna** („Dzień obecny", „Cielesna powłoka"). Unstyled means the base path and the
+   build disagree, and everything else will be wrong too; English at the bare path means the image
+   was built without `MEDAPP_DEFAULT_LOCALE=lol` (it is compiled in — the medapp repository's
+   `Dockerfile`, and no variable on this box can change it).
 2. Click through two or three screens and change the language: every URL keeps `/fum` on it. A
    link that drops to `https://fuw.lol/today` is the base path leaking (`src/hooks.ts` there).
    **`/fum/` itself is staropolszczyzna** — 17th-century Polish, the joke for this audience. That
@@ -305,9 +313,8 @@ After the first deploy of it, in a browser:
    `/fum/pl/`, `/fum/en/` and `/fum/uk/`, and all four are in its switcher. It is an overlay on
    modern Polish, so a screen nobody has rendered into staropolszczyzna yet reads as ordinary
    Polish and **never** as English. The language is compiled into that image; nothing here can
-   change it, and no other deployment of that app offers it.
-   Polish is the unprefixed path, so English is `/fum/en/…`, Ukrainian `/fum/uk/…`, and
-   **`/fum/pl/…` is a 404** — that is correct, not a routing bug.
+   change it, and no other deployment of that app offers it. (Until 27.09.2026 the image was built
+   with `=pl`, Polish was the bare path and `/fum/pl/` a 404; it is not any more.)
 3. `https://fuw.lol/` is still the archive, and `https://fuw.lol/wpis/<slug>` still opens a post:
    the new location must not have swallowed anything.
 4. The old names still land: `curl -sI https://fuw.lol/fwumu/en/today` and `.../wum/care?q=1` must
@@ -321,6 +328,14 @@ After the first deploy of it, in a browser:
    `https://fuw.lol/admin/feedback/feedback/`. The `location` column must name the screen you were
    on — that is the whole point of the endpoint.
 7. `docker compose exec web nginx -t`, as after any change to `frontend/nginx.conf`.
+8. The accounts round trip, same-origin: open `/fum/pl/account`, create an account — it appears in
+   `https://fuw.lol/admin/wum/wumprofile/` with `User.email` blank. On `/fum/pl/publish` the
+   preview shows no name; publish, and `curl -s https://fuw.lol/api/wum/publications/` lists one
+   row with an `id`, a `payload`, a `published_month` and **no username anywhere**; withdraw, and
+   the list is empty again while the row stays in `/admin/wum/publication/` as `withdrawn`. Paste
+   an exported example into `/admin/wum/template/`, set it `published`, and `/fum/pl/templates`
+   offers it. A 403 on any of these is the CSRF trap (`backend/wum/views.py`); a 409 is a text or
+   payload version the two repositories disagree on (`wum/CLAUDE.md` "Mirrored constants").
 
 **If `/fum/` answers 502, read the error log before anything else** — the container being
 healthy proves nothing, and two plausible-sounding theories (a stale DNS cache; the wrong image)

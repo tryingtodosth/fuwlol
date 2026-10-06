@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     'feedback',
     'portraits',
     'share',
+    'wum',
 ]
 
 # See config/middleware.py for what each of these means and when it is safe.
@@ -159,6 +160,15 @@ REST_FRAMEWORK = {
         # not a vote. Both per IP, like every other scope here.
         'portrait_upload': '10/hour',
         'portrait_vote': '60/hour',
+        # WUM accounts and publications (wum/views.py). Per IP like everything here, and the two
+        # that matter are the writes: a sign-up is a User row and a publish is one JSON row, so the
+        # rates are the archive's own `register`/`login` and a "once a month" budget with room
+        # for a whole feedback session behind one NAT. Reads are not counted (UnsafeScopedThrottle).
+        'wum_register': '10/hour',
+        'wum_login': '20/min',
+        'wum_profile': '60/hour',
+        'wum_publish': '20/hour',
+        'wum_template_write': '60/hour',
     },
 }
 

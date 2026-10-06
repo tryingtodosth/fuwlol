@@ -1,4 +1,4 @@
-# backend/ — Django 5.2 + DRF, 8 apps + `config/`, SQLite locally / Postgres in production
+# backend/ — Django 5.2 + DRF, 9 apps + `config/`, SQLite locally / Postgres in production
 
 Scoped context for backend work. The cross-cutting rules are in the root `CLAUDE.md`; the reasoning
 is in `DESIGN.md`; each app's own `CLAUDE.md` has its rules; `MODERATION-API.md` documents the
@@ -64,18 +64,22 @@ ViewSet needs `FixedScopeThrottle`** (`archive/views.py`) — DRF's `ScopedRateT
 limited per IP *and* per submitted username (`LoginUsernameThrottle`). Counters are in the file
 cache: when a test or a browser run hits 429, it is the cache, not the code.
 
-## The side app's one endpoint
+## The side app's endpoints
 
-`feedback/` exists for WUM (`fuw.lol/fum`), which has no backend of its own. `POST
-/api/feedback/`, anonymous, `TokenAuthentication` only — **not** the project default, because the
-app is same-origin with the archive and a visitor's stray session cookie would otherwise trip DRF's
-CSRF check and answer 403 to somebody filing a bug report. Scope `feedback` is 120/hour, which is
-high on purpose: a feedback session is a room behind one NAT. `feedback/CLAUDE.md` has the rest.
+`feedback/` and `wum/` exist for WUM (`fuw.lol/fum`), whose only server is this one. Every view in
+both is `TokenAuthentication` only — **not** the project default, because the app is same-origin
+with the archive and a visitor's stray session cookie would otherwise trip DRF's CSRF check and
+answer 403 to somebody filing a bug report or signing up. `POST /api/feedback/` is anonymous, scope
+`feedback` 120/hour, high on purpose: a feedback session is a room behind one NAT. `/api/wum/…` is
+the app's own accounts (a `User` marked by a `WumProfile`, no archive powers, the archive's login
+does not open it), staff-written example templates and the anonymised records people choose to
+publish; its scopes count writes only. `feedback/CLAUDE.md` and `wum/CLAUDE.md` have the rest.
 
 ## URL include order (`config/urls.py`)
 
-`api/moderation/` → `escalation.urls`; then `portraits.urls` and `consent.urls` under `api/`
-**before** `archive.urls`, because the archive router is greedy on `people/<slug>/`; then `share/`.
+`api/moderation/` → `escalation.urls`; `api/feedback/` and `api/wum/` on their own prefixes; then
+`portraits.urls` and `consent.urls` under `api/` **before** `archive.urls`, because the archive
+router is greedy on `people/<slug>/`; then `share/`.
 `MEDIA_URL` is served by Django only under DEBUG — in production nginx serves `/media/` from the
 shared volume with a sandboxing CSP.
 
@@ -102,7 +106,8 @@ deletes unclaimed objects after a day.
 
 ## Migrations
 
-17 across six apps (`share` has no models). Four carry data: `accounts/0002` seeds the trusted
+18 across seven apps (`share` has no models; `wum/0001` is the side app's three tables, 2026-10).
+Four carry data: `accounts/0002` seeds the trusted
 domains from `trust.TRUSTED_DOMAINS_SEED`; `archive/0003` back-fills the search columns;
 `archive/0007` files every existing person with `people.py`'s pure functions; `archive/0008` seeds
 the 35 subjects and back-fills `Person.name_key`. **A data migration imports the rule module's

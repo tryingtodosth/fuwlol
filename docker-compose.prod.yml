@@ -113,9 +113,11 @@ services:
   # SKOKI_TAG in /srv/fuwlol/.env and running `docker compose up -d skoki`; the archive is not
   # touched by that, and the archive's own deploy does not touch this.
   #
-  # It stores NOTHING: no volume, no database, no writable path. Everything a visitor does stays
-  # in their browser, except a note about a screen, which goes to the api service's
-  # POST /api/feedback/ over the same origin (backend/feedback/).
+  # The CONTAINER stores nothing: no volume, no database, no writable path. Health data stays in
+  # the visitor's browser. What the app keeps on this server goes to the api service over the same
+  # origin like everything else: a note about a screen (POST /api/feedback/, backend/feedback/)
+  # and, since 2026-10, its own accounts, staff-written example templates and the anonymised
+  # records people choose to publish (/api/wum/…, backend/wum/) — rows in Postgres, in pgdata.
   skoki:
     image: ghcr.io/tryingtodosth/fuwlol-skoki:${SKOKI_TAG:-latest}
     restart: unless-stopped

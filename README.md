@@ -77,12 +77,16 @@ Porty zajęte? `FUWLOL_CORS_ORIGINS` + `frontend/.env` (`PUBLIC_API_BASE_URL`) s
 - **WUM pod `/fum`** (dawniej FwUMU pod `/fwumu`; stare adresy `/wum` i `/fwumu` przekierowują)
   — to *nie* jest archiwum. Pod adresem `fuw.lol/fum` stoi osobna
   aplikacja (prototyp zdrowotny MedApp z innego repozytorium), wpuszczona na ten sam adres, żeby
-  ludzie, którzy już tu są, mogli ją obejrzeć i powiedzieć, co o niej myślą. Jedyne, co wysyła na
-  serwer, to **uwaga o konkretnym ekranie**: rodzaj (błąd / sugestia / pomysł / komentarz) i tekst —
-  a to, na którym ekranie ktoś był, dopisuje się samo, bez pytania piszącego. Uwagi czyta się w
-  panelu Django (`/admin/feedback/feedback/`). **Archiwum nigdzie do niej nie linkuje** — od
+  ludzie, którzy już tu są, mogli ją obejrzeć i powiedzieć, co o niej myślą. Na serwer wysyła
+  trzy rzeczy: **uwagę o konkretnym ekranie** (rodzaj: błąd / sugestia / pomysł / komentarz, i
+  tekst — a to, na którym ekranie ktoś był, dopisuje się samo, bez pytania piszącego; uwagi czyta
+  się w panelu Django, `/admin/feedback/feedback/`), od października 2026 **własne konto** (nazwa,
+  hasło, opcjonalnie imię, nazwisko i kontakt — bez żadnych uprawnień w archiwum) oraz **jeden
+  zanonimizowany rekord**, który osoba sama zdecyduje się opublikować i może w każdej chwili
+  wycofać (bez imienia, nazwiska, miejsca ani dat dziennych; `backend/wum/`, `LEGAL.md` §9). Dane
+  zdrowotne zostają w przeglądarce, jak dotąd. **Archiwum nigdzie do niej nie linkuje** — od
   27.09.2026 nie ma jej w „Skokach" wehikułu czasu, więc trzeba znać adres; kto go zna, wchodzi jak
-  dawniej. Szczegóły: `deploy/OVH.md` („WUM") i `backend/feedback/CLAUDE.md`.
+  dawniej. Szczegóły: `deploy/OVH.md` („WUM"), `backend/feedback/CLAUDE.md` i `backend/wum/CLAUDE.md`.
 
 ## Struktura
 
@@ -90,6 +94,7 @@ Porty zajęte? `FUWLOL_CORS_ORIGINS` + `frontend/.env` (`PUBLIC_API_BASE_URL`) s
 backend/   config/ (settings, urls, middleware — adres za proxy)  accounts/ (rejestracja, logowanie, zaufani)  archive/ (modele, API, walidacja plików, wayback, seed_demo, testy)
            board/ (czat, zgłoszenia, reputacja)  escalation/ (eskalacja do NASK: dowody, kwarantanna plików, widoczność, mixin panelu Django)
            feedback/ (uwagi o ekranach aplikacji WUM spod /fum — jedno POST, bez odczytu przez API)
+           wum/ (konta aplikacji WUM, szablony przykładowych pacjentów, zanonimizowane publikacje — /api/wum/…)
            consent/ (zgoda na wizerunek: wnioski osób, kolejka, dowód zgody)  portraits/ (zdjęcia osób i głosowanie na zdjęcie profilowe)
            share/ (podglądy linków dla scraperów pod /share/…, sitemap.xml)
 frontend/  src/lib/{api,types,auth}  src/lib/render/{markdown,latex,media}  src/lib/components/{editor,timemachine,…}  src/routes/…

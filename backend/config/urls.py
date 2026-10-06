@@ -11,6 +11,9 @@ urlpatterns = [
     # MedApp's only call to a server (feedback/). Its own prefix, so nothing about it
     # depends on the archive router's greedy people/<slug>/ ordering below.
     path('api/feedback/', include('feedback.urls')),
+    # The side app's accounts, example templates and anonymised publications (wum/). Same
+    # reasoning as feedback: its own prefix, placed before the archive's greedy router.
+    path('api/wum/', include('wum.urls')),
     # BEFORE archive.urls: the archive's DefaultRouter owns `people/<slug>/`, and the
     # portrait gallery hangs one segment deeper under the same prefix.
     path('api/', include('portraits.urls')),

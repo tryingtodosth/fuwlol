@@ -38,23 +38,28 @@ deploy/    OVH runbook, Caddyfile, firewall.sh, backup.sh.   .github/workflows/d
 docs/      the Polish draw.io documentation deck and the Gemini research reports.
 ```
 
-The 8 apps, each with its own `CLAUDE.md`: `accounts` (tiers) · `archive` (everything about a post:
+The 9 apps, each with its own `CLAUDE.md`: `accounts` (tiers) · `archive` (everything about a post:
 models, API, people, subjects, search, uploads, guards, suggestions) · `board` (the chat) ·
 `consent` (a person's own say about their image) · `escalation` (NASK) · `feedback` (notes about a
 screen, from the side app) · `portraits` (elected profile photos) · `share` (link previews +
-sitemap, no models).
+sitemap, no models) · `wum` (the side app's accounts, example templates and anonymised
+publications).
 
 **One thing on this origin is not the archive.** `fuw.lol/fum` is **WUM** — MedApp, a patient
 prototype from `github.com/tryingtodosth/medapp`, run as the `skoki` container and put on the
-origin by `frontend/nginx.conf`. It shares nothing with the archive but the hostname and one
-endpoint (`POST /api/feedback/`), and it is a separate repository with its own deploy:
+origin by `frontend/nginx.conf`. It shares nothing with the archive but the hostname, the user
+table and two API prefixes (`POST /api/feedback/` and `/api/wum/…` — accounts, example templates
+and anonymised publications, `backend/wum/CLAUDE.md`), and it is a separate repository with its
+own deploy:
 `deploy/OVH.md` "WUM". **The app is called MedApp; only the copy that runs here is WUM** —
 keep that true of anything added later unless told otherwise. `/fum` is the address; `/wum` and
 `/fwumu` (its name until 27.09.2026) answer 308 to it, sub-path and query kept, and nothing in
-either repository builds an old-name link. **This copy speaks Polish** — like the archive, and
-unlike MedApp itself, whose messages are authored in English: the image is built with
-`MEDAPP_DEFAULT_LOCALE=pl`, so `/fum/` is Polish, English is `/fum/en/…`, and `/fum/pl/…` is a 404.
-It is compiled into the bundle over there, so nothing on this side can change it. Moving or
+either repository builds an old-name link. **This copy speaks staropolszczyzna at the bare path**
+— 17th-century Polish, the joke for this audience, an overlay on modern Polish that never falls
+through to English — and the three real languages sit under a prefix: the image is built with
+`MEDAPP_DEFAULT_LOCALE=lol`, so `/fum/` is staropolszczyzna and Polish, English and Ukrainian are
+`/fum/pl/…`, `/fum/en/…`, `/fum/uk/…` (since 27.09.2026; it was `=pl` with `/fum/pl/` a 404
+before). It is compiled into the bundle over there, so nothing on this side can change it. Moving or
 renaming a deployment of that app is the medapp repository's `deployment-mount` skill, which lists
 every file on both sides.
 
@@ -92,8 +97,11 @@ every file on both sides.
   `WISHES`; `share/views.CRAWLER_UA` ↔ the `map` in `frontend/nginx.conf`; `board.MAX_LEN` 2048;
   the side app's mount `/fum` ↔ `location /fum/` in `frontend/nginx.conf` ↔ `MEDAPP_BASE_PATH` in
   the **medapp** repository's `Dockerfile` and `.github/workflows/image.yml` (the frontend used to
-  be a fourth copy and no longer links there at all); the report-reason lists. Change one, change the other, keep
-  the comment that names it.
+  be a fourth copy and no longer links there at all); `wum/models.PAYLOAD_VERSION`,
+  `wum/rules.FORBIDDEN_PAYLOAD_KEYS`, the two `WUM_*_TEXT_VERSION` dates and the size caps ↔
+  `src/lib/privacy/project.ts`, `src/lib/api/wum.ts`, `src/lib/templates/types.ts` in the medapp
+  repository (`wum/CLAUDE.md` "Mirrored constants"); the report-reason lists. Change one, change
+  the other, keep the comment that names it.
 
 ---
 
@@ -177,6 +185,10 @@ of `archive/latexguard.py`; the exact order, options and limits are in `frontend
 /api/people/<slug>/{aliases,claims,portraits}/    /api/claims/…    /api/portraits/…    /api/suggestions/…
 /api/board/  (+ rss/, <id>/{hide,restore,report,escalate}/)    /api/moderation/{escalations,evidence-audit}/…
 /api/feedback/   POST only — a note about a screen of the side app (feedback/); no GET anywhere
+/api/wum/auth/{register,login,logout,me}/   the side app's own accounts (wum/); token-only auth, no archive powers
+/api/wum/templates/ (+ <slug>/)             example patients: public GET of `published` rows, staff write
+/api/wum/publications/ (+ <uuid>/, mine/, <uuid>/withdraw/)   anonymised records: public GET lists only
+                 `published` rows as an opaque uuid + payload + month, never the account; publish and withdraw need a WUM token
 /share/<any path>  + /share/sitemap.xml   — scrapers only, routed by User-Agent in nginx
 ```
 

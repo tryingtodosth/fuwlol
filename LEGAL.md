@@ -183,7 +183,38 @@ person concerned), the trusted tier and what it may do, escalation, the contact 
 about other people's likeness sits beside the people picker. Change moderation copy and the terms
 together — a refusal the terms do not describe is a refusal the reader cannot appeal.
 
-## 9. Left open
+## 9. WUM — accounts and published records (`backend/wum/`)
+
+The side app at `fuw.lol/fum` (MedApp, a separate repository) kept nothing on this server until
+2026-10. Now it keeps two kinds of row, and both are this operator's to answer for under RODO:
+
+- **An account** (`WumProfile` on a Django `User`): a username, a password hash and four
+  optional fields the person typed about themselves (first name, surname, contact e-mail, phone).
+  The sign-up screen says, before the tick, that the app is at an early stage, that nothing in it
+  is clinically reviewed, that it is not a medical record and that no real health data should be
+  entered; `agreed_text_version` records which wording was agreed to. No e-mail verification, no
+  password reset (the mail gap of §10), no self-service deletion: an
+  account is deactivated in the admin on request, and its rows are kept.
+- **A publication** (`Publication`): a record the person chose to publish, anonymised by the app
+  on the phone before it was sent — no name, no legal name, no pronouns, no country or place, no
+  contacts, no care-team names, an age band instead of an age, months instead of dates, free text
+  only if separately ticked with a warning. The row keeps the link to the account for one purpose:
+  withdrawal. Withdrawal is one tap, applies at once and needs no review (art. 7 ust. 3 RODO); the
+  row is marked `withdrawn` and kept as the evidence of what was agreed to and when
+  (`consent_text_version`), like a `PersonClaim`. The public read never carries the account.
+
+What is **not** here: the person's health data. Symptoms, medicines, the emergency card and the
+access log stay in the browser under the app's own retention modes, exactly as before; nothing
+syncs. The app refuses to publish a record of a person under 18; this server cannot verify an age.
+
+Two things a lawyer has to say before this is promoted rather than merely running: that this
+operator is the controller of these rows (the medapp repository's `issues.md` ISS-033 and ISS-011
+ask who, for the app as a whole), and that a single person's minimised record — which cannot be
+k-anonymous, whatever the projection removes — may be published on an opt-in basis with the
+wording the app shows. Withdrawn payloads also survive in the restic backups until a sweeper
+exists (`wum/CLAUDE.md` "Left open").
+
+## 10. Left open
 
 - Nothing here has been read by a lawyer. Before the archive is *promoted* rather than merely
   running, it should be.
@@ -193,4 +224,5 @@ together — a refusal the terms do not describe is a refusal the reader cannot 
   history-recovery effort: it would not — fuw.lol is not a research institution
   (`docs/gemini/note.md`).
 - Minors are not addressed anywhere: the audience is university students and staff, and nothing
-  asks a registrant's age.
+  asks a registrant's age. (The side app refuses to *publish* under 18 on the phone — §9 — but its
+  sign-up asks no age either.)

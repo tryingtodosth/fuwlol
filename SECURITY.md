@@ -151,23 +151,37 @@ caller may not see rather than trusting views to filter.
 WUM is a different application from a different repository, sharing this hostname. That sharing
 is the security-relevant part, and three decisions follow from it:
 
-- **Its one endpoint drops session authentication.** `POST /api/feedback/` accepts
-  `TokenAuthentication` only. Same-origin means a visitor signed in to the archive sends its
-  session cookie to the side app's endpoint without meaning to; with session auth in the list DRF
-  would then enforce CSRF and refuse a bug report with 403. The widget also sends
-  `credentials: 'omit'`. Neither half alone is enough to reason about, so both are written down in
-  `backend/feedback/views.py` and `src/lib/feedback/api.ts`.
+- **Its endpoints drop session authentication.** `POST /api/feedback/` and every view under
+  `/api/wum/` accept `TokenAuthentication` only. Same-origin means a visitor signed in to the
+  archive sends its session cookie to the side app's endpoints without meaning to; with session
+  auth in the list DRF would then enforce CSRF and refuse a bug report or a sign-up with 403. The
+  app also sends `credentials: 'omit'`. Neither half alone is enough to reason about, so both are
+  written down in `backend/feedback/views.py`, `backend/wum/views.py` and the app's
+  `src/lib/feedback/api.ts` / `src/lib/api/wum.ts`.
 - **It runs under the archive's own CSP**, repeated inside `location /fum/` because `add_header`
   does not inherit. Everything it loads is same-origin, it decodes no wasm, and its single network
   call is to this origin, so `default-src 'self'` with `connect-src 'self'` holds. **An app that
   later needs `wasm-unsafe-eval` or a third-party origin does not get it by loosening the archive's
   CSP** — it gets its own header inside its own location.
-- **It stores nothing and is not trusted by anything.** No volume, no database, no shared secret,
-  no token. The worst a compromise of that container does to the archive is answer its own path
-  with something else — which is also why it is a path and not a place with an account.
+- **The container stores nothing and is not trusted by anything.** No volume, no database, no
+  shared secret. The worst a compromise of that container does to the archive is answer its own
+  path with something else. What the app keeps on THIS server (since 2026-10, `backend/wum/`) is
+  deliberately small and goes through the api service like everything else: an account (a `User`
+  marked by a `WumProfile`, with no archive powers — the archive's login refuses it and its own
+  login refuses archive accounts with the same 401), four optional profile fields, and the records
+  people choose to publish, **already anonymised by the app before they leave the phone**
+  (`projectForPublication` in the medapp repository builds the payload field by field; the server's
+  `rules.payload_problems` refuses identity keys as a second look, not as the boundary). The public
+  read exposes an opaque uuid, the payload and a month — never the account. Health data itself
+  (symptoms, medicines, the emergency card) never reaches this server.
+- **Its token is its own.** The app stores its DRF token under `medapp:account` in localStorage,
+  not under the archive's `fuwlol.token`; neither app reads the other's key. Same accepted risk as
+  the archive's own token (below).
 
 The notes themselves are plain text, never rendered by `lib/render/`, and read in the Django admin;
-`backend/feedback/CLAUDE.md` says what has to change first if that ever stops being true.
+`backend/feedback/CLAUDE.md` says what has to change first if that ever stops being true. A
+publication's payload is JSON the app renders from a typed shape; a `payload_version` the app does
+not know is shown as "unknown version", never rendered.
 
 ## Accepted, not forgotten
 
