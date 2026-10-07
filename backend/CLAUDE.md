@@ -6,7 +6,7 @@ trusted-tier, moderation, escalation, R2 and chat endpoints one by one.
 
 ## Run / test
 
-- `cd backend && FUWLOL_CACHE_DIR=<scratch> ../.venv/bin/python manage.py test` — 374 tests,
+- `cd backend && FUWLOL_CACHE_DIR=<scratch> ../.venv/bin/python manage.py test` — 399 tests,
   about 4 minutes, SQLite, no daemon. `manage.py check`, `manage.py makemigrations --check
   --dry-run` (CI enforces the latter; a model change without its migration fails the deploy).
 - Dev server: `./run.sh` from the repo root, or by hand

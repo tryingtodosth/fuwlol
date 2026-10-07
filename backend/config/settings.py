@@ -169,6 +169,11 @@ REST_FRAMEWORK = {
         'wum_profile': '60/hour',
         'wum_publish': '20/hour',
         'wum_template_write': '60/hour',
+        # The practice round (wum/views.py): a practice's settings and notes, and visits asked for
+        # or decided. Writes only, per IP; a physiotherapist confirming a morning's requests is a
+        # dozen calls, a tester's afternoon is fifty.
+        'wum_practice': '120/hour',
+        'wum_visit': '120/hour',
     },
 }
 

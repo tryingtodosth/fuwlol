@@ -6,13 +6,16 @@ the two consent-text versions and the forbidden-key list. Nothing can import acr
 """
 import json
 import re
+from datetime import datetime, timedelta
 
 from django.db import transaction
+from django.db.models import Count, Max
 from django.utils import timezone
 
-from .models import (MAX_PUBLICATION_BYTES, MAX_TEMPLATE_BYTES, PAYLOAD_VERSION,
-                     TEMPLATE_DOCUMENT_VERSION, TEMPLATE_KEYS, TEMPLATE_REFUSED_KEYS, Publication,
-                     WumProfile)
+from .models import (HOURS_MAX_ENTRIES, MAX_PUBLICATION_BYTES, MAX_TEMPLATE_BYTES, PAYLOAD_VERSION,
+                     PRACTICE_NOTE_MAX, SLOT_MINUTES_MAX, SLOT_MINUTES_MIN, TEMPLATE_DOCUMENT_VERSION,
+                     TEMPLATE_KEYS, TEMPLATE_REFUSED_KEYS, VISIT_HOLDING_STATUSES, VISIT_HORIZON_DAYS,
+                     Practice, PracticeNote, Publication, Visit, WumProfile)
 
 # Stamped on every account (`WumProfile.agreed_text_version`) and every publication
 # (`Publication.consent_text_version`). BUMP THE DATE when the wording of the sign-up disclaimers
@@ -150,3 +153,240 @@ def withdraw(publication, user):
     publication.withdrawn_at = timezone.now()
     publication.save(update_fields=['status', 'withdrawn_at'])
     return publication
+
+
+# --- the practice round -----------------------------------------------------------------------
+
+HHMM_RE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
+# The practice's wall clock. Hours are written in it and slots are cut in it, whatever zone the
+# patient's phone is in — the same reason the app's booking module has `HOSPITAL_TZ`.
+PRACTICE_TZ = timezone.get_default_timezone()
+
+
+def is_practitioner(user):
+    """A WUM account that has opened a practice. Anonymous / None → False. Never raises."""
+    if not is_wum_account(user):
+        return False
+    return Practice.objects.filter(owner=user).exists()
+
+
+def _minutes(hhmm):
+    h, m = hhmm.split(':')
+    return int(h) * 60 + int(m)
+
+
+def hours_problems(hours):
+    """Why a weekly-hours list may not be saved, as Polish sentences; empty means it may. A list
+    of {weekday, open, close} in the practice's wall clock; several windows a day are fine as
+    long as they do not overlap."""
+    if not isinstance(hours, list):
+        return ['Godziny muszą być listą okien.']
+    if len(hours) > HOURS_MAX_ENTRIES:
+        return [f'Najwyżej {HOURS_MAX_ENTRIES} okien w tygodniu.']
+    problems = []
+    seen = {}
+    for i, win in enumerate(hours):
+        if not isinstance(win, dict):
+            problems.append(f'Okno {i + 1} musi być obiektem.')
+            continue
+        wd = win.get('weekday')
+        o, c = win.get('open'), win.get('close')
+        if not isinstance(wd, int) or isinstance(wd, bool) or not 0 <= wd <= 6:
+            problems.append(f'Okno {i + 1}: dzień tygodnia to liczba 0 (poniedziałek) – 6 (niedziela).')
+            continue
+        if not isinstance(o, str) or not isinstance(c, str) or not HHMM_RE.match(o) or not HHMM_RE.match(c):
+            problems.append(f'Okno {i + 1}: godziny w postaci „HH:MM”.')
+            continue
+        if _minutes(o) >= _minutes(c):
+            problems.append(f'Okno {i + 1}: otwarcie musi być przed zamknięciem.')
+            continue
+        for (po, pc) in seen.get(wd, []):
+            if _minutes(o) < pc and po < _minutes(c):
+                problems.append(f'Okno {i + 1} nachodzi na inne okno tego samego dnia.')
+                break
+        seen.setdefault(wd, []).append((_minutes(o), _minutes(c)))
+    return problems
+
+
+def slot_minutes_problems(n):
+    if not isinstance(n, int) or isinstance(n, bool) or not SLOT_MINUTES_MIN <= n <= SLOT_MINUTES_MAX or n % 5:
+        return [f'Długość wizyty: {SLOT_MINUTES_MIN}–{SLOT_MINUTES_MAX} minut, co 5.']
+    return []
+
+
+def note_problems(body):
+    if not isinstance(body, str) or not body.strip():
+        return ['Notatka nie może być pusta.']
+    if len(body) > PRACTICE_NOTE_MAX:
+        return [f'Notatka jest za długa (najwyżej {PRACTICE_NOTE_MAX} znaków).']
+    return []
+
+
+def _holding(practice, start, end, exclude_pk=None):
+    qs = Visit.objects.filter(practice=practice, status__in=VISIT_HOLDING_STATUSES,
+                              start__lt=end, end__gt=start)
+    if exclude_pk:
+        qs = qs.exclude(pk=exclude_pk)
+    return qs
+
+
+def windows_for(practice, day):
+    """The practice's open windows on a local calendar `day`, as aware (start, end) pairs."""
+    out = []
+    for win in practice.hours or []:
+        if win.get('weekday') != day.weekday():
+            continue
+        o = datetime.combine(day, datetime.strptime(win['open'], '%H:%M').time())
+        c = datetime.combine(day, datetime.strptime(win['close'], '%H:%M').time())
+        out.append((timezone.make_aware(o, PRACTICE_TZ), timezone.make_aware(c, PRACTICE_TZ)))
+    return out
+
+
+def open_slots(practice, from_day, days, now=None):
+    """Open slots from `from_day` for `days` days: the hours cut into `slot_minutes`, minus the
+    past and minus anything that holds a slot. `days` is clamped to 1..VISIT_HORIZON_DAYS, and
+    nothing beyond `now + VISIT_HORIZON_DAYS` is offered."""
+    now = now or timezone.now()
+    days = max(1, min(int(days), VISIT_HORIZON_DAYS))
+    horizon = now + timedelta(days=VISIT_HORIZON_DAYS)
+    first = timezone.make_aware(datetime.combine(from_day, datetime.min.time()), PRACTICE_TZ)
+    last = first + timedelta(days=days)
+    held = list(_holding(practice, first, last).values_list('start', 'end'))
+    step = timedelta(minutes=practice.slot_minutes)
+    out = []
+    for i in range(days):
+        day = from_day + timedelta(days=i)
+        for (o, c) in windows_for(practice, day):
+            t = o
+            while t + step <= c:
+                s, e = t, t + step
+                t = e
+                if s <= now or s > horizon:
+                    continue
+                if any(hs < e and he > s for (hs, he) in held):
+                    continue
+                out.append((s, e))
+    return out
+
+
+def request_problems(practice, start, now=None):
+    """Why a PATIENT may not ask for a visit at `start`: the slot must be one `open_slots` would
+    offer — in the future, within the horizon, inside a window, on the slot grid, and free. Polish
+    sentences; empty means it may."""
+    now = now or timezone.now()
+    if not practice.listed:
+        return ['Ten gabinet nie przyjmuje teraz zgłoszeń.']
+    if start <= now:
+        return ['Ten termin już minął.']
+    if start > now + timedelta(days=VISIT_HORIZON_DAYS):
+        return [f'Można się umawiać najwyżej {VISIT_HORIZON_DAYS} dni naprzód.']
+    local = timezone.localtime(start, PRACTICE_TZ)
+    step = timedelta(minutes=practice.slot_minutes)
+    end = start + step
+    on_grid = False
+    for (o, c) in windows_for(practice, local.date()):
+        if o <= start and end <= c and int((start - o).total_seconds()) % int(step.total_seconds()) == 0:
+            on_grid = True
+            break
+    if not on_grid:
+        return ['Ten termin jest poza godzinami gabinetu.']
+    if _holding(practice, start, end).exists():
+        return ['Ten termin jest już zajęty.']
+    return []
+
+
+@transaction.atomic
+def request_visit(practice, patient, start, reason, now=None):
+    """A patient asks for a slot. Returns `(visit, problems)`: the row and no problems, or no row
+    and the sentences. Serialised on the practice's rows so two phones asking for the same slot
+    at the same moment get one visit and one refusal."""
+    list(Visit.objects.select_for_update().filter(practice=practice, status__in=VISIT_HOLDING_STATUSES)
+         .values_list('pk', flat=True))
+    problems = request_problems(practice, start, now)
+    if problems:
+        return None, problems
+    row = Visit.objects.create(practice=practice, patient=patient, start=start,
+                               end=start + timedelta(minutes=practice.slot_minutes),
+                               reason=(reason or '').strip(), created_by='patient')
+    return row, []
+
+
+@transaction.atomic
+def practitioner_visit(practice, patient, start, end, note, now=None):
+    """The practitioner writes in their own diary: a block (`patient` None) or a visit for a
+    patient they booked by hand. Confirmed at once; may be outside the hours (a practitioner
+    knows their own diary); may not overlap anything that holds a slot."""
+    now = now or timezone.now()
+    list(Visit.objects.select_for_update().filter(practice=practice, status__in=VISIT_HOLDING_STATUSES)
+         .values_list('pk', flat=True))
+    if end <= start:
+        return None, ['Koniec musi być po początku.']
+    if end - start > timedelta(hours=12):
+        return None, ['Jeden wpis może trwać najwyżej 12 godzin.']
+    if _holding(practice, start, end).exists():
+        return None, ['Ten czas nachodzi na inny wpis w terminarzu.']
+    row = Visit.objects.create(practice=practice, patient=patient, start=start, end=end,
+                               status='confirmed', note=(note or '').strip(),
+                               created_by='practitioner', decided_at=now)
+    return row, []
+
+
+# Who may move a visit where. The practitioner decides on a request and closes a confirmed visit;
+# the patient may only cancel their own, and only one that has not ended. Anything else is refused
+# and the view answers 400 keyed `status` — or 404 when the visit is not theirs at all.
+PRACTITIONER_TRANSITIONS = {
+    'requested': ('confirmed', 'declined'),
+    'confirmed': ('cancelled', 'completed', 'no_show'),
+}
+PATIENT_TRANSITIONS = {
+    'requested': ('cancelled',),
+    'confirmed': ('cancelled',),
+}
+
+
+def transition(visit, to, actor, note=None, now=None):
+    """Move `visit` to `to` as `actor` ('practitioner' | 'patient'). Returns the row, or None when
+    the move is not allowed from this status for this actor. Stamps `decided_at` and keeps the
+    practitioner's `note` when given."""
+    now = now or timezone.now()
+    allowed = PRACTITIONER_TRANSITIONS if actor == 'practitioner' else PATIENT_TRANSITIONS
+    if to not in allowed.get(visit.status, ()):
+        return None
+    if actor == 'patient' and visit.end <= now:
+        return None
+    if actor == 'practitioner' and to in ('completed', 'no_show') and visit.start > now:
+        return None
+    visit.status = to
+    visit.decided_at = now
+    fields = ['status', 'decided_at', 'updated_at']
+    if note is not None and actor == 'practitioner':
+        visit.note = note.strip()
+        fields.append('note')
+    visit.save(update_fields=fields)
+    return visit
+
+
+def practice_patients(practice):
+    """The people who have or had a visit here: one row per patient with the count and the last
+    start, most recent first. A block has no patient and is not a person."""
+    return (Visit.objects.filter(practice=practice, patient__isnull=False)
+            .values('patient__username', 'patient__wum_profile__first_name', 'patient__wum_profile__surname',
+                    'patient__wum_profile__contact_email', 'patient__wum_profile__contact_phone')
+            .annotate(visits=Count('id'), last_start=Max('start'))
+            .order_by('-last_start'))
+
+
+def share_note(note):
+    """One way: a note the patient could read stays readable."""
+    if note.shared_with_patient:
+        return note
+    note.shared_with_patient = True
+    note.shared_at = timezone.now()
+    note.save(update_fields=['shared_with_patient', 'shared_at'])
+    return note
+
+
+def notes_for_patient(user):
+    """What a PATIENT may read: the notes practitioners chose to share with them, newest first."""
+    return (PracticeNote.objects.filter(patient=user, shared_with_patient=True)
+            .select_related('practice', 'visit'))

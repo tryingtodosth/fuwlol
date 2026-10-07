@@ -424,3 +424,391 @@ class MirroredConstantsTests(TestCase):
         archive = next(v for v in validators if hasattr(v, 'regex')).regex.pattern
         self.assertEqual(USERNAME_RE, archive)
         self.assertEqual(USERNAME_RE, r'^[a-zA-Z0-9_.-]{3,30}$')
+
+
+# --- the practice round -----------------------------------------------------------------------
+
+from datetime import datetime, timedelta  # noqa: E402
+
+from django.utils import timezone  # noqa: E402
+
+from .models import (PRACTICE_NOTE_MAX, PROFESSIONS, VISIT_HORIZON_DAYS, VISIT_REASON_MAX,  # noqa: E402
+                     Practice, PracticeNote, Visit)
+
+PRACTICE_ME = '/api/wum/practice/me/'
+PRACTICES = '/api/wum/practices/'
+VISITS = '/api/wum/visits/'
+ALL_WEEK = [{'weekday': d, 'open': '08:00', 'close': '10:00'} for d in range(7)]
+
+
+class PracticeTestCase(WumTestCase):
+    def practitioner(self, username='fizjo', listed=True, **over):
+        token = self.account(username)
+        body = {'display_name': 'Gabinet Fizjo', 'profession': 'physiotherapist', 'listed': listed,
+                'slot_minutes': 30, 'hours': ALL_WEEK}
+        body.update(over)
+        r = self.client.put(PRACTICE_ME, json.dumps(body), content_type='application/json', **self.auth(token))
+        assert r.status_code in (200, 201), r.content
+        return token, r.json()['id']
+
+    def tomorrow_at(self, hhmm):
+        """An aware instant on tomorrow's practice day, as the API would receive it."""
+        day = timezone.localtime(timezone.now(), rules.PRACTICE_TZ).date() + timedelta(days=1)
+        naive = datetime.combine(day, datetime.strptime(hhmm, '%H:%M').time())
+        return timezone.make_aware(naive, rules.PRACTICE_TZ)
+
+    def slots(self, practice_id, **params):
+        q = '&'.join(f'{k}={v}' for k, v in params.items())
+        r = self.client.get(f'{PRACTICES}{practice_id}/slots/' + (f'?{q}' if q else ''))
+        self.assertEqual(r.status_code, 200, r.content)
+        return r.json()['slots']
+
+    def request(self, token, practice_id, start, reason='Ból kolana po bieganiu.'):
+        return self.post(VISITS, {'practice': practice_id, 'start': start.isoformat(), 'reason': reason}, token)
+
+    def act(self, token, visit_id, action, **body):
+        return self.post(f'{VISITS}{visit_id}/{action}/', body, token)
+
+
+class PracticeOpenTests(PracticeTestCase):
+    def test_any_wum_account_opens_a_practice_once_and_then_edits_it(self):
+        token = self.account('fizjo')
+        self.assertEqual(self.client.get(PRACTICE_ME, **self.auth(token)).status_code, 404)
+        self.assertIsNone(self.client.get(ME, **self.auth(token)).json()['practice'])
+        body = {'display_name': 'Gabinet Fizjo', 'profession': 'physiotherapist', 'hours': ALL_WEEK}
+        r = self.client.put(PRACTICE_ME, json.dumps(body), content_type='application/json', **self.auth(token))
+        self.assertEqual(r.status_code, 201)
+        self.assertFalse(r.json()['listed'])  # off until said so
+        self.assertEqual(r.json()['slot_minutes'], 45)
+        r = self.client.put(PRACTICE_ME, json.dumps({**body, 'listed': True, 'slot_minutes': 30}),
+                            content_type='application/json', **self.auth(token))
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(Practice.objects.filter(owner__username='fizjo').count(), 1)
+        me = self.client.get(ME, **self.auth(token)).json()
+        self.assertEqual(me['practice']['display_name'], 'Gabinet Fizjo')
+        self.assertEqual(me['practice']['profession'], 'physiotherapist')
+
+    def test_bad_hours_and_slot_length_are_refused_by_name(self):
+        token = self.account('fizjo')
+        base = {'display_name': 'G', 'profession': 'physiotherapist'}
+        for hours in ([{'weekday': 7, 'open': '08:00', 'close': '10:00'}],
+                      [{'weekday': 0, 'open': '10:00', 'close': '08:00'}],
+                      [{'weekday': 0, 'open': '8:00', 'close': '10:00'}],
+                      [{'weekday': 0, 'open': '08:00', 'close': '10:00'}, {'weekday': 0, 'open': '09:00', 'close': '11:00'}],
+                      'not a list'):
+            r = self.client.put(PRACTICE_ME, json.dumps({**base, 'hours': hours}), content_type='application/json',
+                                **self.auth(token))
+            self.assertEqual(r.status_code, 400, hours)
+            self.assertIn('hours', r.json())
+        for n in (10, 33, 181, 'x'):
+            r = self.client.put(PRACTICE_ME, json.dumps({**base, 'slot_minutes': n}), content_type='application/json',
+                                **self.auth(token))
+            self.assertEqual(r.status_code, 400, n)
+            self.assertIn('slot_minutes', r.json())
+        r = self.client.put(PRACTICE_ME, json.dumps({**base, 'profession': 'wizard'}), content_type='application/json',
+                            **self.auth(token))
+        self.assertIn('profession', r.json())
+        self.assertEqual(Practice.objects.count(), 0)
+
+    def test_the_public_list_shows_listed_practices_and_never_the_owner(self):
+        self.practitioner('fizjo', listed=True)
+        self.practitioner('cichy', listed=False, display_name='Cichy Gabinet')
+        r = self.client.get(PRACTICES)
+        self.assertEqual(r.status_code, 200)
+        names = [p['display_name'] for p in r.json()['results']]
+        self.assertEqual(names, ['Gabinet Fizjo'])
+        text = r.content.decode()
+        self.assertNotIn('fizjo', text.replace('Gabinet Fizjo', ''))
+        self.assertNotIn('owner', text)
+        self.assertNotIn('username', text)
+        unlisted = Practice.objects.get(display_name='Cichy Gabinet')
+        self.assertEqual(self.client.get(f'{PRACTICES}{unlisted.public_id}/').status_code, 404)
+        self.assertEqual(self.client.get(f'{PRACTICES}{unlisted.public_id}/slots/').status_code, 404)
+
+    def test_an_archive_token_cannot_open_a_practice(self):
+        token = self.archive_token()
+        r = self.client.put(PRACTICE_ME, json.dumps({'display_name': 'G', 'profession': 'other'}),
+                            content_type='application/json', **self.auth(token))
+        self.assertEqual(r.status_code, 403)
+
+
+class SlotTests(PracticeTestCase):
+    def test_the_hours_are_cut_into_slots_minus_the_past_and_the_held(self):
+        token, pid = self.practitioner()
+        tomorrow = timezone.localtime(timezone.now(), rules.PRACTICE_TZ).date() + timedelta(days=1)
+        slots = self.slots(pid, **{'from': tomorrow.isoformat(), 'days': 1})
+        self.assertEqual(len(slots), 4)  # 08:00–10:00 by 30 minutes
+        self.assertEqual(timezone.localtime(datetime.fromisoformat(slots[0]['start']), rules.PRACTICE_TZ).strftime('%H:%M'), '08:00')
+        self.assertEqual(timezone.localtime(datetime.fromisoformat(slots[-1]['end']), rules.PRACTICE_TZ).strftime('%H:%M'), '10:00')
+        # A request holds its slot.
+        patient = self.account('zofia')
+        r = self.request(patient, pid, self.tomorrow_at('08:30'))
+        self.assertEqual(r.status_code, 201, r.content)
+        starts = [timezone.localtime(datetime.fromisoformat(s['start']), rules.PRACTICE_TZ).strftime('%H:%M')
+                  for s in self.slots(pid, **{'from': tomorrow.isoformat(), 'days': 1})]
+        self.assertEqual(starts, ['08:00', '09:00', '09:30'])
+        # A declined one gives it back.
+        self.assertEqual(self.act(token, r.json()['id'], 'decline', note='Nie w ten dzień.').status_code, 200)
+        self.assertEqual(len(self.slots(pid, **{'from': tomorrow.isoformat(), 'days': 1})), 4)
+
+    def test_days_is_clamped_and_nothing_beyond_the_horizon_is_offered(self):
+        _, pid = self.practitioner()
+        r = self.client.get(f'{PRACTICES}{pid}/slots/?days=999')
+        self.assertEqual(r.json()['days'], VISIT_HORIZON_DAYS)
+        latest = max(datetime.fromisoformat(s['start']) for s in r.json()['slots'])
+        self.assertLessEqual(latest, timezone.now() + timedelta(days=VISIT_HORIZON_DAYS))
+        far = (timezone.localtime(timezone.now(), rules.PRACTICE_TZ).date() + timedelta(days=VISIT_HORIZON_DAYS + 5)).isoformat()
+        self.assertEqual(self.slots(pid, **{'from': far, 'days': 3}), [])
+
+
+class VisitRequestTests(PracticeTestCase):
+    def test_a_patient_asks_for_a_slot_and_the_practitioner_sees_the_card(self):
+        token, pid = self.practitioner()
+        patient = self.account('zofia')
+        self.client.patch(ME, json.dumps({'first_name': 'Zofia', 'contact_phone': '+48 600 000 000'}),
+                          content_type='application/json', **self.auth(patient))
+        r = self.request(patient, pid, self.tomorrow_at('08:00'))
+        self.assertEqual(r.status_code, 201, r.content)
+        body = r.json()
+        self.assertEqual(body['status'], 'requested')
+        self.assertEqual(body['created_by'], 'patient')
+        self.assertNotIn('patient', body)  # the patient knows who they are
+        diary = self.client.get(f'{PRACTICE_ME}visits/', **self.auth(token)).json()['visits']
+        self.assertEqual(len(diary), 1)
+        self.assertEqual(diary[0]['patient'], {'username': 'zofia', 'first_name': 'Zofia', 'surname': '',
+                                               'contact_email': '', 'contact_phone': '+48 600 000 000'})
+        self.assertEqual(diary[0]['reason'], 'Ból kolana po bieganiu.')
+        mine = self.client.get(f'{VISITS}mine/', **self.auth(patient)).json()
+        self.assertEqual([v['id'] for v in mine], [body['id']])
+        self.assertEqual(mine[0]['practice']['display_name'], 'Gabinet Fizjo')
+
+    def test_the_same_slot_twice_is_refused_by_name_and_so_is_one_outside_the_hours(self):
+        _, pid = self.practitioner()
+        a, b = self.account('zofia'), self.account('marek')
+        self.assertEqual(self.request(a, pid, self.tomorrow_at('09:00')).status_code, 201)
+        r = self.request(b, pid, self.tomorrow_at('09:00'))
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('start', r.json())
+        for hhmm in ('07:30', '09:45', '10:00', '12:00'):
+            r = self.request(b, pid, self.tomorrow_at(hhmm))
+            self.assertEqual(r.status_code, 400, hhmm)
+            self.assertIn('start', r.json())
+        self.assertEqual(Visit.objects.count(), 1)
+
+    def test_the_past_the_far_future_and_an_unlisted_practice_are_refused(self):
+        _, pid = self.practitioner()
+        _, quiet = self.practitioner('cichy', listed=False)
+        patient = self.account('zofia')
+        r = self.request(patient, pid, timezone.now() - timedelta(days=1))
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('start', r.json())
+        r = self.request(patient, pid, self.tomorrow_at('08:00') + timedelta(days=VISIT_HORIZON_DAYS + 7))
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('start', r.json())
+        r = self.request(patient, quiet, self.tomorrow_at('08:00'))
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('practice', r.json())
+        r = self.request(patient, pid, self.tomorrow_at('08:00'), reason='x' * (VISIT_REASON_MAX + 1))
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('reason', r.json())
+
+    def test_an_archive_token_may_not_ask(self):
+        _, pid = self.practitioner()
+        r = self.request(self.archive_token(), pid, self.tomorrow_at('08:00'))
+        self.assertEqual(r.status_code, 403)
+
+
+class VisitTransitionTests(PracticeTestCase):
+    def setUp(self):
+        super().setUp()
+        self.token, self.pid = self.practitioner()
+        self.patient = self.account('zofia')
+        self.visit = self.request(self.patient, self.pid, self.tomorrow_at('08:00')).json()['id']
+
+    def test_the_practitioner_confirms_and_the_patient_sees_it(self):
+        r = self.act(self.token, self.visit, 'confirm')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()['status'], 'confirmed')
+        self.assertIsNotNone(r.json()['decided_at'])
+        mine = self.client.get(f'{VISITS}mine/', **self.auth(self.patient)).json()
+        self.assertEqual(mine[0]['status'], 'confirmed')
+
+    def test_a_decline_carries_the_practitioners_note_to_the_patient(self):
+        r = self.act(self.token, self.visit, 'decline', note='Proszę o termin po 15.')
+        self.assertEqual(r.json()['status'], 'declined')
+        mine = self.client.get(f'{VISITS}mine/', **self.auth(self.patient)).json()
+        self.assertEqual(mine[0]['note'], 'Proszę o termin po 15.')
+
+    def test_the_patient_may_only_cancel_and_a_stranger_gets_404(self):
+        for action in ('confirm', 'decline', 'complete', 'no_show'):
+            r = self.act(self.patient, self.visit, action)
+            self.assertEqual(r.status_code, 400, action)
+            self.assertIn('status', r.json())
+        stranger = self.account('obcy')
+        self.assertEqual(self.act(stranger, self.visit, 'cancel').status_code, 404)
+        self.assertEqual(self.act(stranger, self.visit, 'confirm').status_code, 404)
+        self.assertEqual(self.act(self.patient, self.visit, 'cancel').status_code, 200)
+        self.assertEqual(Visit.objects.get(public_id=self.visit).status, 'cancelled')
+        # A cancelled visit is final.
+        self.assertEqual(self.act(self.token, self.visit, 'confirm').status_code, 400)
+
+    def test_a_visit_is_completed_only_after_it_started(self):
+        self.act(self.token, self.visit, 'confirm')
+        r = self.act(self.token, self.visit, 'complete')
+        self.assertEqual(r.status_code, 400)  # tomorrow has not happened
+        Visit.objects.filter(public_id=self.visit).update(start=timezone.now() - timedelta(hours=2),
+                                                          end=timezone.now() - timedelta(hours=1))
+        self.assertEqual(self.act(self.token, self.visit, 'complete').json()['status'], 'completed')
+        # …and a completed visit cannot be re-opened by anybody.
+        self.assertEqual(self.act(self.token, self.visit, 'cancel').status_code, 400)
+        self.assertEqual(self.act(self.patient, self.visit, 'cancel').status_code, 400)
+
+    def test_an_unknown_action_is_404(self):
+        self.assertEqual(self.act(self.token, self.visit, 'explode').status_code, 404)
+
+    def test_rows_are_never_deleted(self):
+        self.act(self.token, self.visit, 'decline')
+        self.assertEqual(Visit.objects.count(), 1)
+
+
+class PractitionerDiaryTests(PracticeTestCase):
+    def test_a_block_holds_the_slot_and_is_never_shown_to_a_patient(self):
+        token, pid = self.practitioner()
+        r = self.post(f'{PRACTICE_ME}visits/', {'start': self.tomorrow_at('08:00').isoformat(),
+                                                 'end': self.tomorrow_at('09:00').isoformat(), 'note': 'Zebranie'}, token)
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.json()['status'], 'confirmed')
+        self.assertIsNone(r.json()['patient'])
+        tomorrow = timezone.localtime(timezone.now(), rules.PRACTICE_TZ).date() + timedelta(days=1)
+        starts = [timezone.localtime(datetime.fromisoformat(s['start']), rules.PRACTICE_TZ).strftime('%H:%M')
+                  for s in self.slots(pid, **{'from': tomorrow.isoformat(), 'days': 1})]
+        self.assertEqual(starts, ['09:00', '09:30'])
+        patient = self.account('zofia')
+        self.assertEqual(self.client.get(f'{VISITS}mine/', **self.auth(patient)).json(), [])
+        # An overlapping block is refused by name.
+        r = self.post(f'{PRACTICE_ME}visits/', {'start': self.tomorrow_at('08:30').isoformat(),
+                                                 'end': self.tomorrow_at('09:30').isoformat()}, token)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('start', r.json())
+
+    def test_the_practitioner_books_a_patient_by_username_or_is_told_there_is_none(self):
+        token, pid = self.practitioner()
+        self.account('zofia')
+        r = self.post(f'{PRACTICE_ME}visits/', {'patient': 'Zofia', 'start': self.tomorrow_at('12:00').isoformat(),
+                                                 'end': self.tomorrow_at('12:45').isoformat()}, token)
+        self.assertEqual(r.status_code, 201, r.content)  # outside the hours is the practitioner's call
+        self.assertEqual(r.json()['patient']['username'], 'zofia')
+        self.assertEqual(r.json()['created_by'], 'practitioner')
+        r = self.post(f'{PRACTICE_ME}visits/', {'patient': 'nikt', 'start': self.tomorrow_at('13:00').isoformat(),
+                                                 'end': self.tomorrow_at('13:45').isoformat()}, token)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('patient', r.json())
+
+    def test_the_diary_is_a_range_and_a_non_practitioner_is_403(self):
+        token, pid = self.practitioner()
+        patient = self.account('zofia')
+        self.request(patient, pid, self.tomorrow_at('08:00'))
+        lo = self.tomorrow_at('00:00')
+        # Encoded, as the app does: a bare `+02:00` in a query string decodes to a space.
+        r = self.client.get(f'{PRACTICE_ME}visits/', {'from': lo.isoformat(), 'to': (lo + timedelta(days=1)).isoformat()},
+                            **self.auth(token))
+        self.assertEqual(len(r.json()['visits']), 1)
+        r = self.client.get(f'{PRACTICE_ME}visits/', {'from': (lo + timedelta(days=3)).isoformat()}, **self.auth(token))
+        self.assertEqual(r.json()['visits'], [])
+        self.assertEqual(self.client.get(f'{PRACTICE_ME}visits/', **self.auth(patient)).status_code, 403)
+        self.assertEqual(self.client.get(f'{PRACTICE_ME}patients/', **self.auth(patient)).status_code, 403)
+
+    def test_patients_are_the_people_with_visits_here_and_nobody_else(self):
+        token, pid = self.practitioner()
+        zofia, marek = self.account('zofia'), self.account('marek')
+        self.request(zofia, pid, self.tomorrow_at('08:00'))
+        r = self.client.get(f'{PRACTICE_ME}patients/', **self.auth(token))
+        self.assertEqual([p['username'] for p in r.json()], ['zofia'])
+        self.assertEqual(r.json()[0]['visits'], 1)
+        # Marek has an account but never booked here: the same 404 as a name that does not exist.
+        self.assertEqual(self.client.get(f'{PRACTICE_ME}patients/marek/', **self.auth(token)).status_code, 404)
+        self.assertEqual(self.client.get(f'{PRACTICE_ME}patients/nikt/', **self.auth(token)).status_code, 404)
+        r = self.client.get(f'{PRACTICE_ME}patients/Zofia/', **self.auth(token))
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()['patient']['username'], 'zofia')
+        self.assertEqual(len(r.json()['visits']), 1)
+        self.assertEqual(r.json()['notes'], [])
+
+
+class PracticeNoteTests(PracticeTestCase):
+    def setUp(self):
+        super().setUp()
+        self.token, self.pid = self.practitioner()
+        self.patient = self.account('zofia')
+        self.visit = self.request(self.patient, self.pid, self.tomorrow_at('08:00')).json()['id']
+        self.url = f'{PRACTICE_ME}patients/zofia/'
+
+    def test_a_private_note_stays_private_until_shared_and_sharing_is_one_way(self):
+        r = self.post(self.url, {'body': 'Ograniczony zakres zgięcia, L.', 'visit': self.visit}, self.token)
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertFalse(r.json()['shared_with_patient'])
+        self.assertEqual(r.json()['visit'], self.visit)
+        self.assertEqual(self.client.get('/api/wum/notes/mine/', **self.auth(self.patient)).json(), [])
+        note_id = r.json()['id']
+        r = self.post(f'{PRACTICE_ME}notes/{note_id}/share/', {}, self.token)
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()['shared_with_patient'])
+        mine = self.client.get('/api/wum/notes/mine/', **self.auth(self.patient)).json()
+        self.assertEqual(len(mine), 1)
+        self.assertEqual(mine[0]['body'], 'Ograniczony zakres zgięcia, L.')
+        self.assertEqual(mine[0]['practice']['display_name'], 'Gabinet Fizjo')
+        self.assertNotIn('patient', mine[0])
+        # Sharing again changes nothing; there is no un-share endpoint.
+        again = self.post(f'{PRACTICE_ME}notes/{note_id}/share/', {}, self.token).json()
+        self.assertEqual(again['shared_at'], r.json()['shared_at'])
+
+    def test_a_note_shared_at_once_and_a_correction_that_names_what_it_amends(self):
+        first = self.post(self.url, {'body': 'Ćwiczenia 2× dziennie.', 'shared_with_patient': True}, self.token).json()
+        self.assertTrue(first['shared_with_patient'])
+        second = self.post(self.url, {'body': 'Poprawka: 3× dziennie.', 'shared_with_patient': True,
+                                      'amends': first['id']}, self.token).json()
+        self.assertEqual(second['amends'], first['id'])
+        mine = self.client.get('/api/wum/notes/mine/', **self.auth(self.patient)).json()
+        self.assertEqual([n['body'] for n in mine], ['Poprawka: 3× dziennie.', 'Ćwiczenia 2× dziennie.'])
+
+    def test_the_model_is_append_only(self):
+        note = PracticeNote.objects.create(practice=Practice.objects.get(), patient=User.objects.get(username='zofia'),
+                                           body='x')
+        note.body = 'y'
+        with self.assertRaises(ValueError):
+            note.save()
+        with self.assertRaises(ValueError):
+            note.save(update_fields=['body'])
+        with self.assertRaises(ValueError):
+            note.delete()
+        rules.share_note(note)  # the one allowed write
+        self.assertEqual(PracticeNote.objects.get().body, 'x')
+
+    def test_refusals_are_by_name(self):
+        r = self.post(self.url, {'body': '   '}, self.token)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('body', r.json())
+        r = self.post(self.url, {'body': 'x' * (PRACTICE_NOTE_MAX + 1)}, self.token)
+        self.assertIn('body', r.json())
+        other = self.account('marek')
+        other_visit = self.request(other, self.pid, self.tomorrow_at('09:00')).json()['id']
+        r = self.post(self.url, {'body': 'x', 'visit': other_visit}, self.token)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('visit', r.json())
+        # Another practice cannot share this practice's note: 404, not 403.
+        other_token, _ = self.practitioner('inny')
+        note = self.post(self.url, {'body': 'prywatna'}, self.token).json()['id']
+        self.assertEqual(self.post(f'{PRACTICE_ME}notes/{note}/share/', {}, other_token).status_code, 404)
+        self.assertEqual(self.post(self.url, {'body': 'x'}, other_token).status_code, 404)
+        self.assertEqual(self.post(self.url, {'body': 'x'}, self.patient).status_code, 403)
+
+
+class PracticeMirroredConstantsTests(TestCase):
+    """The other half is MedApp's `src/lib/api/wum.ts` and `scripts/privacy-check.mjs`."""
+    def test_pinned(self):
+        self.assertEqual(PROFESSIONS, ('physiotherapist', 'dietitian', 'psychologist', 'nurse', 'other'))
+        self.assertEqual(VISIT_REASON_MAX, 300)
+        self.assertEqual(PRACTICE_NOTE_MAX, 4000)
+        self.assertEqual(VISIT_HORIZON_DAYS, 60)
+        self.assertEqual(rules.PRACTITIONER_TRANSITIONS['requested'], ('confirmed', 'declined'))
+        self.assertEqual(rules.PATIENT_TRANSITIONS['confirmed'], ('cancelled',))
