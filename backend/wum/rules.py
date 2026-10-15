@@ -3,6 +3,8 @@ endpoint needs lives in one place, and the endpoints ask it).
 
 Two things here are MIRRORED by hand in the medapp repository and pinned by tests on both sides:
 the two consent-text versions and the forbidden-key list. Nothing can import across the repos.
+The practice round adds its own (the transition tables; E3 the two annotation id regexes and
+ANNOTATION_STATUSES, pinned by `PracticeMirroredConstantsTests` here and `privacy-check` there).
 """
 import json
 import re
@@ -12,10 +14,11 @@ from django.db import transaction
 from django.db.models import Count, Max
 from django.utils import timezone
 
-from .models import (HOURS_MAX_ENTRIES, MAX_PUBLICATION_BYTES, MAX_TEMPLATE_BYTES, PAYLOAD_VERSION,
-                     PRACTICE_NOTE_MAX, SLOT_MINUTES_MAX, SLOT_MINUTES_MIN, TEMPLATE_DOCUMENT_VERSION,
-                     TEMPLATE_KEYS, TEMPLATE_REFUSED_KEYS, VISIT_HOLDING_STATUSES, VISIT_HORIZON_DAYS,
-                     Practice, PracticeNote, Publication, Visit, WumProfile)
+from .models import (ANNOTATION_NOTE_MAX, HOURS_MAX_ENTRIES, MAX_PUBLICATION_BYTES, MAX_TEMPLATE_BYTES,
+                     PAYLOAD_VERSION, PRACTICE_NOTE_MAX, SLOT_MINUTES_MAX, SLOT_MINUTES_MIN,
+                     TEMPLATE_DOCUMENT_VERSION, TEMPLATE_KEYS, TEMPLATE_REFUSED_KEYS, VISIT_HOLDING_STATUSES,
+                     VISIT_HORIZON_DAYS, Practice, PracticeNote, Publication, Visit, VisitAnnotation,
+                     WumProfile)
 
 # Stamped on every account (`WumProfile.agreed_text_version`) and every publication
 # (`Publication.consent_text_version`). BUMP THE DATE when the wording of the sign-up disclaimers
@@ -390,3 +393,78 @@ def notes_for_patient(user):
     """What a PATIENT may read: the notes practitioners chose to share with them, newest first."""
     return (PracticeNote.objects.filter(patient=user, shared_with_patient=True)
             .select_related('practice', 'visit'))
+
+
+# --- E3 (medapp H2-R5): the practitioner marks the figure back --------------------------------
+
+# A part id as the app's registry writes it (`knee_l`, `ves_aorta`) and a movement id as its
+# library does (`single_leg_stance`). The SHAPE only: the server has no registry and no library and
+# never checks an id against anything — `cat_skin_head` and `zzz_not_a_part` are kept as given,
+# and the app (`src/lib/practice/annotations.ts`) is the only interpreter. MIRRORED in MedApp
+# `src/lib/api/wum.ts` (ANNOTATION_PART_ID_RE, ANNOTATION_MOVEMENT_ID_RE); the bounds equal
+# models.ANNOTATION_PART_ID_MAX / ANNOTATION_MOVEMENT_ID_MAX.
+ANNOTATION_PART_ID_RE = re.compile(r'^[a-z0-9_]{1,40}$')          # MIRRORED in MedApp src/lib/api/wum.ts
+ANNOTATION_MOVEMENT_ID_RE = re.compile(r'^[a-z0-9_]{1,60}$')      # MIRRORED in MedApp src/lib/api/wum.ts
+# The visit statuses a mark may be written or shared on: the visit happened or will happen. A
+# request, a refusal, a cancellation or a no-show is not a visit anybody examined anything at.
+# MIRRORED in MedApp src/lib/api/wum.ts.
+ANNOTATION_STATUSES = ('confirmed', 'completed')
+
+
+def part_id_problems(value):
+    if not isinstance(value, str) or not value:
+        return ['Wybierz część ciała.']
+    if not ANNOTATION_PART_ID_RE.fullmatch(value):
+        return ['Nieprawidłowy identyfikator części ciała (małe litery, cyfry i _, najwyżej 40 znaków).']
+    return []
+
+
+def annotation_note_problems(value):
+    if not isinstance(value, str) or not value.strip():
+        return ['Opis nie może być pusty.']
+    if len(value) > ANNOTATION_NOTE_MAX:
+        return [f'Opis jest za długi (najwyżej {ANNOTATION_NOTE_MAX} znaków).']
+    return []
+
+
+def movement_id_problems(value):
+    """Empty or None means no movement was named; otherwise the id's shape, never its existence."""
+    if value is None or value == '':
+        return []
+    if not isinstance(value, str) or not ANNOTATION_MOVEMENT_ID_RE.fullmatch(value):
+        return ['Nieprawidłowy identyfikator ćwiczenia (małe litery, cyfry i _, najwyżej 60 znaków).']
+    return []
+
+
+def annotation_visit_problem(visit):
+    """Why a mark may not be written on (or shared from) `visit`, as `(field, sentences)`, or None.
+    A block has no patient to read a mark; a visit outside ANNOTATION_STATUSES did not happen."""
+    if visit.patient_id is None:
+        return ('visit', ['To jest blokada w terminarzu, nie wizyta pacjenta.'])
+    if visit.status not in ANNOTATION_STATUSES:
+        return ('status', ['Oznaczenie można dodać tylko do wizyty potwierdzonej lub odbytej.'])
+    return None
+
+
+def share_annotation(annotation):
+    """One way: a mark the patient could read stays readable, and sharing it again changes
+    nothing (the same `shared_at`). Returns None — the view answers 400 `status` — when the visit
+    has left ANNOTATION_STATUSES (cancelled after the mark was written): a mark is not handed to a
+    patient about a visit that did not happen. An already shared mark is returned as it is."""
+    if annotation.shared_with_patient:
+        return annotation
+    if annotation.visit.status not in ANNOTATION_STATUSES:
+        return None
+    annotation.shared_with_patient = True
+    annotation.shared_at = timezone.now()
+    annotation.save(update_fields=['shared_with_patient', 'shared_at'])
+    return annotation
+
+
+def annotations_for_patient(user):
+    """What a PATIENT may read: the marks shared with them, on visits where they are the patient,
+    newest first (the model's ordering). `amends__amends` is preloaded for the serializer's walk
+    to the nearest shared ancestor (`serializers.annotation_row`); a longer private run costs a
+    query a step."""
+    return (VisitAnnotation.objects.filter(visit__patient=user, shared_with_patient=True)
+            .select_related('visit', 'practice', 'amends', 'amends__amends'))

@@ -284,8 +284,8 @@ then has to be kept alive.
 builds it mounted, pushes `ghcr.io/tryingtodosth/fuwlol-skoki:<sha>` **and `:latest`**, and prints
 the tag. Nothing on this box pulls by itself: the archive's own deploy re-pulls whatever
 `SKOKI_TAG` says (`latest` unless pinned), and otherwise it is the two lines below. The box was
-found 40 commits behind on 2026-10-06 for exactly that reason. The api side (`wum/0001`) migrates
-on container start (`backend/entrypoint.sh`), so the archive's deploy carries it. Then here:
+found 40 commits behind on 2026-10-06 for exactly that reason. The api side (`wum/0001` … `wum/0003`,
+the last the practitioners' marks on the figure of 2026-10-15) migrates on container start (`backend/entrypoint.sh`), so the archive's deploy carries it. Then here:
 
 ```bash
 cd /srv/fuwlol

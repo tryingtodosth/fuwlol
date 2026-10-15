@@ -1,9 +1,9 @@
-# wum — the side app's accounts, example templates, anonymised publications and, since 2026-10-07, practitioners' diaries and notes
+# wum — the side app's accounts, example templates, anonymised publications and, since 2026-10-07, practitioners' diaries and notes (and, since 2026-10-15, their marks on the figure)
 
 MedApp (deployed here as **WUM**, container `skoki`, served at `fuw.lol/fum`) kept nothing on this
 server until 2026-10; `feedback/` was its one call. This app is what it keeps now, and the line
 between these tables and the patient's health data is the design (`models.py` docstring).
-64 tests.
+75 tests.
 
 ## The rows
 
@@ -37,6 +37,20 @@ between these tables and the patient's health data is the design (`models.py` do
     (`save()` refuses every update but sharing, `delete()` always); a correction is a new note
     whose `amends` names the old one. Private to the practice unless `shared_with_patient`, and
     sharing is ONE WAY (`rules.share_note`): a patient who could read it has read it.
+
+- **E3, the practitioner marks the figure back** (2026-10-15, medapp `docs/work/H2-R5-BRIEF.md`,
+  `docs/HISTORY.md §57` there) — one more row, a note with a place:
+  - `VisitAnnotation`: one `part_id` (a string from the app's figure registry, ≤ 40), one
+    sentence `note` (≤ `ANNOTATION_NOTE_MAX` = 300), optionally one `movement_id` from the app's
+    movement library (≤ 60, stored `''` when none, serialised `null`), on one `visit`, by that
+    visit's `practice` (set from the visit on create; `save()` refuses a mismatch). The
+    practitioner's record exactly as a note is: **append-only at the model** (`save()` refuses
+    every update but `SHARE_FIELDS`, `delete()` always), private until `shared_with_patient`,
+    shared one way; a correction is a new row whose `amends` names one of the SAME visit's marks.
+    **The server keeps the part id as a string and never validates anatomy** — it has no
+    registry and no library; `cat_skin_head` and `zzz_not_a_part` are kept as sent, and the app
+    (`src/lib/practice/annotations.ts`) is the only interpreter. No coordinate, no severity, no
+    diagnosis, no status of the body: by design, not by omission.
 
 ## Rules (`rules.py`)
 
@@ -81,15 +95,37 @@ between these tables and the patient's health data is the design (`models.py` do
   patient is `patient_card`: the username and whatever the patient put on their own account —
   nothing from any health store, because the server has none.
 
+- **E3, the marks.** Only on a visit of the caller's own practice whose status is in
+  `ANNOTATION_STATUSES` (`confirmed`, `completed`): a block (no patient) is 400 keyed `visit`,
+  any other status 400 keyed `status` (`annotation_visit_problem`); another practice's visit is
+  the 404 of an unknown uuid, byte for byte, on create, list and share. Each field is refused by
+  its own rule, keyed by its name (`part_id_problems`, `annotation_note_problems`,
+  `movement_id_problems` — the SHAPE of an id, `fullmatch` so a trailing newline is refused, and
+  ids are not whitespace-trimmed). `amends` must name a mark of THIS visit that has **no
+  correction yet** (400 `amends` otherwise; looked up under `select_for_update`), so a correction
+  chain is a line and "the latest mark" is defined. `share_annotation` is one way: sharing a
+  shared mark changes nothing (same `shared_at`); a private mark on a visit that has since left
+  `ANNOTATION_STATUSES` (cancelled after the mark) is refused, 400 `status`. The patient reads
+  `annotations_for_patient(user)`: the shared marks of visits where they are the patient, newest
+  first. `annotation_row` is **exactly eleven keys in both views** (`id, visit, visit_start,
+  practice, part_id, note, movement_id, amends, shared_with_patient, shared_at, created_at`) — no
+  `patient` key in either. In the practitioner's view `amends` is the direct link; in the
+  patient's it is the **nearest shared ancestor** up the chain, or `null` — a shared A corrected
+  privately by B, then B by a shared C, reads "C corrects A" (true transitively, so the phone
+  lights only C) and reveals nothing about B (the id of a private mark would tell the patient
+  one exists; a patient cannot tell whether a step was skipped).
+
 ## Mirrored constants
 
 `PAYLOAD_VERSION`, `WUM_ACCOUNT_TEXT_VERSION`, `WUM_PUBLISH_TEXT_VERSION`, `FORBIDDEN_PAYLOAD_KEYS`,
 `MAX_PUBLICATION_BYTES`, `MAX_TEMPLATE_BYTES`, `TEMPLATE_DOCUMENT_VERSION`, `TEMPLATE_KEYS`, the
 username regex — and, from the practice round, `PROFESSIONS`, `VISIT_REASON_MAX`,
-`VISIT_NOTE_MAX`, `PRACTICE_NOTE_MAX`, `VISIT_HORIZON_DAYS` and the two transition tables — also
+`VISIT_NOTE_MAX`, `PRACTICE_NOTE_MAX`, `VISIT_HORIZON_DAYS` and the two transition tables, and
+from E3 `ANNOTATION_NOTE_MAX` (`models.py`), `ANNOTATION_PART_ID_RE` (`^[a-z0-9_]{1,40}$`),
+`ANNOTATION_MOVEMENT_ID_RE` (`^[a-z0-9_]{1,60}$`) and `ANNOTATION_STATUSES` (`rules.py`) — also
 live in MedApp (`src/lib/api/wum.ts`, `src/lib/privacy/project.ts`,
 `src/lib/templates/types.ts`) — a **separate repository**, so nothing can import across.
-`tests.py MirroredConstantsTests` pins this side; `scripts/privacy-check.mjs` pins that one.
+`tests.py MirroredConstantsTests` / `PracticeMirroredConstantsTests` pin this side; `scripts/privacy-check.mjs` pins that one.
 **Change the wording of the sign-up disclaimers or the publish statement → bump the matching text
 version on both sides**, or every sign-up / publish answers 409 until the app is rebuilt.
 
@@ -107,9 +143,16 @@ GET  /api/wum/practice/me/patients/   GET|POST …/<username>/      the card, vi
 POST /api/wum/practice/me/notes/<uuid>/share/
 POST /api/wum/visits/   GET /api/wum/visits/mine/   POST /api/wum/visits/<uuid>/{confirm,decline,cancel,complete,no_show}/
 GET  /api/wum/notes/mine/                                          the notes shared with this patient
+
+GET|POST /api/wum/practice/me/visits/<uuid>/annotations/           IsPractitioner; the visit's marks, private and shared, newest first; POST = a mark
+POST /api/wum/practice/me/annotations/<uuid>/share/                IsPractitioner; one way
+GET  /api/wum/visits/mine/annotations/                             IsWumAccount; the marks shared with this patient, newest first
 ```
 
-Throttles (writes only): `wum_practice` 120/h, `wum_visit` 120/h.
+Throttles (writes only): `wum_practice` 120/h, `wum_visit` 120/h. The two annotation write views
+use the notes' scope, `wum_practice` (`UnsafeScopedThrottle`, so the GET on the same view is not
+counted); the patient's read has no throttle, like `notes/mine/`. No new scope.
+`/admin/wum/visitannotation/` is read-only like the notes' (no add, no change, no delete).
 
 ## Left open
 
@@ -133,3 +176,10 @@ Throttles (writes only): `wum_practice` 120/h, `wum_visit` 120/h.
   theirs to export) or the patient's (and theirs to erase) is the controller question of
   ISS-036/ISS-037 in the medapp repository; today a patient can cancel a visit and read what
   was shared, and cannot delete either.
+- **E3 grows that health-shaped text by one row kind**: a `VisitAnnotation` is a part id and up
+  to 300 characters a practitioner wrote about a named account's visit, under the same
+  disclaimer, unencrypted beyond Postgres and the backups, never swept (medapp ISS-038).
+- **A note's `amends` leaks a private note's existence**: `note_row` serialises `amends` for the
+  patient even when the note it names was never shared, so the patient learns its uuid. The
+  annotation row does not (`annotation_row` walks to the nearest shared ancestor); the notes' behaviour was left unchanged
+  this round on purpose and is recorded in medapp ISS-038.

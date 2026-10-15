@@ -322,3 +322,70 @@ class PracticeNote(models.Model):
 
     def __str__(self):
         return f'{self.practice.display_name} → {self.patient.username} · {self.created_at:%Y-%m-%d}'
+
+
+# --- E3 (medapp H2-R5): the practitioner marks the figure back --------------------------------
+
+# One sentence about one part. MIRRORED in MedApp `src/lib/api/wum.ts` (ANNOTATION_NOTE_MAX); the
+# two id caps are carried by the regexes in `rules.py` (ANNOTATION_PART_ID_RE,
+# ANNOTATION_MOVEMENT_ID_RE), which MedApp mirrors in turn. They live here, beside their peers,
+# because a field's `max_length` needs them and `rules.py` imports this module, not the reverse.
+ANNOTATION_NOTE_MAX = 300          # MIRRORED in MedApp src/lib/api/wum.ts
+ANNOTATION_PART_ID_MAX = 40        # the regex in rules.py carries the same bound
+ANNOTATION_MOVEMENT_ID_MAX = 60    # the regex in rules.py carries the same bound
+
+
+class VisitAnnotation(models.Model):
+    """A practitioner's mark on the figure for one visit: a part id from the app's registry, one
+    sentence, optionally a movement id from the app's library. APPEND-ONLY like PracticeNote:
+    `save()` on an existing row is refused except to share it, and `delete()` always — a
+    correction is a new annotation whose `amends` names the one it corrects, and a mark that
+    already has a correction is not corrected again (`rules`, the view), so a chain is a line.
+    Written by the visit's practice on a confirmed or completed visit (`rules.ANNOTATION_STATUSES`),
+    private to the practice until shared, and sharing is one way.
+
+    The server keeps the part id as a string and never validates anatomy; there is no coordinate,
+    no severity and no diagnosis field, by design (docs: medapp H2-R5-BRIEF.md). The app is the
+    only interpreter of `part_id` and `movement_id`."""
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    visit = models.ForeignKey(Visit, related_name='annotations', on_delete=models.PROTECT)
+    # = visit.practice, set on create (save() refuses a mismatch). Kept on the row so the
+    # practitioner's lookups are one filter, the way PracticeNote carries its practice.
+    practice = models.ForeignKey(Practice, related_name='annotations', on_delete=models.PROTECT)
+    part_id = models.CharField(max_length=ANNOTATION_PART_ID_MAX)
+    note = models.CharField(max_length=ANNOTATION_NOTE_MAX)
+    # '' when none was named; serialised as null.
+    movement_id = models.CharField(max_length=ANNOTATION_MOVEMENT_ID_MAX, blank=True, default='')
+    amends = models.ForeignKey('self', null=True, blank=True, related_name='amended_by',
+                               on_delete=models.PROTECT)
+    shared_with_patient = models.BooleanField(default=False)
+    shared_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    SHARE_FIELDS = frozenset({'shared_with_patient', 'shared_at'})
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = 'oznaczenie na sylwetce'
+        verbose_name_plural = 'oznaczenia na sylwetce'
+        indexes = [
+            models.Index(fields=['visit', '-created_at'], name='wum_annot_visit_recent'),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None:
+            fields = set(kwargs.get('update_fields') or ())
+            if not fields or not fields <= self.SHARE_FIELDS:
+                raise ValueError('VisitAnnotation is append-only; write a new annotation that amends this one.')
+        else:
+            if self.practice_id is None:
+                self.practice_id = self.visit.practice_id
+            elif self.practice_id != self.visit.practice_id:
+                raise ValueError("A VisitAnnotation belongs to its visit's practice.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValueError('VisitAnnotation rows are never deleted.')
+
+    def __str__(self):
+        return f'{self.practice.display_name} · {self.part_id} · {self.created_at:%Y-%m-%d}'

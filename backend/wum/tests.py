@@ -803,6 +803,323 @@ class PracticeNoteTests(PracticeTestCase):
         self.assertEqual(self.post(self.url, {'body': 'x'}, self.patient).status_code, 403)
 
 
+# ---- the practice round, E3 (H2-R5): a practitioner's mark on the figure for one visit ----------
+
+from .models import (ANNOTATION_MOVEMENT_ID_MAX, ANNOTATION_NOTE_MAX, ANNOTATION_PART_ID_MAX,  # noqa: E402
+                     VisitAnnotation)
+
+ANNOTATION_KEYS = {'id', 'visit', 'visit_start', 'practice', 'part_id', 'note', 'movement_id', 'amends',
+                   'shared_with_patient', 'shared_at', 'created_at'}
+MY_ANNOTATIONS = '/api/wum/visits/mine/annotations/'
+UNKNOWN_UUID = '00000000-0000-4000-8000-000000000000'
+
+
+class VisitAnnotationTests(PracticeTestCase):
+    def setUp(self):
+        super().setUp()
+        self.token, self.pid = self.practitioner()
+        self.patient = self.account('zofia')
+        self.visit = self.request(self.patient, self.pid, self.tomorrow_at('08:00')).json()['id']
+        self.act(self.token, self.visit, 'confirm')
+
+    def url(self, visit=None):
+        return f'{PRACTICE_ME}visits/{visit or self.visit}/annotations/'
+
+    def mark(self, visit=None, token=None, **over):
+        body = {'part_id': 'knee_l', 'note': 'Tu, po lewej stronie.'}
+        body.update(over)
+        return self.post(self.url(visit), body, token or self.token)
+
+    def mine(self, token=None):
+        r = self.client.get(MY_ANNOTATIONS, **self.auth(token or self.patient))
+        self.assertEqual(r.status_code, 200, r.content)
+        return r.json()
+
+    def complete(self, visit):
+        Visit.objects.filter(public_id=visit).update(start=timezone.now() - timedelta(hours=2),
+                                                     end=timezone.now() - timedelta(hours=1))
+        self.assertEqual(self.act(self.token, visit, 'complete').status_code, 200)
+
+    def test_a_private_mark_stays_private_until_shared_and_sharing_is_one_way(self):
+        r = self.mark(movement_id='single_leg_stance')
+        self.assertEqual(r.status_code, 201, r.content)
+        row = r.json()
+        self.assertEqual(set(row), ANNOTATION_KEYS)
+        self.assertNotIn('patient', row)
+        self.assertFalse(row['shared_with_patient'])
+        self.assertIsNone(row['shared_at'])
+        self.assertEqual(row['visit'], self.visit)
+        self.assertEqual(row['part_id'], 'knee_l')
+        self.assertEqual(row['movement_id'], 'single_leg_stance')
+        self.assertIsNone(row['amends'])
+        self.assertEqual(self.mine(), [])
+        r = self.post(f'{PRACTICE_ME}annotations/{row["id"]}/share/', {}, self.token)
+        self.assertEqual(r.status_code, 200, r.content)
+        shared = r.json()
+        self.assertTrue(shared['shared_with_patient'])
+        self.assertTrue(shared['shared_at'])
+        self.assertEqual(set(shared), ANNOTATION_KEYS)
+        mine = self.mine()
+        self.assertEqual(len(mine), 1)
+        self.assertEqual(set(mine[0]), ANNOTATION_KEYS)
+        self.assertNotIn('patient', mine[0])
+        self.assertEqual(mine[0]['note'], 'Tu, po lewej stronie.')
+        self.assertEqual(mine[0]['practice']['display_name'], 'Gabinet Fizjo')
+        self.assertEqual(mine[0]['visit'], self.visit)
+        # The practitioner's list carries the same eleven keys.
+        listed = self.client.get(self.url(), **self.auth(self.token)).json()
+        self.assertEqual([set(x) for x in listed], [ANNOTATION_KEYS])
+        # Sharing again changes nothing; there is no un-share route.
+        again = self.post(f'{PRACTICE_ME}annotations/{row["id"]}/share/', {}, self.token).json()
+        self.assertEqual(again['shared_at'], shared['shared_at'])
+        self.assertEqual(self.mine()[0]['shared_at'], shared['shared_at'])
+
+    def test_a_mark_without_a_movement_serialises_null(self):
+        row = self.mark().json()
+        self.assertIsNone(row['movement_id'])
+        row = self.mark(movement_id=None).json()
+        self.assertIsNone(row['movement_id'])
+        row = self.mark(movement_id='').json()
+        self.assertIsNone(row['movement_id'])
+
+    def test_only_confirmed_or_completed_visits_take_a_mark(self):
+        # requested
+        requested = self.request(self.patient, self.pid, self.tomorrow_at('09:00')).json()['id']
+        r = self.mark(requested)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('status', r.json())
+        # declined
+        declined = self.request(self.patient, self.pid, self.tomorrow_at('09:30')).json()['id']
+        self.act(self.token, declined, 'decline')
+        self.assertIn('status', self.mark(declined).json())
+        # cancelled
+        cancelled = self.request(self.patient, self.pid, self.tomorrow_at('08:30')).json()['id']
+        self.act(self.token, cancelled, 'confirm')
+        self.act(self.token, cancelled, 'cancel')
+        r = self.mark(cancelled)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('status', r.json())
+        # no_show
+        gone = self.request(self.patient, self.pid, self.tomorrow_at('08:30')).json()['id']
+        self.act(self.token, gone, 'confirm')
+        Visit.objects.filter(public_id=gone).update(start=timezone.now() - timedelta(hours=2),
+                                                    end=timezone.now() - timedelta(hours=1))
+        self.assertEqual(self.act(self.token, gone, 'no_show').status_code, 200)
+        r = self.mark(gone)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('status', r.json())
+        # a block has no patient
+        block = self.post(f'{PRACTICE_ME}visits/', {'start': self.tomorrow_at('09:30').isoformat(),
+                                                    'end': self.tomorrow_at('10:00').isoformat()}, self.token)
+        self.assertEqual(block.status_code, 201, block.content)
+        r = self.mark(block.json()['id'])
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('visit', r.json())
+        # a block's list is an empty 200
+        r = self.client.get(self.url(block.json()['id']), **self.auth(self.token))
+        self.assertEqual((r.status_code, r.json()), (200, []))
+        # nothing was written on any of them
+        self.assertEqual(VisitAnnotation.objects.count(), 0)
+        # confirmed and completed take a mark
+        self.assertEqual(self.mark().status_code, 201)
+        self.complete(self.visit)
+        self.assertEqual(self.mark().status_code, 201)
+        # a mark on a confirmed visit that is later cancelled cannot be shared
+        later = self.request(self.patient, self.pid, self.tomorrow_at('08:30')).json()['id']
+        self.act(self.token, later, 'confirm')
+        row = self.mark(later).json()
+        self.act(self.token, later, 'cancel')
+        r = self.post(f'{PRACTICE_ME}annotations/{row["id"]}/share/', {}, self.token)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('status', r.json())
+        self.assertEqual(self.mine(), [])
+
+    def test_refusals_are_by_name(self):
+        def refused(field, **over):
+            body = {'part_id': 'knee_l', 'note': 'x'}
+            body.update(over)
+            body = {k: v for k, v in body.items() if v is not ...}
+            r = self.post(self.url(), body, self.token)
+            self.assertEqual(r.status_code, 400, (field, over, r.content))
+            self.assertIn(field, r.json(), (over, r.content))
+            return r
+
+        refused('part_id', part_id=...)
+        refused('part_id', part_id='')
+        refused('part_id', part_id='Knee')
+        refused('part_id', part_id='a' * (ANNOTATION_PART_ID_MAX + 1))
+        refused('part_id', part_id='a/b')
+        refused('note', note='   ')
+        refused('note', note=...)
+        refused('note', note='x' * (ANNOTATION_NOTE_MAX + 1))
+        refused('movement_id', movement_id='m' * (ANNOTATION_MOVEMENT_ID_MAX + 1))
+        refused('movement_id', movement_id='Gait')
+        refused('movement_id', movement_id='a/b')
+        # the bounds themselves are accepted
+        ok = self.mark(part_id='a' * ANNOTATION_PART_ID_MAX, note='x' * ANNOTATION_NOTE_MAX,
+                       movement_id='m' * ANNOTATION_MOVEMENT_ID_MAX)
+        self.assertEqual(ok.status_code, 201, ok.content)
+        # amends of a mark on another visit of the same practice
+        other = self.request(self.patient, self.pid, self.tomorrow_at('09:00')).json()['id']
+        self.act(self.token, other, 'confirm')
+        elsewhere = self.mark(other).json()['id']
+        refused('amends', amends=elsewhere)
+        refused('amends', amends=UNKNOWN_UUID)
+        refused('amends', amends='not-a-uuid')
+        # amends of a mark that already has a correction
+        first = self.mark().json()['id']
+        second = self.mark(amends=first)
+        self.assertEqual(second.status_code, 201, second.content)
+        refused('amends', amends=first)
+        # the correction itself can still be corrected (the chain is linear)
+        self.assertEqual(self.mark(amends=second.json()['id']).status_code, 201)
+        # a refusal wrote nothing: ok, elsewhere, other's mark, first, second, third
+        self.assertEqual(VisitAnnotation.objects.count(), 5)
+
+    def test_a_stranger_gets_404_and_a_patient_403(self):
+        row = self.mark().json()
+        stranger, _ = self.practitioner('inny')
+        share = f'{PRACTICE_ME}annotations/{row["id"]}/share/'
+        unknown_visit = self.url(UNKNOWN_UUID)
+        unknown_share = f'{PRACTICE_ME}annotations/{UNKNOWN_UUID}/share/'
+        body = {'part_id': 'knee_l', 'note': 'x'}
+        created = self.post(self.url(), body, stranger)
+        missing = self.post(unknown_visit, body, stranger)
+        self.assertEqual(created.status_code, 404)
+        self.assertEqual((created.status_code, created.content), (missing.status_code, missing.content))
+        listed = self.client.get(self.url(), **self.auth(stranger))
+        listed_missing = self.client.get(unknown_visit, **self.auth(stranger))
+        self.assertEqual(listed.status_code, 404)
+        self.assertEqual((listed.status_code, listed.content), (listed_missing.status_code, listed_missing.content))
+        shared = self.post(share, {}, stranger)
+        shared_missing = self.post(unknown_share, {}, stranger)
+        self.assertEqual(shared.status_code, 404)
+        self.assertEqual((shared.status_code, shared.content), (shared_missing.status_code, shared_missing.content))
+        # …and the mark is still private and untouched
+        self.assertFalse(VisitAnnotation.objects.get().shared_with_patient)
+        self.assertEqual(VisitAnnotation.objects.count(), 1)
+        # The patient's token on the practice routes: 403.
+        self.assertEqual(self.post(self.url(), body, self.patient).status_code, 403)
+        self.assertEqual(self.client.get(self.url(), **self.auth(self.patient)).status_code, 403)
+        self.assertEqual(self.post(share, {}, self.patient).status_code, 403)
+        # Another patient's list is empty, even once the mark is shared.
+        self.post(share, {}, self.token)
+        self.assertEqual(len(self.mine()), 1)
+        marek = self.account('marek')
+        self.assertEqual(self.mine(marek), [])
+        # A patient route needs a token.
+        self.assertEqual(self.client.get(MY_ANNOTATIONS).status_code, 401)
+
+    def test_a_correction_names_what_it_amends_and_the_patient_sees_the_link_only_when_both_are_shared(self):
+        first = self.mark(note='Pierwsze oznaczenie.').json()
+        second = self.mark(note='Poprawka.', part_id='knee_r', amends=first['id'], shared_with_patient=True).json()
+        self.assertEqual(second['amends'], first['id'])
+        self.assertTrue(second['shared_with_patient'])
+        self.assertTrue(second['shared_at'])
+        # The original is private: the patient sees the correction and no hint that another exists.
+        mine = self.mine()
+        self.assertEqual([m['id'] for m in mine], [second['id']])
+        self.assertIsNone(mine[0]['amends'])
+        self.assertNotIn(first['id'], json.dumps(mine))
+        # The practitioner still sees the link.
+        listed = self.client.get(self.url(), **self.auth(self.token)).json()
+        self.assertEqual({x['id']: x['amends'] for x in listed}, {first['id']: None, second['id']: first['id']})
+        # Once the original is shared too, the link appears.
+        self.post(f'{PRACTICE_ME}annotations/{first["id"]}/share/', {}, self.token)
+        mine = {m['id']: m for m in self.mine()}
+        self.assertEqual(set(mine), {first['id'], second['id']})
+        self.assertEqual(mine[second['id']]['amends'], first['id'])
+        self.assertIsNone(mine[first['id']]['amends'])
+
+    def test_the_patient_link_is_the_nearest_shared_ancestor_and_never_names_a_private_mark(self):
+        a = self.mark(note='A', shared_with_patient=True).json()
+        b = self.mark(note='B', part_id='knee_r', amends=a['id']).json()
+        # A shared, B private: the patient sees A with no link and no trace of B.
+        mine = self.mine()
+        self.assertEqual([m['id'] for m in mine], [a['id']])
+        self.assertIsNone(mine[0]['amends'])
+        self.assertNotIn(b['id'], json.dumps(mine))
+        c = self.mark(note='C', part_id='hip_l', amends=b['id'], shared_with_patient=True).json()
+        # A shared <- B private <- C shared: the patient's list is [C, A], C names A, B is nowhere.
+        r = self.client.get(MY_ANNOTATIONS, **self.auth(self.patient))
+        mine = r.json()
+        self.assertEqual([m['id'] for m in mine], [c['id'], a['id']])
+        self.assertEqual(mine[0]['amends'], a['id'])
+        self.assertIsNone(mine[1]['amends'])
+        self.assertNotIn(b['id'], r.content.decode())
+        # The practitioner keeps the direct link.
+        listed = self.client.get(self.url(), **self.auth(self.token)).json()
+        self.assertEqual({x['id']: x['amends'] for x in listed}, {a['id']: None, b['id']: a['id'], c['id']: b['id']})
+
+    def test_the_server_keeps_any_well_formed_part_id_and_never_checks_anatomy(self):
+        for part_id in ('cat_skin_head', 'zzz_not_a_part'):
+            r = self.mark(part_id=part_id, movement_id='nope_movement')
+            self.assertEqual(r.status_code, 201, r.content)
+            self.assertEqual(r.json()['part_id'], part_id)
+            self.assertEqual(r.json()['movement_id'], 'nope_movement')
+        self.assertEqual(sorted(VisitAnnotation.objects.values_list('part_id', flat=True)),
+                         ['cat_skin_head', 'zzz_not_a_part'])
+
+    def test_the_model_is_append_only(self):
+        visit = Visit.objects.get(public_id=self.visit)
+        self.practitioner('inny')
+        other_practice = Practice.objects.exclude(pk=visit.practice_id).get()
+        # `practice` is forced from the visit on create.
+        mark = VisitAnnotation.objects.create(visit=visit, practice=visit.practice, part_id='knee_l', note='x')
+        self.assertEqual(mark.practice_id, visit.practice_id)
+        with self.assertRaises(ValueError):
+            VisitAnnotation.objects.create(visit=visit, practice=other_practice, part_id='knee_l', note='y')
+        self.assertEqual(VisitAnnotation.objects.count(), 1)
+        mark.note = 'y'
+        with self.assertRaises(ValueError):
+            mark.save()
+        with self.assertRaises(ValueError):
+            mark.save(update_fields=['note'])
+        mark.refresh_from_db()
+        mark.part_id = 'knee_r'
+        with self.assertRaises(ValueError):
+            mark.save(update_fields=['part_id'])
+        mark.refresh_from_db()
+        mark.shared_with_patient = True
+        mark.shared_at = timezone.now()
+        mark.save(update_fields=['shared_with_patient', 'shared_at'])  # the one allowed write
+        with self.assertRaises(ValueError):
+            mark.delete()
+        stored = VisitAnnotation.objects.get()
+        self.assertEqual((stored.note, stored.part_id, stored.shared_with_patient), ('x', 'knee_l', True))
+        # …and the same through the share rule.
+        self.assertEqual(VisitAnnotation.SHARE_FIELDS, frozenset({'shared_with_patient', 'shared_at'}))
+
+    def test_the_annotation_routes_are_throttled_with_the_notes_scope(self):
+        from . import views
+        from .views import UnsafeScopedThrottle
+        for name in ('VisitAnnotationsView', 'AnnotationShareView'):
+            view = getattr(views, name)
+            self.assertEqual(view.throttle_scope, 'wum_practice', name)
+            self.assertIn(UnsafeScopedThrottle, view.throttle_classes, name)
+        self.assertEqual(views.PracticePatientView.throttle_scope, views.VisitAnnotationsView.throttle_scope)
+        # The patient's read is not throttled as a write.
+        self.assertNotIn(UnsafeScopedThrottle, getattr(views.AnnotationsMineView, 'throttle_classes', []))
+
+    def test_the_patient_list_is_newest_first_and_shared_only(self):
+        a = self.mark(note='a', shared_with_patient=True).json()
+        self.mark(note='private')
+        b = self.mark(note='b', part_id='knee_r', shared_with_patient=True).json()
+        c = self.mark(note='c', shared_with_patient=True).json()
+        self.assertEqual([m['id'] for m in self.mine()], [c['id'], b['id'], a['id']])
+        self.assertEqual(['private' in m['note'] for m in self.mine()], [False] * 3)
+        # a second visit joins the one list; the practitioner's list stays per visit, newest first
+        self.complete(self.visit)
+        second = self.request(self.patient, self.pid, self.tomorrow_at('09:00')).json()['id']
+        self.act(self.token, second, 'confirm')
+        d = self.mark(second, note='d', shared_with_patient=True).json()
+        mine = self.mine()
+        self.assertEqual([m['id'] for m in mine], [d['id'], c['id'], b['id'], a['id']])
+        self.assertEqual(mine[0]['visit'], second)
+        listed = self.client.get(self.url(), **self.auth(self.token)).json()
+        self.assertEqual([m['note'] for m in listed], ['c', 'b', 'private', 'a'])
+
+
 class PracticeMirroredConstantsTests(TestCase):
     """The other half is MedApp's `src/lib/api/wum.ts` and `scripts/privacy-check.mjs`."""
     def test_pinned(self):
@@ -812,3 +1129,13 @@ class PracticeMirroredConstantsTests(TestCase):
         self.assertEqual(VISIT_HORIZON_DAYS, 60)
         self.assertEqual(rules.PRACTITIONER_TRANSITIONS['requested'], ('confirmed', 'declined'))
         self.assertEqual(rules.PATIENT_TRANSITIONS['confirmed'], ('cancelled',))
+        # E3 (H2-R5): MIRRORED in MedApp src/lib/api/wum.ts.
+        self.assertEqual(ANNOTATION_NOTE_MAX, 300)
+        self.assertEqual(ANNOTATION_PART_ID_MAX, 40)
+        self.assertEqual(ANNOTATION_MOVEMENT_ID_MAX, 60)
+        self.assertEqual(rules.ANNOTATION_STATUSES, ('confirmed', 'completed'))
+        self.assertEqual(rules.ANNOTATION_PART_ID_RE.pattern, r'^[a-z0-9_]{1,40}$')
+        self.assertEqual(rules.ANNOTATION_MOVEMENT_ID_RE.pattern, r'^[a-z0-9_]{1,60}$')
+        self.assertNotIn('requested', rules.ANNOTATION_STATUSES)
+        reachable = {to for tos in rules.PRACTITIONER_TRANSITIONS.values() for to in tos}
+        self.assertTrue(set(rules.ANNOTATION_STATUSES) <= reachable | {'requested'})

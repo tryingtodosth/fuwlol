@@ -19,7 +19,7 @@ from rest_framework.exceptions import APIException
 from . import rules
 from .models import (ABOUT_MAX, DISPLAY_NAME_MAX, NAME_MAX, PAYLOAD_VERSION, PHONE_MAX, PROFESSIONS,
                      VISIT_NOTE_MAX, VISIT_REASON_MAX, Practice, PracticeNote, Publication, Template,
-                     Visit, WumProfile)
+                     Visit, VisitAnnotation, WumProfile)
 
 # Same shape as the archive's own usernames (`accounts/views.py` RegisterSerializer), so one rule
 # covers both populations and a collision is a collision. MIRRORED in MedApp `src/lib/api/wum.ts`
@@ -323,6 +323,50 @@ def note_row(note, viewer):
     return row
 
 
+def _nearest_shared_ancestor(a):
+    """The first SHARED mark up `a`'s correction chain (`amends`, `amends.amends`, …), or None.
+    A chain is a line (a mark is corrected at most once) and always points at an older row, so the
+    walk ends; the `seen` set is a guard, not a case."""
+    cur, seen = a.amends if a.amends_id else None, set()
+    while cur is not None and cur.pk not in seen:
+        if cur.shared_with_patient:
+            return cur
+        seen.add(cur.pk)
+        cur = cur.amends if cur.amends_id else None
+    return None
+
+
+def annotation_row(a, viewer):
+    """`viewer` is 'practitioner' or 'patient'. EXACTLY these eleven keys in both views (medapp
+    H2-R5-BRIEF.md contract 1) — no coordinate, no severity, no diagnosis, no status of the body,
+    and no patient: the practitioner knows whose visit it is from the URL, the patient knows who
+    they are. `movement_id` '' → None.
+
+    `amends`: the practitioner sees the direct link. The patient sees the NEAREST SHARED ANCESTOR
+    in the chain, or None: a shared A corrected privately by B, then B by a shared C, reads to the
+    patient as "C corrects A" — true transitively, so the phone lights only C — and says nothing
+    about B (the id of a private mark would tell the patient one exists, and a patient cannot tell
+    whether a step was skipped)."""
+    if viewer == 'patient':
+        ancestor = _nearest_shared_ancestor(a)
+        amends = str(ancestor.public_id) if ancestor is not None else None
+    else:
+        amends = str(a.amends.public_id) if a.amends_id else None
+    return {
+        'id': str(a.public_id),
+        'visit': str(a.visit.public_id),
+        'visit_start': a.visit.start,
+        'practice': practice_summary(a.practice),
+        'part_id': a.part_id,
+        'note': a.note,
+        'movement_id': a.movement_id or None,
+        'amends': amends,
+        'shared_with_patient': a.shared_with_patient,
+        'shared_at': a.shared_at,
+        'created_at': a.created_at,
+    }
+
+
 class PracticeWriteSerializer(serializers.Serializer):
     """PUT /practice/me/ — opens the practice or replaces its settings. The hours and the slot
     length go through `rules` so the admin form and this path cannot drift."""
@@ -403,3 +447,41 @@ class NoteWriteSerializer(serializers.Serializer):
         if problems:
             raise serializers.ValidationError(problems)
         return value
+
+
+class AnnotationWriteSerializer(serializers.Serializer):
+    """POST /practice/me/visits/<uuid>/annotations/ — one mark. Each field goes through its rule,
+    so the refusal is the rule's sentence keyed by the field. The ids are refused, not tidied: no
+    whitespace trimming on `part_id` or `movement_id`. Whether the visit takes a mark and whether
+    `amends` names a mark of THIS visit with no correction yet is the view's (it has the visit)."""
+    part_id = serializers.CharField(trim_whitespace=False, error_messages={
+        'required': 'Wybierz część ciała.', 'blank': 'Wybierz część ciała.',
+        'null': 'Wybierz część ciała.', 'invalid': 'Wybierz część ciała.'})
+    note = serializers.CharField(error_messages={
+        'required': 'Opis nie może być pusty.', 'blank': 'Opis nie może być pusty.',
+        'null': 'Opis nie może być pusty.', 'invalid': 'Opis nie może być pusty.'})
+    movement_id = serializers.CharField(required=False, allow_blank=True, allow_null=True,
+                                        trim_whitespace=False, error_messages={
+        'invalid': 'Nieprawidłowy identyfikator ćwiczenia (małe litery, cyfry i _, najwyżej 60 znaków).'})
+    amends = serializers.UUIDField(required=False, allow_null=True, error_messages={
+        'invalid': 'Nie ma takiego oznaczenia przy tej wizycie.'})
+    shared_with_patient = serializers.BooleanField(required=False, default=False, error_messages={
+        'invalid': 'Udostępnienie pacjentowi: tak albo nie.'})
+
+    def validate_part_id(self, value):
+        problems = rules.part_id_problems(value)
+        if problems:
+            raise serializers.ValidationError(problems)
+        return value
+
+    def validate_note(self, value):
+        problems = rules.annotation_note_problems(value)
+        if problems:
+            raise serializers.ValidationError(problems)
+        return value.strip()
+
+    def validate_movement_id(self, value):
+        problems = rules.movement_id_problems(value)
+        if problems:
+            raise serializers.ValidationError(problems)
+        return value or ''

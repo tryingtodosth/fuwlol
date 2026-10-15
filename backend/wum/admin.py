@@ -5,7 +5,7 @@ from django.contrib import admin
 from django.utils import timezone
 
 from . import rules
-from .models import Practice, PracticeNote, Publication, Template, Visit, WumProfile
+from .models import Practice, PracticeNote, Publication, Template, Visit, VisitAnnotation, WumProfile
 
 security_log = logging.getLogger('security')
 
@@ -154,6 +154,26 @@ class PracticeNoteAdmin(admin.ModelAdmin):
     search_fields = ['practice__display_name', 'patient__username', 'public_id']
     readonly_fields = ['public_id', 'practice', 'patient', 'visit', 'body', 'shared_with_patient', 'shared_at',
                        'amends', 'created_at']
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(VisitAnnotation)
+class VisitAnnotationAdmin(admin.ModelAdmin):
+    """Read-only, like the note: a mark on the figure is the practice's record and the model
+    refuses edits anyway (`VisitAnnotation.save`). No add, no change, no delete."""
+    list_display = ['created_at', 'practice', 'visit', 'part_id', 'shared_with_patient', 'amends']
+    list_filter = ['shared_with_patient', 'practice']
+    search_fields = ['practice__display_name', 'visit__patient__username', 'part_id', 'public_id']
+    readonly_fields = ['public_id', 'visit', 'practice', 'part_id', 'note', 'movement_id', 'amends',
+                       'shared_with_patient', 'shared_at', 'created_at']
 
     def has_add_permission(self, request):
         return False

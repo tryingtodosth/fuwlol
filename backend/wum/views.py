@@ -15,6 +15,9 @@ Who may do what:
   table and nothing else;
 - a practitioner (`rules.is_practitioner`, a WUM account with a `Practice`): its own practice,
   diary, patients and notes. Any WUM account may open a practice; the row is the mark.
+- a practitioner, on a visit of its own practice that is confirmed or completed: marks on the
+  figure (`VisitAnnotation`), written private and shared one way; the patient of that visit reads
+  the shared ones (`visits/mine/annotations/`) and nothing else (medapp H2-R5, E3).
 
 No oracle (root `CLAUDE.md` rule 5): a login with an archive account's correct password is the
 same 401 as a wrong password; a draft template, a withdrawn publication and a stranger's
@@ -23,6 +26,7 @@ withdraw attempt are all 404, byte for byte the 404 of an id that never existed.
 from datetime import date, datetime, timedelta
 
 from django.contrib.auth import authenticate
+from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import status
@@ -37,12 +41,14 @@ from rest_framework.views import APIView
 from accounts.views import LoginUsernameThrottle
 
 from . import rules
-from .models import VISIT_HORIZON_DAYS, Practice, PracticeNote, Publication, Template, Visit
-from .serializers import (NoteWriteSerializer, PracticeWriteSerializer, PractitionerVisitSerializer,
-                          PublicationMineSerializer, PublicationPublicSerializer, PublishSerializer,
-                          ProfileSerializer, RegisterSerializer, TemplateDetailSerializer,
+from .models import (VISIT_HORIZON_DAYS, Practice, PracticeNote, Publication, Template, Visit,
+                     VisitAnnotation)
+from .serializers import (AnnotationWriteSerializer, NoteWriteSerializer, PracticeWriteSerializer,
+                          PractitionerVisitSerializer, PublicationMineSerializer, PublicationPublicSerializer,
+                          PublishSerializer, ProfileSerializer, RegisterSerializer, TemplateDetailSerializer,
                           TemplateListSerializer, TemplateWriteSerializer, VisitDecisionSerializer,
-                          VisitRequestSerializer, account_row, note_row, practice_row, visit_row)
+                          VisitRequestSerializer, account_row, annotation_row, note_row, practice_row,
+                          visit_row)
 
 
 class IsWumAccount(BasePermission):
@@ -503,3 +509,88 @@ class NotesMineView(WumView):
 
     def get(self, request):
         return Response([note_row(n, 'patient') for n in rules.notes_for_patient(request.user)])
+
+
+# --- E3 (medapp H2-R5): the practitioner marks the figure back --------------------------------
+
+def _annotations(qs):
+    return qs.select_related('visit', 'practice', 'amends')
+
+
+class VisitAnnotationsView(WumView):
+    """A visit's marks on the figure, for its practice. The visit is looked up by its id AND the
+    caller's practice, so another practice's visit is the 404 of an id that never existed (no
+    oracle). GET lists every mark of the visit, private and shared, newest first (a block has
+    none: 200 []); POST writes one — append-only, `amends` naming a mark of this visit that has no
+    correction yet."""
+    permission_classes = [IsPractitioner]
+    throttle_classes = [UnsafeScopedThrottle]
+    throttle_scope = 'wum_practice'
+
+    def _visit(self, request, public_id):
+        return (Visit.objects.filter(public_id=public_id, practice=request.user.wum_practice)
+                .select_related('practice').first())
+
+    def get(self, request, public_id):
+        visit = self._visit(request, public_id)
+        if visit is None:
+            return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+        rows = _annotations(VisitAnnotation.objects.filter(visit=visit))
+        return Response([annotation_row(a, 'practitioner') for a in rows])
+
+    def post(self, request, public_id):
+        visit = self._visit(request, public_id)
+        if visit is None:
+            return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+        problem = rules.annotation_visit_problem(visit)
+        if problem:
+            field, sentences = problem
+            return Response({field: sentences}, status=status.HTTP_400_BAD_REQUEST)
+        s = AnnotationWriteSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        d = s.validated_data
+        with transaction.atomic():
+            amends = None
+            if d.get('amends'):
+                # Locked so two corrections of one mark sent at once give one row and one refusal.
+                amends = (VisitAnnotation.objects.select_for_update()
+                          .filter(public_id=d['amends'], visit=visit).first())
+                if amends is None:
+                    return Response({'amends': ['Nie ma takiego oznaczenia przy tej wizycie.']},
+                                    status=status.HTTP_400_BAD_REQUEST)
+                if amends.amended_by.exists():
+                    return Response({'amends': ['To oznaczenie ma już poprawkę; popraw najnowsze.']},
+                                    status=status.HTTP_400_BAD_REQUEST)
+            shared = bool(d.get('shared_with_patient'))
+            row = VisitAnnotation.objects.create(
+                visit=visit, practice=visit.practice, part_id=d['part_id'], note=d['note'],
+                movement_id=d.get('movement_id') or '', amends=amends, shared_with_patient=shared,
+                shared_at=timezone.now() if shared else None)
+        return Response(annotation_row(row, 'practitioner'), status=status.HTTP_201_CREATED)
+
+
+class AnnotationShareView(WumView):
+    """One way, like a note's. Sharing a shared mark changes nothing; a private mark on a visit
+    that has left ANNOTATION_STATUSES is refused with 400 `status`."""
+    permission_classes = [IsPractitioner]
+    throttle_classes = [UnsafeScopedThrottle]
+    throttle_scope = 'wum_practice'
+
+    def post(self, request, public_id):
+        row = _annotations(VisitAnnotation.objects.filter(public_id=public_id,
+                                                          practice=request.user.wum_practice)).first()
+        if row is None:
+            return Response(NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+        done = rules.share_annotation(row)
+        if done is None:
+            return Response({'status': ['Tej wizyty już nie ma w terminarzu; oznaczenia nie można udostępnić.']},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(annotation_row(done, 'practitioner'))
+
+
+class AnnotationsMineView(WumView):
+    """What a patient may read: the marks shared with them on their own visits, newest first."""
+    permission_classes = [IsWumAccount]
+
+    def get(self, request):
+        return Response([annotation_row(a, 'patient') for a in rules.annotations_for_patient(request.user)])
