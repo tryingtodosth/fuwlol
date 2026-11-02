@@ -18,3 +18,5 @@ docs/render/deck.html
 .claude/
 frontend/e2e/screenshots/
 frontend/e2e/survey/
+deploy/backup.sh
+docs/R2_invoice.pdf

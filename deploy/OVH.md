@@ -21,12 +21,18 @@
       │                                             │        │
       │                                            db (postgres 16)
       └──────────────────────────────────────────────────────┘
-               │                              │
-               ▼                              ▼
-      Cloudflare R2                    Brevo SMTP :587
-      attachment bytes                 verification mail
-      + restic backups                 (OVH blocks :25)
+                                              │
+                                              ▼
+                                       Brevo SMTP :587
+                                       verification mail
+                                       (OVH blocks :25)
 ```
+
+There is no object storage. Attachments live on the `fuwlol_media` volume and nginx serves
+them under `/media/`; the nightly restic backup goes to `/srv/fuwlol/restic-repo` on the
+same disk. Until 02.11.2026 the backup lived in Cloudflare R2, and uploads were wired to
+R2 as well, though no attachment was ever stored there — see "Backups" for what dropping it
+costs.
 
 Human mail (`archiwum@`, `kontakt@`, `abuse@`) stays on **OVH mail**, whose MX records were
 already live on this domain before any of this — one fewer service to run. Brevo only ever
@@ -55,7 +61,6 @@ gamble that.
    | A | `fuw.lol` | `146.59.103.167` | proxied |
    | AAAA | `fuw.lol` | `2001:41d0:601:1100::9fa9` | proxied |
    | CNAME | `www` | `fuw.lol` | proxied |
-   | CNAME | `pliki` | (R2 custom domain, set from the R2 bucket page) | proxied |
    | MX | `fuw.lol` | the three existing OVH values | DNS only |
    | TXT | `fuw.lol` | SPF including **both** OVH and Brevo | DNS only |
    | TXT | `_dmarc` | `v=DMARC1; p=none; rua=mailto:admin@fuw.lol` | DNS only |
@@ -74,20 +79,9 @@ gamble that.
    answered. An origin certificate is trusted by exactly the set of clients that can
    connect, which is the set that matters.
 
-3. **R2.** Bucket (`fuwlol-media`), EU location hint. **Versioning OFF, and no lifecycle
-   rule that retains deleted objects** — `escalation/shred.py` deletes an object to make a
-   purge real, and a retained version would make the audit row a lie (art. 202 § 4b k.k.;
-   see LEGAL.md "The two takedowns"). Add a custom domain `pliki.fuw.lol` for the public
-   prefix. Create an API token: Object Read & Write, scoped to this bucket.
+3. **Brevo.** Verify `fuw.lol`, add their SPF and DKIM records, create an SMTP key.
 
-   **And a second bucket, `fuwlol-quarantine`, with NO custom domain.** A custom domain
-   publishes the whole bucket, so an escalated attachment moved to a `held/` prefix in
-   the public bucket is still served — measured, not assumed: the held URL answered
-   HTTP 200. The token needs access to both buckets.
-
-4. **Brevo.** Verify `fuw.lol`, add their SPF and DKIM records, create an SMTP key.
-
-5. **GitHub → Settings → Secrets and variables → Actions:** `DEPLOY_SSH_KEY`,
+4. **GitHub → Settings → Secrets and variables → Actions:** `DEPLOY_SSH_KEY`,
    `DEPLOY_HOST` = `146.59.103.167`, `DEPLOY_USER` = `deploy`.
 
 ## One-time: the box
@@ -99,6 +93,7 @@ install -d -m700 -o deploy -g deploy /home/deploy/.ssh
 cp /root/.ssh/authorized_keys /home/deploy/.ssh/ && chown deploy:deploy /home/deploy/.ssh/authorized_keys
 usermod -aG docker deploy
 install -d -o deploy -g deploy /srv/fuwlol /srv/fuwlol/deploy /srv/fuwlol/secrets
+install -d -m700 -o deploy -g deploy /srv/fuwlol/restic-repo
 chmod 700 /srv/fuwlol/secrets
 
 # docker (official repo; Ubuntu 26.04 "resolute" is supported)
@@ -125,11 +120,6 @@ apt-get install -y unattended-upgrades && dpkg-reconfigure -plow unattended-upgr
 POSTGRES_PASSWORD=          # openssl rand -base64 33
 FUWLOL_SECRET_KEY=          # python -c 'import secrets;print(secrets.token_urlsafe(50))'
 FUWLOL_IP_SALT=             # openssl rand -hex 32 — rotate this and chat ip_hashes stop correlating
-FUWLOL_R2_BUCKET=fuwlol-media
-FUWLOL_R2_ENDPOINT_URL=https://<account-id>.r2.cloudflarestorage.com
-FUWLOL_R2_ACCESS_KEY_ID=
-FUWLOL_R2_SECRET_ACCESS_KEY=
-FUWLOL_R2_PUBLIC_BASE_URL=https://pliki.fuw.lol
 FUWLOL_CLOUDFLARE_ZONE_ID=
 FUWLOL_CLOUDFLARE_PURGE_TOKEN=
 FUWLOL_EMAIL_HOST=smtp-relay.brevo.com
@@ -138,11 +128,13 @@ FUWLOL_EMAIL_PASSWORD=
 FUWLOL_FROM_EMAIL="FUW <no-reply@fuw.lol>"   # quoted: deploy/backup.sh SOURCES this file, and < is a redirect
 FUWLOL_CONTACT_EMAIL=admin@fuw.lol           # the one OVH mailbox — what a human reads
 SKOKI_TAG=latest             # WUM (fuw.lol/fum) — a commit of the MEDAPP repository, not this one
-RESTIC_REPOSITORY=s3:https://<account-id>.r2.cloudflarestorage.com/fuwlol-backup
+RESTIC_REPOSITORY=/srv/fuwlol/restic-repo
 RESTIC_PASSWORD_FILE=/srv/fuwlol/secrets/restic.pass
-AWS_ACCESS_KEY_ID=          # the same R2 token, or one scoped to the backup bucket
-AWS_SECRET_ACCESS_KEY=
 ```
+
+No `FUWLOL_R2_*`: with them unset `config/r2.is_configured()` is false, every upload goes
+through Django onto the media volume, and quarantine moves files on that volume. Setting
+them again would switch R2 back on — don't, unless the buckets are recreated first.
 
 `chmod 600 /srv/fuwlol/.env`. **Keep `RESTIC_PASSWORD_FILE`'s contents somewhere that is
 not this server** — a backup you cannot decrypt is not a backup, and the server is the one
@@ -188,17 +180,37 @@ visitors from a new one get dropped.
 ### Cron
 
 ```cron
-0 3 * * *  /srv/fuwlol/deploy/backup.sh >> /var/log/fuwlol-backup.log 2>&1
+0 3 * * *  /srv/fuwlol/deploy/backup.sh >> /srv/fuwlol/backup.log 2>&1
 0 4 * * *  cd /srv/fuwlol && docker compose -f docker-compose.prod.yml exec -T api python manage.py forget_submitter_ips
 0 4 * * *  cd /srv/fuwlol && docker compose -f docker-compose.prod.yml exec -T api python manage.py forget_claim_ips
-0 5 * * *  cd /srv/fuwlol && docker compose -f docker-compose.prod.yml exec -T api python manage.py sweep_uploads
 ```
 
 The second and third are not housekeeping: `Post.submitter_ip` is personal data kept for
 one purpose (art. 18 DSA), and keeping it past that purpose is the RODO problem, not the
 solution. `forget_claim_ips` does the same for the consent claims — except on approved
-rows, which ARE the evidence that somebody agreed. The last one deletes objects that were
-uploaded to R2 and never claimed by a post.
+rows, which ARE the evidence that somebody agreed. (`sweep_uploads`, which deleted
+unclaimed R2 uploads, ran at 5:00 until R2 went; it is a no-op without R2 and was removed
+from the crontab.)
+
+### Backups
+
+`deploy/backup.sh`, nightly: `pg_dump`, the `evidence` volume and the `media` volume, into
+the restic repository at `/srv/fuwlol/restic-repo` (deploy-owned, 700, encrypted with
+`secrets/restic.pass`). Keeps 7 daily, 4 weekly, 12 monthly, and reads a random 5% of the
+data back every night.
+
+**It is not off-site.** Until 02.11.2026 the repository was in R2; it was copied here byte
+for byte (182 objects, the 45 snapshot ids identical, `restic check --read-data` clean, the
+latest snapshot restored and `pg_restore --list` read) and R2 was switched off to save the
+bill. A local repository covers a dropped table or a wiped volume, not a lost VPS or a
+suspended OVH account — for those the only copy is OVH's own snapshot. The repository is
+self-contained, so making it off-site again is one line somewhere else, e.g. from a machine
+that can reach the box:
+`rsync -a --delete ubuntu@146.59.103.167:/srv/fuwlol/restic-repo/ ./fuwlol-restic/`
+(read it with the same password file).
+
+Restore drill:
+`sudo -u deploy RESTIC_PASSWORD_FILE=/srv/fuwlol/secrets/restic.pass restic -r /srv/fuwlol/restic-repo restore latest --target /tmp/r`
 
 ### First start
 
@@ -211,8 +223,8 @@ docker compose -f docker-compose.prod.yml exec api python manage.py createsuperu
 **Before the first start, fix the volume ownership.** The container runs as uid 1000, but
 a freshly created named volume can end up owned by root — and the failure is not at boot,
 it is later, when somebody uploads a file and gets a 500 with
-`PermissionError: '/app/media/attachments'`. Comment attachments still use local storage
-even when R2 is on, so this is not a corner case:
+`PermissionError: '/app/media/attachments'`. Every attachment is stored on this volume,
+so this is not a corner case:
 
 ```bash
 for v in media cachedata evidence; do docker run --rm -v "fuwlol_${v}:/v" alpine chown -R 1000:1000 /v; done
@@ -430,10 +442,10 @@ found by looking at it. So, in a browser:
    at all is the one answer that points back at this box. Test it with an address you own —
    a clicked link binds that address to whatever account asked for it, and `accounts/views.py`
    `_taken_by_someone_else` then locks its real owner out until the row is deleted.
-4. Submit a post with a 20 MB video: the browser PUTs it to `pliki.fuw.lol` directly (watch
-   the network tab — it must not go to `fuw.lol/api/`), and it plays back afterwards.
+4. Submit a post with a 20 MB video: it is a multipart POST to `fuw.lol/api/posts/`, lands
+   on the media volume, and plays back afterwards from `/media/attachments/…`.
 5. Escalate something as a trusted user, confirm it vanishes for everyone but head-admin,
-   and that the picture's URL on `pliki.fuw.lol` now 404s.
+   and that the picture's `/media/attachments/…` URL now 404s.
 6. `curl -s -A "facebookexternalhit/1.1" https://fuw.lol/wpis/<slug> | grep og:` prints the
    post's title, summary and picture; the same URL in a browser is still the app. Then
    paste the link into Messenger and **look at it** — and check that a hidden post's URL
