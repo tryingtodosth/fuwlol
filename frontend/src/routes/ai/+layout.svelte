@@ -16,6 +16,7 @@
 			<a href={kp()}>O Kole</a>
 			{#if kolo.isVoter || kolo.isManager}<a href={kp('/glosowania')}>Głosowania</a>{/if}
 			{#if kolo.isManager}<a href={kp('/zarzad')}>Zarząd</a>{/if}
+			{#if kolo.ready && !kolo.me}<a href={kp('/zaloguj')}>Zaloguj</a>{/if}
 			{#if kolo.me}
 				<span class="kolo__who">{kolo.me.name}</span>
 				<button class="kolo__link" onclick={() => kolo.logout()}>wyloguj</button>

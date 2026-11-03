@@ -16,11 +16,6 @@
 	let joinError = $state<string | null>(null);
 	let busy = $state(false);
 
-	// a login link for somebody already on the list
-	let loginEmail = $state('');
-	let loginSent = $state<string | null>(null);
-	let loginError = $state<string | null>(null);
-	let showLogin = $state(false);
 
 	// founder data for the printed BOK list (only once logged in)
 	let founder = $state<Founder | null>(null);
@@ -64,12 +59,6 @@
 		busy = false;
 	}
 
-	async function login(e: Event) {
-		e.preventDefault();
-		loginError = null; loginSent = null;
-		try { loginSent = (await api.post<{ detail: string }>('/kolo/login/', { email: loginEmail })).detail; }
-		catch (err) { loginError = err instanceof ApiError ? err.message : String(err); }
-	}
 </script>
 
 <h1>Koło AI</h1>
@@ -180,17 +169,8 @@
 
 	<p class="muted small">
 		Już jesteś na liście?
-		<button class="kolo-inline" onclick={() => (showLogin = !showLogin)}>Zaloguj się linkiem z maila</button>
+		<a href={kp('/zaloguj')}>Zaloguj się linkiem z maila</a>
 	</p>
-	{#if showLogin}
-		<form class="card" onsubmit={login}>
-			<label for="l-email">Adres z listy</label>
-			<input id="l-email" type="email" bind:value={loginEmail} required />
-			<button type="submit" class="btn btn--ghost">Wyślij link</button>
-			{#if loginSent}<div class="ok">{loginSent}</div>{/if}
-			{#if loginError}<div class="error">{loginError}</div>{/if}
-		</form>
-	{/if}
 {/if}
 
 <h2>Jak działamy</h2>
@@ -205,7 +185,6 @@
 	/* .card label.consent outranks the layout's `.kolo label` (bold) */
 	:global(.card) label.consent { font-weight: normal; font-size: 13px; display: flex; gap: 8px; align-items: flex-start; margin: 14px 0; }
 	.consent input { margin-top: 3px; flex: none; }
-	.kolo-inline { background: none; border: none; padding: 0; color: #222; text-decoration: underline; font: inherit; cursor: pointer; }
 	form .btn { margin-top: 8px; }
 	.notice { border-left: 4px solid #c98f1e; background: #fff8e8; padding: 8px 12px; margin: 6px 0 10px; }
 	.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
