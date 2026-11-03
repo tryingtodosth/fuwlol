@@ -122,6 +122,12 @@ gets `default-src 'none'; sandbox` and PDF/TXT/TEX as attachments; `client_max_b
 There is no nginx locally — `docker compose exec web nginx -t` on the box is the first check after a
 change (`deploy/OVH.md`).
 
+Since 2026-11-03 it also ends with a second `server` block, `server_name wum.fuw.lol` — the side
+app's own hostname, in preparation (the medapp repository's `docs/work/WUM-HOST-RUNBOOK.md`),
+inert until Cloudflare has the record. It is printed by that repository's `scripts/deployment.mjs`
+and pasted verbatim; it routes `/api/wum/` and `/api/feedback/` to `api` and everything else to the
+`wum` service, and nothing of the archive. Do not hand-edit it; regenerate it.
+
 It also carries `location /fum/`, which is **not this app**: it proxies WUM (the `skoki`
 container, a separate repository) onto this origin. The `proxy_pass` goes through a variable with a
 `resolver` so that a missing side app cannot stop nginx — and therefore the archive — from starting;

@@ -155,6 +155,14 @@ jobs:
             else
               echo "::warning::skoki image could not be pulled (absent, or a private package this box has no credentials for) — the archive is deployed and /fum answers 502. deploy/OVH.md, WUM."
             fi
+            # Its twin on the hostname of its own (wum.fuw.lol, in preparation since 2026-11-03):
+            # the same rules, the same best effort, the archive never waits for it.
+            if docker compose -f docker-compose.prod.yml --env-file .env pull wum; then
+              docker compose -f docker-compose.prod.yml --env-file .env up -d wum \
+                || echo "::warning::wum image pulled but would not start — wum.fuw.lol answers 502. deploy/OVH.md, WUM."
+            else
+              echo "::warning::wum image could not be pulled — the archive is deployed and wum.fuw.lol answers 502. deploy/OVH.md, WUM."
+            fi
             docker image prune -f
           EOF
       - name: Wait for the API to report healthy

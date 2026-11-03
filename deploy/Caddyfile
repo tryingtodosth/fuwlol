@@ -52,3 +52,13 @@ ai.fuw.lol {
 www.fuw.lol {
 	redir https://fuw.lol{uri} permanent
 }
+
+# WUM on a hostname of its own — in preparation (2026-11-03; the medapp repository's
+# docs/work/WUM-HOST-RUNBOOK.md). The same `common`: TLS from the same origin certificate, which
+# was issued for `fuw.lol` AND `*.fuw.lol` (deploy/OVH.md, step 2), and the same proxy to nginx,
+# which routes by the Host header it receives unchanged — the `server_name wum.fuw.lol` block in
+# frontend/nginx.conf. Inert until Cloudflare has a proxied record for `wum`; harmless before.
+wum.fuw.lol {
+	import common
+}
+

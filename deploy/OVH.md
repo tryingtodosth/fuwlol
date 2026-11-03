@@ -261,6 +261,21 @@ itself **WUM**; `/wum` and `/fwumu` — with their sub-paths and query strings �
 same path under `/fum` (`frontend/nginx.conf`). Links already sent to people keep working, and
 nothing inside the app ever builds an old-name URL, so a redirect is only ever the first request.
 
+**It is moving to a hostname of its own, `https://wum.fuw.lol` — in preparation since
+2026-11-03, nothing live moved yet.** The procedure is `docs/work/WUM-HOST-RUNBOOK.md` in the medapp
+repository; what this repository already carries for it is inert until a proxied `wum` record
+exists in Cloudflare: the `server_name wum.fuw.lol` block at the end of `frontend/nginx.conf`
+(the two API prefixes to `api`, everything else to the `wum` service), `wum.fuw.lol { import
+common }` in `deploy/Caddyfile` (the origin certificate covers `*.fuw.lol`), `wum.fuw.lol` in
+`FUWLOL_ALLOWED_HOSTS`, the `wum` service on `WUM_TAG` (`:wum-latest`, built at `/` by the medapp
+workflow beside the mounted `:latest`), and the deploy's best-effort start of it after `skoki`.
+**A changed Caddyfile is not reloaded by the deploy** — Caddy's admin API is off — so
+`docker compose -f docker-compose.prod.yml --env-file .env restart caddy` by hand, once. The move
+itself (the `/fum` redirects, the self-unregistering service worker at `/fum/service-worker.js`,
+`skoki` retired) is the runbook's phase 2 and is not in this repository yet. Two things the move
+costs that no config shows: the record a tester kept under `fuw.lol` stays there (storage is per
+origin), and the worker the old copy registered must be unregistered by the old origin.
+
 **Moving or renaming it again is the medapp repository's job, not a hand edit here.** That
 repository carries `scripts/deployment.mjs` (`npm run deployment -- --name … --base … --aliases …`),
 which prints the exact nginx block, the build arguments and the by-hand checks, and a

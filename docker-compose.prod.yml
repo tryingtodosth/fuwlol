@@ -58,7 +58,10 @@ services:
       # http://localhost:8000/api/categories/ from inside the container. Without them
       # Django answers 400 (DisallowedHost) to its own health probe, the container never
       # reports healthy, and the deploy workflow waits for something that cannot happen.
-      FUWLOL_ALLOWED_HOSTS: fuw.lol,www.fuw.lol,ai.fuw.lol,api,localhost,127.0.0.1
+      # wum.fuw.lol: the side app's own hostname (in preparation, 2026-11-03), whose nginx block
+      # proxies /api/wum/ and /api/feedback/ here with that Host. Without it Django answers 400
+      # (DisallowedHost) to every call the app makes from its new address.
+      FUWLOL_ALLOWED_HOSTS: fuw.lol,www.fuw.lol,ai.fuw.lol,wum.fuw.lol,api,localhost,127.0.0.1
       FUWLOL_CSRF_ORIGINS: https://fuw.lol,https://www.fuw.lol
       FUWLOL_CORS_ORIGINS: ""
       FUWLOL_SITE_URL: https://fuw.lol
@@ -132,6 +135,22 @@ services:
       ORIGIN: https://fuw.lol
       # The app is mounted under /fum at BUILD time (its Dockerfile); nothing here can move it.
     # No published port: nginx is the only way in, exactly like the api service.
+
+  # WUM on a hostname of its own — https://wum.fuw.lol — IN PREPARATION (2026-11-03). The same
+  # app from the same repository, built at `/` instead of `/fum` and pushed by the same workflow
+  # under its own tags (`:wum-<sha>`, `:wum-latest`), run beside `skoki` until the move is made
+  # (the medapp repository's docs/work/WUM-HOST-RUNBOOK.md). nginx's `server_name wum.fuw.lol`
+  # block proxies to it; `skoki` and `/fum/` are untouched by it. After the move, `skoki` is
+  # retired and this is the only one. Roll it back on its own with WUM_TAG, like SKOKI_TAG.
+  wum:
+    image: ghcr.io/tryingtodosth/fuwlol-skoki:${WUM_TAG:-wum-latest}
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      # adapter-node's own public URL — the address a visitor types. On its own hostname that is
+      # the origin and nothing more; the app is built at `/`.
+      ORIGIN: https://wum.fuw.lol
+    # No published port: nginx is the only way in.
 
   caddy:
     image: caddy:2-alpine
