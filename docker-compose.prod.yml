@@ -58,10 +58,14 @@ services:
       # http://localhost:8000/api/categories/ from inside the container. Without them
       # Django answers 400 (DisallowedHost) to its own health probe, the container never
       # reports healthy, and the deploy workflow waits for something that cannot happen.
-      FUWLOL_ALLOWED_HOSTS: fuw.lol,www.fuw.lol,api,localhost,127.0.0.1
+      FUWLOL_ALLOWED_HOSTS: fuw.lol,www.fuw.lol,ai.fuw.lol,api,localhost,127.0.0.1
       FUWLOL_CSRF_ORIGINS: https://fuw.lol,https://www.fuw.lol
       FUWLOL_CORS_ORIGINS: ""
       FUWLOL_SITE_URL: https://fuw.lol
+      # Koło AI (backend/kolo_ai/): mailed links point here. AUTO_ADMIT stays 0 until the Koło is in
+      # the BOK register; then 1 lets a confirmed student.uw.edu.pl address enter the register itself.
+      FUWLOL_KOLO_SITE_URL: https://ai.fuw.lol
+      FUWLOL_KOLO_AUTO_ADMIT: "0"
       FUWLOL_MEDIA_ROOT: /app/media
       FUWLOL_CACHE_DIR: /app/cachedata
       FUWLOL_EVIDENCE_ROOT: /app/evidence

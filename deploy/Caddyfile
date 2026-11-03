@@ -42,6 +42,13 @@ fuw.lol {
 	import common
 }
 
+# Koło AI (backend/kolo_ai/). Same nginx, same SPA: the app reroutes this host's paths under
+# /ai (frontend/src/hooks.ts). Needs a proxied DNS record `ai` in Cloudflare; the origin
+# certificate must list ai.fuw.lol or *.fuw.lol.
+ai.fuw.lol {
+	import common
+}
+
 www.fuw.lol {
 	redir https://fuw.lol{uri} permanent
 }

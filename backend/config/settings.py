@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     'portraits',
     'share',
     'wum',
+    'kolo_ai',
 ]
 
 # See config/middleware.py for what each of these means and when it is safe.
@@ -168,6 +169,13 @@ REST_FRAMEWORK = {
         'wum_login': '20/min',
         'wum_profile': '60/hour',
         'wum_publish': '20/hour',
+        # Koło AI (kolo_ai/views.py). Join and login send mail to the address typed, so like the
+        # consent scopes they limit what one visitor can do to somebody else's mailbox.
+        'kolo_join': '10/hour',
+        'kolo_login': '20/hour',
+        'kolo_vote': '120/hour',
+        'kolo_comment': '60/hour',
+        'kolo_status': '60/hour',
         'wum_template_write': '60/hour',
         # The practice round (wum/views.py): a practice's settings and notes, and visits asked for
         # or decided. Writes only, per IP; a physiotherapist confirming a morning's requests is a
@@ -201,6 +209,11 @@ DEFAULT_FROM_EMAIL = os.environ.get('FUWLOL_FROM_EMAIL', 'FUW <no-reply@fuw.lol>
 # should WRITE is a mailbox a human opens. Conflating them puts "no-reply@" on the DSA
 # art. 12 contact point, which is the one address that must actually answer.
 FUWLOL_CONTACT_EMAIL = os.environ.get('FUWLOL_CONTACT_EMAIL', 'admin@fuw.lol')
+# Koło AI (kolo_ai/): the origin its mailed links point at (https://ai.fuw.lol in production;
+# in development the pages live under /ai on the dev server), and whether a confirmed student
+# address enters the register by itself — OFF until the Koło is in the BOK register (§ 5 ust. 3).
+FUWLOL_KOLO_SITE_URL = os.environ.get('FUWLOL_KOLO_SITE_URL', 'http://localhost:5173/ai')
+FUWLOL_KOLO_AUTO_ADMIT = os.environ.get('FUWLOL_KOLO_AUTO_ADMIT', '0') == '1'
 # Where the confirmation link points (the SvelteKit site, which has the /potwierdz page).
 FUWLOL_SITE_URL = os.environ.get('FUWLOL_SITE_URL', 'http://localhost:5173').rstrip('/')
 # Link previews (share/). FUWLOL_SPA_INDEX points at the built SvelteKit shell when Django can

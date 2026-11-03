@@ -38,12 +38,15 @@ deploy/    OVH runbook, Caddyfile, firewall.sh, backup.sh.   .github/workflows/d
 docs/      the Polish draw.io documentation deck and the Gemini research reports.
 ```
 
-The 9 apps, each with its own `CLAUDE.md`: `accounts` (tiers) · `archive` (everything about a post:
+The 10 apps, each with its own `CLAUDE.md`: `accounts` (tiers) · `archive` (everything about a post:
 models, API, people, subjects, search, uploads, guards, suggestions) · `board` (the chat) ·
 `consent` (a person's own say about their image) · `escalation` (NASK) · `feedback` (notes about a
 screen, from the side app) · `portraits` (elected profile photos) · `share` (link previews +
 sitemap, no models) · `wum` (the side app's accounts, example templates and anonymised
 publications).
+`kolo_ai` (Koło AI at **ai.fuw.lol**: a student organisation's register of members, remote votes
+under its regulamin, a status feed — its own `Member` table and its own credentials, no archive
+powers in either direction; `backend/kolo_ai/CLAUDE.md`).
 
 **One thing on this origin is not the archive.** `fuw.lol/fum` is **WUM** — MedApp, a patient
 prototype from `github.com/tryingtodosth/medapp`, run as the `skoki` container and put on the

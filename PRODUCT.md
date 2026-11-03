@@ -171,6 +171,14 @@ Named so that somebody can close them; the engineering-level gaps are in `CLAUDE
   (`docs/gemini/note.md`).
 - **Recovering the pre-2010 folklore** from the Wayback Machine and Usenet — a separate project.
 
+### Koło AI (ai.fuw.lol)
+
+Built 2026-11-03: the list (the membership declaration) → "oczekujesz na zatwierdzenie" → a manager
+admits or the person was invited; remote votes under § 10a; the status feed. Left open, with the
+reasons, in `backend/kolo_ai/CLAUDE.md` "Left open": reminders, resending failed notices, the
+opiekun's copy, runoff automation, feeding protocols into the Koło's document generator, the
+initiative register.
+
 ## Research
 
 Five Gemini Deep Research reports answer parts of `docs/research-brief-gemini.md`

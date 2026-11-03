@@ -1,4 +1,4 @@
-# backend/ — Django 5.2 + DRF, 9 apps + `config/`, SQLite locally / Postgres in production
+# backend/ — Django 5.2 + DRF, 10 apps + `config/`, SQLite locally / Postgres in production
 
 Scoped context for backend work. The cross-cutting rules are in the root `CLAUDE.md`; the reasoning
 is in `DESIGN.md`; each app's own `CLAUDE.md` has its rules; `MODERATION-API.md` documents the

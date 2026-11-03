@@ -14,6 +14,8 @@ urlpatterns = [
     # The side app's accounts, example templates and anonymised publications (wum/). Same
     # reasoning as feedback: its own prefix, placed before the archive's greedy router.
     path('api/wum/', include('wum.urls')),
+    # Koło AI (kolo_ai/), served at ai.fuw.lol. Own prefix, own credentials, no archive powers.
+    path('api/kolo/', include('kolo_ai.urls')),
     # BEFORE archive.urls: the archive's DefaultRouter owns `people/<slug>/`, and the
     # portrait gallery hangs one segment deeper under the same prefix.
     path('api/', include('portraits.urls')),

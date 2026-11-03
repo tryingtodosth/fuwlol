@@ -183,6 +183,24 @@ The notes themselves are plain text, never rendered by `lib/render/`, and read i
 publication's payload is JSON the app renders from a typed shape; a `payload_version` the app does
 not know is shown as "unknown version", never rendered.
 
+## Koło AI (`ai.fuw.lol`, `backend/kolo_ai/`)
+
+Separate credentials (`Kolo` sessions, `KoloKey` publish keys), both stored as SHA-256 hashes; an
+archive token is ignored on `/api/kolo/` and a Koło session is anonymous to the archive (tests pin
+both). Mailed links are single-use, 24 h (7 days for an invitation), and the link page removes the
+token from the address bar before calling the API.
+
+**The secret ballot, and what it does not survive.** `Participation` (who) and `Ballot` (what) carry
+no timestamp, random UUID keys, and no foreign key between them; after the close the ballots are
+rewritten in random order (`rules._shuffle_ballots`). That defeats correlation through anything the
+application shows, the admin (ballots are not registered there), and a backup taken after the close.
+It does **not** defeat the operator of the database *during* an open vote: the physical row order
+(`ctid` in Postgres) of the two tables, WAL, a backup taken while the vote is open, or the proxy's
+access log matched against `POST /api/kolo/polls/<id>/vote/` can line a voter up with a ballot.
+The operator is a person who may also be a candidate. This is stated to the Koło (its Komisja
+Rewizyjna should know) rather than hidden; the fix, if it is ever needed, is a mix step that is not
+this module.
+
 ## Accepted, not forgotten
 
 - The API token lives in `localStorage` (`fuwlol.token`). CSP is the second line; an httpOnly

@@ -214,6 +214,28 @@ k-anonymous, whatever the projection removes — may be published on an opt-in b
 wording the app shows. Withdrawn payloads also survive in the restic backups until a sweeper
 exists (`wum/CLAUDE.md` "Left open").
 
+## 9a. Koło AI — the register of members and remote votes (`backend/kolo_ai/`)
+
+**The controller is Piotr Putyło, contact `admin@fuw.lol`** (decided 2026-11-03, while the Koło is
+being registered; it is not a legal person, and once it is registered the University's own rules
+may name another controller). The join form at ai.fuw.lol says so, together with the purpose
+(the register of members, the list of sympatycy, notices and votes), the rights (access,
+correction, erasure, withdrawal of consent, by mail to that address) and the retention. The
+consent is versioned: `Member.agreed_text_version`, `rules.CONSENT_VERSION` ↔
+`frontend/src/lib/kolo.svelte.ts`.
+
+Retention: a member's row is kept for as long as the membership lasts. A `left` row is kept
+afterwards because the register and past protocols refer to it, and how long it stays should be
+written down when the first person leaves. An address nobody confirmed is deleted after 30 days
+(`kolo_forget_unconfirmed`, nightly), because it is an e-mail typed by anybody with no agreement
+behind it. Join and login answer the same way for known and unknown addresses, and both are
+throttled per IP, because they send mail to the address that was typed.
+
+What a vote keeps: the named row of an open vote (shown to members after the close, and in the
+protocol); for a secret vote, the list of who took part (needed for the protocol, § 10a ust. 8) and
+ballots that cannot be linked back to a person. Deliberation entries carry the member's name and
+are visible to members only.
+
 ## 10. Left open
 
 - Nothing here has been read by a lawyer. Before the archive is *promoted* rather than merely

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>AI — facepalm</title>
+  <!-- head (bowed) -->
+  <ellipse cx="270" cy="196" rx="100" ry="108" fill="#9a9a9a" transform="rotate(-14 270 196)"/>
+  <!-- A = forearm + hand, right leg = neck; I leans to the right.
+       Drawn twice (black wide, then white narrow) so everything shares one outline. -->
+  <defs>
+    <g id="shape">
+      <path d="M130 470 L202 214"/>          <!-- forearm (A left leg) -->
+      <path d="M242 140 L322 400"/>          <!-- neck (A right leg) -->
+      <path d="M186 288 L282 288"/>          <!-- palm (A crossbar) -->
+      <path d="M390 108 L390 420"/>           <!-- I -->
+    </g>
+  </defs>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <use href="#shape" stroke="#111111" stroke-width="64"/>
+    <g stroke="#111111" stroke-width="40">
+      <path d="M194 238 L212 112"/><path d="M206 236 L236 106"/><path d="M220 236 L258 136"/>
+    </g>
+    <use href="#shape" stroke="#ffffff" stroke-width="44"/>
+    <g stroke="#ffffff" stroke-width="20">
+      <path d="M194 238 L212 112"/><path d="M206 236 L236 106"/><path d="M220 236 L258 136"/>
+    </g>
+    <!-- finger splits -->
+    <g stroke="#111111" stroke-width="4">
+      <path d="M210 196 L224 128"/><path d="M224 200 L244 138"/>
+    </g>
+  </g>
+  <!-- sweater on top -->
+  <path fill="#9a9a9a" d="M40 512 C50 440 90 392 170 368 L250 352 C285 372 330 368 360 345 C420 352 468 396 482 512 Z"/>
+</svg>

@@ -12,6 +12,17 @@ export function setToken(t: string | null) {
 	try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch { /* private mode */ }
 }
 
+/** Koło AI (ai.fuw.lol, backend/kolo_ai/) has its own session, never the archive's token: a
+ * `/kolo/…` call carries `Authorization: Kolo <session>` and nothing else, so neither app's
+ * credential ever reaches the other's endpoints. */
+const KOLO_KEY = 'fuwlol.kolo';
+export function getKoloSession(): string | null {
+	try { return localStorage.getItem(KOLO_KEY); } catch { return null; }
+}
+export function setKoloSession(t: string | null) {
+	try { t ? localStorage.setItem(KOLO_KEY, t) : localStorage.removeItem(KOLO_KEY); } catch { /* private mode */ }
+}
+
 export class ApiError extends Error {
 	constructor(public status: number, public body: unknown) {
 		super(describe(body, status));
@@ -38,8 +49,13 @@ function describe(body: unknown, status: number): string {
 
 async function request<T>(method: string, path: string, data?: unknown): Promise<T> {
 	const headers: Record<string, string> = {};
-	const token = getToken();
-	if (token) headers.Authorization = `Token ${token}`;
+	if (path.startsWith('/kolo/')) {
+		const s = getKoloSession();
+		if (s) headers.Authorization = `Kolo ${s}`;
+	} else {
+		const token = getToken();
+		if (token) headers.Authorization = `Token ${token}`;
+	}
 	let body: BodyInit | undefined;
 	if (data instanceof FormData) body = data;
 	else if (data !== undefined) { headers['Content-Type'] = 'application/json'; body = JSON.stringify(data); }

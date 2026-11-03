@@ -183,6 +183,7 @@ visitors from a new one get dropped.
 0 3 * * *  /srv/fuwlol/deploy/backup.sh >> /srv/fuwlol/backup.log 2>&1
 0 4 * * *  cd /srv/fuwlol && docker compose -f docker-compose.prod.yml exec -T api python manage.py forget_submitter_ips
 0 4 * * *  cd /srv/fuwlol && docker compose -f docker-compose.prod.yml exec -T api python manage.py forget_claim_ips
+15 4 * * * cd /srv/fuwlol && docker compose -f docker-compose.prod.yml exec -T api python manage.py kolo_forget_unconfirmed
 ```
 
 The second and third are not housekeeping: `Post.submitter_ip` is personal data kept for
@@ -366,6 +367,34 @@ docker compose -f docker-compose.prod.yml --env-file .env logs --tail=20 web
   caches the failure, and `valid=` does not cover failed answers; `nginx -s reload` clears it, and
   any deploy that ships a new `web` image does it by itself.
 - `connect() failed` — the app is down or on another network; check `docker compose ps skoki`.
+
+## Koło AI — `ai.fuw.lol` (`backend/kolo_ai/`)
+
+The same containers serve it: nginx 308s `fuw.lol/ai` (any letter case) to the subdomain, and
+the SPA reroutes that host's paths under `/ai` (`frontend/src/hooks.ts`). One-time steps, in
+order:
+
+1. **Cloudflare DNS:** `CNAME ai → fuw.lol`, **proxied**, like `www`. It inherits both the A and
+   the AAAA record. **Never DNS-only:** the firewall admits only Cloudflare's ranges, and the
+   origin certificate is trusted by Cloudflare alone, so a grey-cloud record is a timeout or a
+   certificate error for every visitor. The origin certificate covers `*.fuw.lol` (step 2 of the one-time setup above).
+   Until the deploy below, ai.fuw.lol answers with an error from Caddy, which harms nothing.
+2. **Deploy** (push to `main`). The workflow ships `deploy/Caddyfile` with the `ai.fuw.lol` block,
+   but does not reload Caddy (its admin API is off), so once:
+   `cd /srv/fuwlol && docker compose -f docker-compose.prod.yml --env-file .env restart caddy`.
+3. **The first manager:** `docker compose -f docker-compose.prod.yml exec api python manage.py kolo_invite ADRES@student.uw.edu.pl --name "Imię Nazwisko" --manager`
+4. **The publish key** for the status script: `… exec api python manage.py kolo_publish_key create claude`.
+   The key is printed once; keep it in `~/.config/kolo-ai/token` (mode 600) on the machine that runs
+   `publikuj_status.py`.
+5. **The cron line** `kolo_forget_unconfirmed` (above).
+6. **After the Koło is in the BOK register:** set `FUWLOL_KOLO_AUTO_ADMIT: "1"` in
+   `docker-compose.prod.yml`, so that a confirmed `student.uw.edu.pl` declaration admits itself.
+
+Check after a deploy:
+- `curl -sI https://fuw.lol/AI/x?y=1` → `308`, `location: https://ai.fuw.lol/x?y=1`;
+- `curl -s https://ai.fuw.lol/api/kolo/info/` → JSON;
+- https://ai.fuw.lol shows Koło AI, not the archive;
+- `/`, `/fum/` and a post on fuw.lol are unchanged.
 
 ## Link previews (`backend/share/`)
 
