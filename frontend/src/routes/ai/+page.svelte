@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api, ApiError } from '$lib/api';
-	import { kolo, kp, when, CONSENT_VERSION, type StatusEntry } from '$lib/kolo.svelte';
+	import { kolo, kp, when, CONSENT_VERSION, FOUNDER_CONSENT_VERSION, type Founder, type StatusEntry } from '$lib/kolo.svelte';
 
 	let statuses = $state<StatusEntry[]>([]);
 	let members = $state<number | null>(null);
+	let notice = $state('');
 
 	// the list: name, address, declaration, consent
 	let name = $state('');
@@ -21,10 +22,34 @@
 	let loginError = $state<string | null>(null);
 	let showLogin = $state(false);
 
+	// founder data for the printed BOK list (only once logged in)
+	let founder = $state<Founder | null>(null);
+	let fConsent = $state(false);
+	let fSaved = $state<string | null>(null);
+	let fError = $state<string | null>(null);
+	$effect(() => {
+		if (kolo.me && founder === null) {
+			api.get<Founder>('/kolo/me/founder/').then((f) => { founder = f; fConsent = !!f.nr_albumu; }).catch(() => {});
+		}
+	});
+	async function saveFounder(e: Event) {
+		e.preventDefault();
+		if (!founder) return;
+		fError = null; fSaved = null;
+		try {
+			const { phone, kierunek, etap, nr_albumu } = founder;
+			founder = { ...(await api.put<Founder>('/kolo/me/founder/', {
+				phone, kierunek, etap, nr_albumu, agreed_text_version: fConsent ? FOUNDER_CONSENT_VERSION : ''
+			})), problem: null };
+			fSaved = 'Zapisano. Dane trafią na wydruk listy założycieli — podpiszesz ją na zebraniu.';
+		} catch (err) { fError = err instanceof ApiError ? err.message : String(err); }
+	}
+
 	onMount(() => {
 		document.title = 'Koło AI — Wydział Fizyki UW';
 		api.get<StatusEntry[]>('/kolo/status/').then((s) => (statuses = s)).catch(() => {});
-		api.get<{ members: number }>('/kolo/info/').then((i) => (members = i.members)).catch(() => {});
+		api.get<{ members: number; texts: { founders_notice: string } }>('/kolo/info/')
+			.then((i) => { members = i.members; notice = i.texts.founders_notice; }).catch(() => {});
 	});
 
 	async function join(e: Event) {
@@ -65,6 +90,36 @@
 	</div>
 {/if}
 
+{#if kolo.me && founder}
+	<h2 id="zalozyciel">Dane do listy założycieli</h2>
+	<div class="card">
+		{#if founder.problem}
+			<p class="muted">{founder.problem}</p>
+		{:else}
+			{#if notice}<div class="notice pre">{notice}</div>{/if}
+			<p class="small">Lista założycieli jest załącznikiem do Powiadomienia Rektora UW o powstaniu Koła (zarządzenie nr 170).
+				Imię, nazwisko i adres UW już mamy: <strong>{founder.name}</strong>, {founder.email}. Uzupełnij resztę — na zebraniu tylko podpiszesz wydruk.</p>
+			<form onsubmit={saveFounder}>
+				<div class="grid2">
+					<div><label for="f-phone">Numer telefonu</label><input id="f-phone" type="text" inputmode="tel" bind:value={founder.phone} required /></div>
+					<div><label for="f-album">Numer albumu</label><input id="f-album" type="text" inputmode="numeric" bind:value={founder.nr_albumu} required /></div>
+					<div><label for="f-kier">Kierunek albo szkoła doktorska</label><input id="f-kier" type="text" bind:value={founder.kierunek} required maxlength="120" placeholder="Fizyka" /></div>
+					<div><label for="f-etap">Rok studiów albo etap kształcenia</label><input id="f-etap" type="text" bind:value={founder.etap} required maxlength="40" placeholder="2. rok I stopnia" /></div>
+				</div>
+				<label class="consent">
+					<input type="checkbox" bind:checked={fConsent} required />
+					<span>Jestem założycielem Koła AI i zgadzam się na umieszczenie powyższych danych na liście założycieli, która z
+						Powiadomieniem trafia do Rektora UW (Biuro ds. Obsługi Kształcenia). Do tego czasu dane widzą tylko osoby prowadzące listę założycieli; po rejestracji usuwamy je z serwisu (zostają na papierowej liście). Administrator: Piotr Putyło,
+						<a href="mailto:admin@fuw.lol">admin@fuw.lol</a>.</span>
+				</label>
+				<button type="submit" class="btn" disabled={!fConsent}>Zapisz dane założyciela</button>
+			</form>
+			{#if fSaved}<div class="ok">{fSaved}</div>{/if}
+			{#if fError}<div class="error">{fError}</div>{/if}
+		{/if}
+	</div>
+{/if}
+
 <h2>Co robimy</h2>
 <ul>
 	<li><strong>AI w edukacji</strong> — narzędzia i sposoby uczenia (się) z AI, także na naszym Wydziale.</li>
@@ -93,6 +148,7 @@
 		<p>Wpis na listę to deklaracja członkowska (§ 5 ust. 4 regulaminu). Członkiem z prawem głosu może być
 			<strong>student lub doktorant UW</strong>; pozostali są mile widziani jako <strong>sympatycy</strong> (§ 7).
 			{#if members !== null && members > 0}W Kole jest już {members} {members === 1 ? 'członek' : 'członków'}.{/if}</p>
+		{#if notice}<div class="notice pre">{notice}</div>{/if}
 		{#if joined}
 			<div class="ok"><strong>{joined}</strong></div>
 		{:else}
@@ -151,4 +207,7 @@
 	.consent input { margin-top: 3px; flex: none; }
 	.kolo-inline { background: none; border: none; padding: 0; color: #222; text-decoration: underline; font: inherit; cursor: pointer; }
 	form .btn { margin-top: 8px; }
+	.notice { border-left: 4px solid #c98f1e; background: #fff8e8; padding: 8px 12px; margin: 6px 0 10px; }
+	.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+	@media (max-width: 600px) { .grid2 { grid-template-columns: 1fr; } }
 </style>

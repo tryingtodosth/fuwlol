@@ -235,3 +235,27 @@ class Comment(models.Model):
 
     class Meta:
         ordering = ['created_at', 'id']
+
+
+class FounderDetails(models.Model):
+    """What the BOK list of founders asks beyond name and address (zarządzenie nr 170, the
+    "Lista założycieli organizacji" template): phone, field of study or doctoral school, year or
+    stage, student number. Typed by the person, read by managers only, printed onto the paper list
+    that the founders sign. Kept apart from `Member` because it is more sensitive and has a shorter
+    life: it exists for the registration and is wiped after it (LEGAL.md 9a)."""
+    member = models.OneToOneField(Member, on_delete=models.CASCADE, related_name='founder')
+    phone = models.CharField(max_length=20)
+    kierunek = models.CharField(max_length=120)  # field of study, or the doctoral school
+    etap = models.CharField(max_length=40)  # year of study, or stage in the doctoral school
+    nr_albumu = models.CharField(max_length=10)
+    agreed_text_version = models.CharField(max_length=20)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class Setting(models.Model):
+    """A few texts a manager edits on the page itself (`rules.SETTINGS` lists the keys and their
+    defaults), e.g. when and where the founders sign the paper list. Plain text, never HTML."""
+    key = models.CharField(max_length=40, unique=True)
+    value = models.TextField(max_length=1000)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.CharField(max_length=120, blank=True)

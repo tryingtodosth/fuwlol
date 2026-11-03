@@ -338,3 +338,61 @@ class RetentionTests(Base):
         Member.objects.filter(pk=kept.pk).update(created_at=timezone.now() - timedelta(days=90))
         call_command('kolo_forget_unconfirmed', stdout=open('/dev/null', 'w'))
         self.assertEqual(set(Member.objects.values_list('email', flat=True)), {'new@x.pl', 'm@student.uw.edu.pl'})
+
+
+class FounderTests(Base):
+    def put(self, c, **kw):
+        data = {'phone': '+48 600 100 200', 'kierunek': 'Fizyka', 'etap': '2. rok I st.', 'nr_albumu': '445566',
+                'agreed_text_version': rules.FOUNDER_CONSENT_VERSION}
+        data.update(kw)
+        return c.put('/api/kolo/me/founder/', data, format='json')
+
+    def test_pending_student_files_data_and_manager_lists_it(self):
+        m = Member.objects.create(email='zal@student.uw.edu.pl', name='Anna Zet', status=Member.PENDING_APPROVAL,
+                                  email_confirmed_at=timezone.now())
+        r = self.put(client_for(m))
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()['nr_albumu'], '445566')
+        boss = make_member('boss@student.uw.edu.pl', name='Boss Adam', can_manage=True)
+        rows = client_for(boss).get('/api/kolo/founders/').json()
+        self.assertEqual([x['name'] for x in rows], ['Anna Zet'])
+        self.assertEqual(rows[0]['email'], 'zal@student.uw.edu.pl')
+
+    def test_validation_and_consent(self):
+        m = make_member('a@student.uw.edu.pl')
+        c = client_for(m)
+        self.assertEqual(self.put(c, nr_albumu='12ab').status_code, 400)
+        self.assertEqual(self.put(c, phone='12').status_code, 400)
+        self.assertEqual(self.put(c, agreed_text_version='').status_code, 400)
+
+    def test_inny_or_non_uw_cannot_be_founder(self):
+        g = Member.objects.create(email='x@gmail.com', name='Gość', status=Member.PENDING_APPROVAL,
+                                  email_confirmed_at=timezone.now())
+        self.assertEqual(self.put(client_for(g)).status_code, 400)
+        s = make_member('s@fuw.edu.pl', affiliation=Member.INNY, role=Member.SYMPATYK)
+        self.assertEqual(self.put(client_for(s)).status_code, 400)
+
+    def test_only_managers_list_and_person_can_withdraw(self):
+        m = make_member('a@student.uw.edu.pl')
+        c = client_for(m)
+        self.put(c)
+        self.assertEqual(c.get('/api/kolo/founders/').status_code, 403)
+        self.assertEqual(APIClient().get('/api/kolo/founders/').status_code, 403)
+        c.delete('/api/kolo/me/founder/')
+        self.assertEqual(c.get('/api/kolo/me/founder/').json()['nr_albumu'], '')
+
+
+class SettingTests(Base):
+    def test_default_then_manager_edits(self):
+        info = APIClient().get('/api/kolo/info/').json()
+        self.assertIn('11:00–11:40', info['texts']['founders_notice'])
+        boss = make_member('boss@student.uw.edu.pl', can_manage=True)
+        r = client_for(boss).put('/api/kolo/settings/founders_notice/', {'value': 'Podpisy 11:05–11:45.'}, format='json')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(APIClient().get('/api/kolo/info/').json()['texts']['founders_notice'], 'Podpisy 11:05–11:45.')
+
+    def test_non_manager_and_unknown_key(self):
+        m = make_member('a@student.uw.edu.pl')
+        self.assertEqual(client_for(m).put('/api/kolo/settings/founders_notice/', {'value': 'x'}, format='json').status_code, 403)
+        boss = make_member('boss@student.uw.edu.pl', can_manage=True)
+        self.assertEqual(client_for(boss).put('/api/kolo/settings/nope/', {'value': 'x'}, format='json').status_code, 404)

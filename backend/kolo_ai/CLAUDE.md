@@ -76,6 +76,21 @@ Nothing is deleted except by `kolo_forget_unconfirmed` (RODO retention, see belo
   it is announced or open. A comment can be hidden; it is never deleted.
 - **Who sees votes:** a member with a vote. A sympatyk and the public see the status feed only.
 
+## The list of founders and editable texts
+
+- **`FounderDetails`** (1:1 `Member`) holds what the BOK template asks for beyond name and
+  e-mail: phone, `kierunek`, `etap`, `nr_albumu`, plus its own consent version.
+  - Filed by the person on `/ai` (`me/founder/`, GET, PUT, DELETE), only while `pending_approval`
+    or `member`, and only as a student or doktorant writing from a UW address (`rules.founder_problem`).
+  - Managers read it (`founders/`, sorted by surname) and print it from `/ai/zarzad/zalozyciele`.
+    That page is the BOK layout: 11 rows per page, filled rows first, then at least 22 blank rows
+    rounded up to full pages, with the signature column always blank.
+  - "Pobierz JSON" saves a file that `kolo_ai_zebrania/generuj.py` reads as `zalozyciele.json`, to
+    produce the same list as DOCX and PDF.
+- **`Setting`** holds texts a manager edits on the page (`rules.SETTINGS`, e.g. `founders_notice`:
+  when and where the list is signed). The current values come in `info/` → `texts`; a manager
+  changes one with `PUT settings/<key>/`.
+
 ## Commands
 
 | Command | What |
@@ -97,5 +112,6 @@ Nothing is deleted except by `kolo_forget_unconfirmed` (RODO retention, see belo
   address is known.
 - **Runoff:** the second round of an election is a new poll that a manager creates by hand.
 - **Protocol:** the Markdown is not yet fed into `generuj.py` (a `typ = "zdalne"` there).
+- **Founder data is not wiped automatically** after registration: delete the `FounderDetails` rows by hand once BOK has the paper list.
 - **The initiative register** (§ 4 pkt 7, § 14 ust. 3 pkt 2) is not built.
 - **Notice periods are not shortened by an urgent procedure**, because the regulamin has none.

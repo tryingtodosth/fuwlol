@@ -33,6 +33,9 @@ from .models import (Ballot, Comment, LoginLink, Member, MemberAction, Objection
 # The wording a person agrees to on the join form. Mirrored in frontend/src/lib/kolo.ts
 # CONSENT_VERSION — change both, and the text there.
 CONSENT_VERSION = '2026-11-03'
+# The founder-data wording on ai.fuw.lol (frontend/src/routes/ai/+page.svelte). Mirrored in
+# frontend/src/lib/kolo.svelte.ts FOUNDER_CONSENT_VERSION.
+FOUNDER_CONSENT_VERSION = '2026-11-03-zal'
 
 YES_NO = ['za', 'przeciw', 'wstrzymuję się']
 ABSTAIN = 'wstrzymuję się'
@@ -412,3 +415,27 @@ def can_comment(member, poll):
 
 def visible_comments(poll):
     return Comment.objects.filter(poll=poll, hidden_at__isnull=True).select_related('member')
+
+
+def founder_problem(member):
+    """Why `member` may not file founder data, or None. A founder is a student or doktorant of the
+    University (art. 111 PSWiN; § 5 ust. 1, § 5 ust. 3), writing from a confirmed UW address."""
+    if member.status not in (Member.PENDING_APPROVAL, Member.MEMBER):
+        return 'Dane założyciela może podać osoba z potwierdzonym adresem, która jest na liście.'
+    if member.affiliation == Member.INNY or not is_uw_email(member.email):
+        return 'Założycielem może być tylko student lub doktorant UW piszący z adresu UW.'
+    return None
+
+
+# Texts managers edit on ai.fuw.lol; the default is what shows until somebody does.
+SETTINGS = {
+    'founders_notice': ('Listę założycieli podpisujemy na zebraniu założycielskim we wtorek 3 listopada 2026 '
+                        'w godz. 11:00–11:40, sala 0.03 FUW (Pasteura 5). Wpisz dane poniżej wcześniej – na miejscu '
+                        'tylko się podpiszesz.'),
+}
+
+
+def setting(key):
+    from .models import Setting
+    row = Setting.objects.filter(key=key).first()
+    return row.value if row else SETTINGS[key]

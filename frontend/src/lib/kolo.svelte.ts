@@ -3,6 +3,12 @@ import { api, ApiError, getKoloSession, setKoloSession } from './api';
 
 /** Mirrors backend/kolo_ai/rules.py CONSENT_VERSION — change both, and the consent text. */
 export const CONSENT_VERSION = '2026-11-03';
+/** Mirrors backend/kolo_ai/rules.py FOUNDER_CONSENT_VERSION. */
+export const FOUNDER_CONSENT_VERSION = '2026-11-03-zal';
+export interface Founder {
+	id: number; name: string; email: string; affiliation: string; status: string;
+	phone: string; kierunek: string; etap: string; nr_albumu: string; updated_at: string | null; problem?: string | null;
+}
 
 export interface KoloMember {
 	id: number; name: string; status: string; status_label: string; role: 'czlonek' | 'sympatyk';

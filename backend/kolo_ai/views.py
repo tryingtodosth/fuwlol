@@ -28,7 +28,7 @@ from rest_framework.views import APIView
 
 from . import rules
 from .auth import KoloAuthentication, member_of, publish_key_of, session_of
-from .models import Comment, LoginLink, Member, Objection, Poll, StatusEntry, Vote
+from .models import Comment, FounderDetails, LoginLink, Member, Objection, Poll, Setting, StatusEntry, Vote
 
 JOIN_REPLY = ('Oczekujesz na zatwierdzenie. Wysłaliśmy link na podany adres — kliknij go, żeby potwierdzić, '
               'że adres jest Twój. Bez potwierdzenia zgłoszenie nie trafi do Zarządu.')
@@ -102,7 +102,8 @@ def poll_row(p, member, detail=False):
 class InfoView(KoloView):
     def get(self, request):
         return Response({'members': rules.voting_members().count(), 'auto_admit': rules.auto_admit(),
-                         'consent_version': rules.CONSENT_VERSION})
+                         'consent_version': rules.CONSENT_VERSION,
+                         'texts': {k: rules.setting(k) for k in rules.SETTINGS}})
 
 
 class StatusListView(KoloView):
@@ -521,3 +522,93 @@ class ProtocolView(KoloView):
             return Response({'detail': 'Protokół powstaje po zakończeniu głosowania.'}, status=status.HTTP_409_CONFLICT)
         from .protocol import protocol_markdown
         return Response({'markdown': protocol_markdown(p)})
+
+
+# --- the list of founders (BOK template) ------------------------------------------------------
+
+FOUNDER_FIELDS = ('phone', 'kierunek', 'etap', 'nr_albumu')
+
+
+def founder_row(m):
+    f = getattr(m, 'founder', None)
+    return {'id': m.pk, 'name': m.name, 'email': m.email, 'affiliation': m.affiliation, 'status': m.status,
+            **{k: getattr(f, k, '') for k in FOUNDER_FIELDS}, 'updated_at': f.updated_at if f else None}
+
+
+class MyFounderView(KoloView):
+    """GET → my founder data (or blanks); PUT {phone, kierunek, etap, nr_albumu, agreed_text_version}."""
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'kolo_comment'
+
+    def get_throttles(self):
+        return super().get_throttles() if self.request.method == 'PUT' else []
+
+    def get(self, request):
+        m, err = _needs_member(request)
+        if err:
+            return err
+        row = founder_row(m)
+        row['problem'] = rules.founder_problem(m)
+        return Response(row)
+
+    def put(self, request):
+        m, err = _needs_member(request)
+        if err:
+            return err
+        problem = rules.founder_problem(m)
+        if problem:
+            return Response({'detail': problem}, status=status.HTTP_400_BAD_REQUEST)
+        d = {k: (str(request.data.get(k) or '')).strip() for k in FOUNDER_FIELDS}
+        errors = {}
+        import re
+        if not re.fullmatch(r'\+?[0-9 ()-]{9,20}', d['phone']):
+            errors['phone'] = ['Podaj numer telefonu (9–20 cyfr, może być +48).']
+        if not 2 <= len(d['kierunek']) <= 120:
+            errors['kierunek'] = ['Podaj kierunek albo nazwę szkoły doktorskiej.']
+        if not 1 <= len(d['etap']) <= 40:
+            errors['etap'] = ['Podaj rok studiów albo etap kształcenia (np. „2. rok I st.”).']
+        if not re.fullmatch(r'[0-9]{4,10}', d['nr_albumu']):
+            errors['nr_albumu'] = ['Numer albumu to same cyfry.']
+        if request.data.get('agreed_text_version') != rules.FOUNDER_CONSENT_VERSION:
+            errors['agreed_text_version'] = ['Zaznacz zgodę na umieszczenie danych na liście założycieli.']
+        if errors:
+            return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+        FounderDetails.objects.update_or_create(member=m, defaults={**d, 'agreed_text_version': rules.FOUNDER_CONSENT_VERSION})
+        m.refresh_from_db()
+        return Response(founder_row(m))
+
+    def delete(self, request):
+        m, err = _needs_member(request)
+        if err:
+            return err
+        FounderDetails.objects.filter(member=m).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class FounderListView(KoloView):
+    """GET → every person who filed founder data, by surname — for the printed list (managers)."""
+
+    def get(self, request):
+        _, err = _needs_manager(request)
+        if err:
+            return err
+        people = (Member.objects.filter(founder__isnull=False, status__in=[Member.PENDING_APPROVAL, Member.MEMBER])
+                  .select_related('founder'))
+        rows = sorted((founder_row(m) for m in people), key=lambda r: (r['name'].split()[-1].lower(), r['name'].lower()))
+        return Response(rows)
+
+
+class SettingView(KoloView):
+    """PUT {value} → a manager edits one of `rules.SETTINGS` (plain text, ≤ 1000 chars)."""
+
+    def put(self, request, key):
+        actor, err = _needs_manager(request)
+        if err:
+            return err
+        if key not in rules.SETTINGS:
+            raise NotFound('Nie znaleziono.')
+        value = (request.data.get('value') or '').strip()
+        if not value or len(value) > 1000:
+            return Response({'value': ['Tekst: 1–1000 znaków.']}, status=status.HTTP_400_BAD_REQUEST)
+        Setting.objects.update_or_create(key=key, defaults={'value': value, 'updated_by': actor.name})
+        return Response({'key': key, 'value': value})

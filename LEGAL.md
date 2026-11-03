@@ -231,6 +231,13 @@ written down when the first person leaves. An address nobody confirmed is delete
 behind it. Join and login answer the same way for known and unknown addresses, and both are
 throttled per IP, because they send mail to the address that was typed.
 
+Founder data (`FounderDetails`: phone, field of study, year, student number) exists for one purpose:
+the BOK list of founders attached to the notice to the Rector (zarządzenie nr 170). The person
+types it after logging in, with its own consent (`rules.FOUNDER_CONSENT_VERSION`). It is read only by
+managers (`/zarzad/zalozyciele`) and printed onto the paper list that the founders sign. The person
+can withdraw it (`DELETE me/founder/`). **It should be deleted once the Koło is registered**; the
+paper list is the record. That step is manual for now (`kolo_ai/CLAUDE.md` "Left open").
+
 What a vote keeps: the named row of an open vote (shown to members after the close, and in the
 protocol); for a secret vote, the list of who took part (needed for the protocol, § 10a ust. 8) and
 ballots that cannot be linked back to a person. Deliberation entries carry the member's name and

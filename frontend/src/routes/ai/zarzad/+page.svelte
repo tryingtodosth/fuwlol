@@ -57,6 +57,15 @@
 		} catch (err) { fail(err); }
 	}
 
+	// the founders' notice on the front page (rules.SETTINGS)
+	let notice = $state('');
+	onMount(() => { api.get<{ texts: { founders_notice: string } }>('/kolo/info/').then((i) => (notice = i.texts.founders_notice)).catch(() => {}); });
+	async function saveNotice(e: Event) {
+		e.preventDefault(); error = null;
+		try { await api.put('/kolo/settings/founders_notice/', { value: notice }); info = 'Komunikat zapisany.'; }
+		catch (err) { fail(err); }
+	}
+
 	// status
 	let sTitle = $state(''), sBody = $state('');
 	async function postStatus(e: Event) {
@@ -69,6 +78,15 @@
 <h1>Zarząd</h1>
 {#if error}<div class="error">{error}</div>{/if}
 {#if info}<div class="ok">{info}</div>{/if}
+
+<p><a class="btn btn--ghost" href={kp('/zarzad/zalozyciele')}>Lista założycieli do druku →</a></p>
+
+<h2>Komunikat przy liście założycieli</h2>
+<form class="card" onsubmit={saveNotice}>
+	<p class="small muted">Widać go na stronie głównej przy zapisie i przy danych założyciela (np. kiedy i gdzie podpisujemy listę).</p>
+	<textarea rows="3" maxlength="1000" bind:value={notice} required></textarea>
+	<button class="btn" type="submit">Zapisz komunikat</button>
+</form>
 
 <h2>Czekają na zatwierdzenie ({pending.length})</h2>
 {#if pending.length}
