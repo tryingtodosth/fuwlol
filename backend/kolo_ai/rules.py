@@ -70,6 +70,20 @@ def _domain(email):
     return email.rsplit('@', 1)[1]
 
 
+# Domains people type for the UW student mailbox that receive no mail at all (no MX, no A):
+# a link sent there never arrives, so the form says so instead of answering 202.
+DEAD_DOMAINS = {'stud.uw.edu.pl': STUDENT_DOMAIN, 'students.uw.edu.pl': STUDENT_DOMAIN}
+
+
+def dead_domain_problem(email):
+    """An error for an address at a domain that takes no mail, naming the likely one, or None."""
+    right = DEAD_DOMAINS.get(_domain(email))
+    if right is None:
+        return None
+    local = email.rsplit('@', 1)[0]
+    return f'Na adresy @{_domain(email)} poczta nie dochodzi. Skrzynka studencka UW to {local}@{right}.'
+
+
 def is_uw_email(email):
     d = _domain(email)
     return any(d == u or d.endswith('.' + u) for u in UW_DOMAINS)

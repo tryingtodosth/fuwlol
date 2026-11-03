@@ -152,6 +152,8 @@ class JoinView(KoloView):
         errors = {}
         if email is None:
             errors['email'] = ['Podaj poprawny adres e-mail.']
+        elif problem := rules.dead_domain_problem(email):
+            errors['email'] = [problem]
         if not 3 <= len(name) <= 120:
             errors['name'] = ['Podaj imię i nazwisko (jak w ewidencji członków).']
         if affiliation not in dict(Member.AFFILIATIONS):
@@ -190,6 +192,8 @@ class LoginRequestView(KoloView):
         email = rules.normalize_email(request.data.get('email'))
         if email is None:
             return Response({'email': ['Podaj poprawny adres e-mail.']}, status=status.HTTP_400_BAD_REQUEST)
+        if problem := rules.dead_domain_problem(email):
+            return Response({'email': [problem]}, status=status.HTTP_400_BAD_REQUEST)
         m = Member.objects.filter(email=email).first()
         if m is not None:
             link = rules.make_link(m)

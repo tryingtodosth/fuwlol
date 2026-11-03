@@ -90,6 +90,15 @@ class MembershipTests(Base):
         self.assertEqual(r.status_code, 400)
         self.assertFalse(Member.objects.exists())
 
+    def test_dead_student_domain_is_refused_with_the_right_one(self):
+        r = self.join('Z.Iwan@stud.uw.edu.pl')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('z.iwan@student.uw.edu.pl', r.json()['email'][0])
+        r = APIClient().post('/api/kolo/login/', {'email': 'z.iwan@stud.uw.edu.pl'}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertFalse(Member.objects.exists())
+        self.assertEqual(len(mail.outbox), 0)
+
     def test_link_confirms_then_waits_for_approval_by_default(self):
         self.join('jan@student.uw.edu.pl')
         r = APIClient().post('/api/kolo/link/', {'token': link_token(mail.outbox[0].body)}, format='json')
