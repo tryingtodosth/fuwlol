@@ -243,6 +243,51 @@ protocol); for a secret vote, the list of who took part (needed for the protocol
 ballots that cannot be linked back to a person. Deliberation entries carry the member's name and
 are visible to members only.
 
+## 9b. LSD — the anonymous survey (`backend/survey/`)
+
+The second copy of MedApp at `fuw.lol/lsd` carries a retrospective questionnaire about psychedelic
+use, run as **preparation for a student experiment by a project that is not affiliated with any
+university**. **The controller is Piotr Putyło, contact `admin@fuw.lol`** (`survey/rules.CONTROLLER`),
+and the questionnaire says so before the first question: its heading names the goal, and three
+acknowledgements are required checkboxes — *Chcę podzielić się moim doświadczeniem w celach
+przygotowań do eksperymentu studenckiego*, *Projekt nie jest powiązany z żadną uczelnią*,
+*Administrator danych: Piotr Putyło, admin@fuw.lol* (`rules.CONSENT_STATEMENTS`, byte-identical in
+the client; `rules.CONSENT_VERSION` is their date and every sheet records which version was ticked,
+like `WumProfile.agreed_text_version`). What a person answers is **health data and data about an
+offence — art. 9 and art. 10 RODO** — and the client promises anonymity, so the schema is built to
+make the promise true rather than to rely on good behaviour:
+
+- **What is stored** (`SurveyResponse`): the survey's slug and the version of its definition, the
+  consent text's version, the interface language, how many seconds the sheet took, the answers as
+  JSON under the client's question ids, and the **date** it arrived.
+- **What is not**: no IP address and no hash of one (unlike the board and `feedback/`), no
+  account — the view never reads `request.user`, so a visitor signed in to the archive in the
+  same browser is not attached — no user agent, and **no timestamp**. The date is deliberate:
+  every proxy in front of this service keeps an access log with the second a request arrived and
+  the address it came from, and a `created_at` would let a row be joined to an address by time
+  alone. A date cannot be joined that way and still answers "how many came in this week". The
+  row's `id` orders sheets within a day; that is the accepted residue.
+- **The way back is the person's choice, and a hash on this side.** Withdrawal of consent must be
+  as easy as consent (art. 7 ust. 3 RODO), and an anonymous sheet cannot otherwise be found again,
+  so the form offers two opt-ins, after a second look that says they link the answers to the
+  person: an e-mail, stored only as an HMAC under the salt (`rules.hash_contact`) — the person
+  writes to `admin@fuw.lol` from that address and `manage.py survey_withdraw --email` finds and
+  blanks their sheet without the address ever having been in the database; or a key this server
+  mints and hands back once (shown, saved, or as a QR drawn on the phone), kept as SHA-256 —
+  `POST /api/survey/withdraw/` with it blanks the sheet at once, with no review and no account.
+  Withdrawal keeps the row (status `withdrawn`, the date, the survey) with empty answers and no
+  contact hash, so the count of sheets ever received stays right and nothing about the person
+  remains. "Modify" is withdraw and send again. A sheet with neither opt-in cannot be withdrawn
+  by anybody, and the form says so.
+- **Consent and the 18+ gate are on the client**, before the first question; this server cannot
+  verify an age and does not try (as in §9). No confirmation mail is sent to the optional address
+  (the mail gap of §10), so a typo there means no way back.
+- **Retention**: the rows are kept until the study's analysis is done and exported
+  (`manage.py export_survey`, which leaves both hashes out), after which the table may be emptied
+  by the head admin in the Django admin (deletion is `is_superuser` only; nobody can edit a row).
+  The export then lives with the study team, not here. Until the table is emptied the rows are
+  also in the nightly restic dump of Postgres. When exactly "done" is, is left open in §10.
+
 ## 10. Left open
 
 - Nothing here has been read by a lawyer. Before the archive is *promoted* rather than merely
@@ -254,4 +299,9 @@ are visible to members only.
   (`docs/gemini/note.md`).
 - Minors are not addressed anywhere: the audience is university students and staff, and nothing
   asks a registrant's age. (The side app refuses to *publish* under 18 on the phone — §9 — but its
-  sign-up asks no age either.)
+  sign-up asks no age either; the survey's 18+ gate — §9b — is a checkbox on the phone too.)
+- The survey table (§9b) has no retention clock of its own: "until the analysis is done and
+  exported" is the study team's decision, and the date by which the head admin empties the table
+  should be written here when the collection closes. Until then the rows, and the restic backups
+  holding them, stay. Whether an ethics review of the student experiment is sought, and by whom,
+  is the project's question, not this repository's.

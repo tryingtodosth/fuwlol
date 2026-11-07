@@ -14,6 +14,9 @@ urlpatterns = [
     # The side app's accounts, example templates and anonymised publications (wum/). Same
     # reasoning as feedback: its own prefix, placed before the archive's greedy router.
     path('api/wum/', include('wum.urls')),
+    # The anonymous questionnaire of the LSD copy of MedApp (survey/): one POST, nothing read
+    # back. Own prefix, before the archive's greedy router, like the two above.
+    path('api/survey/', include('survey.urls')),
     # Koło AI (kolo_ai/), served at ai.fuw.lol. Own prefix, own credentials, no archive powers.
     path('api/kolo/', include('kolo_ai.urls')),
     # BEFORE archive.urls: the archive's DefaultRouter owns `people/<slug>/`, and the

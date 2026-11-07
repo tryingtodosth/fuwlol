@@ -128,8 +128,8 @@ jobs:
           rsync -e ssh -av deploy/Caddyfile \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/srv/fuwlol/deploy/"
       - name: Pull and restart
-        # THE ARCHIVE ONLY. The four services are named explicitly, and the side app (`skoki`,
-        # WUM at /fum) is handled afterwards, best effort, never fatal.
+        # THE ARCHIVE ONLY. The four services are named explicitly, and the side apps (`skoki`,
+        # WUM at /fum; `wum`; `lsd` at /lsd) are handled afterwards, best effort, never fatal.
         #
         # Learned on 26.09.2026, twice in one afternoon. First `docker compose pull` with no
         # arguments failed because `fuwlol-skoki` — an image ANOTHER repository publishes, into a
@@ -162,6 +162,14 @@ jobs:
                 || echo "::warning::wum image pulled but would not start — wum.fuw.lol answers 502. deploy/OVH.md, WUM."
             else
               echo "::warning::wum image could not be pulled — the archive is deployed and wum.fuw.lol answers 502. deploy/OVH.md, WUM."
+            fi
+            # LSD, the second copy of MedApp at /lsd (the `lsd` service, its own LSD_TAG): the same
+            # rules, the same best effort, the archive never waits for it.
+            if docker compose -f docker-compose.prod.yml --env-file .env pull lsd; then
+              docker compose -f docker-compose.prod.yml --env-file .env up -d lsd \
+                || echo "::warning::lsd image pulled but would not start — /lsd answers 502. deploy/OVH.md, LSD."
+            else
+              echo "::warning::lsd image could not be pulled — the archive is deployed and /lsd answers 502. deploy/OVH.md, LSD."
             fi
             docker image prune -f
           EOF

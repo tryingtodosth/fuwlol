@@ -128,6 +128,7 @@ FUWLOL_EMAIL_PASSWORD=
 FUWLOL_FROM_EMAIL="FUW <no-reply@fuw.lol>"   # quoted: deploy/backup.sh SOURCES this file, and < is a redirect
 FUWLOL_CONTACT_EMAIL=admin@fuw.lol           # the one OVH mailbox — what a human reads
 SKOKI_TAG=latest             # WUM (fuw.lol/fum) — a commit of the MEDAPP repository, not this one
+LSD_TAG=lsd-latest           # LSD (fuw.lol/lsd) — the second MedApp copy; the medapp repository's lsd-<sha> tags
 RESTIC_REPOSITORY=/srv/fuwlol/restic-repo
 RESTIC_PASSWORD_FILE=/srv/fuwlol/secrets/restic.pass
 ```
@@ -382,6 +383,50 @@ docker compose -f docker-compose.prod.yml --env-file .env logs --tail=20 web
   caches the failure, and `valid=` does not cover failed answers; `nginx -s reload` clears it, and
   any deploy that ships a new `web` image does it by itself.
 - `connect() failed` — the app is down or on another network; check `docker compose ps skoki`.
+
+## LSD — the second side app at `fuw.lol/lsd`
+
+A second copy of MedApp from the same repository, mounted at `/lsd` and called **LSD** there, for
+an anonymous retrospective questionnaire about psychedelic use run as preparation for a student
+experiment — a project not affiliated with any university; the controller is Piotr Putyło,
+`admin@fuw.lol`. It is the WUM arrangement a second time: the `lsd` service in
+`docker-compose.prod.yml`, `location /lsd/` and `location = /lsd` in `frontend/nginx.conf`
+through the same resolver variable and raised buffers, the deploy's best-effort pull after `skoki`
+and `wum`. Two differences: the image is built with `/lsd` baked in and pushed under the **`lsd-`
+tag prefix** (`:lsd-<sha>`, `:lsd-latest`), so its own variable is **`LSD_TAG`** (`lsd-latest`
+unless pinned in `/srv/fuwlol/.env`); and it has no old names, so there are no alias redirects.
+
+Its new server calls are `POST /api/survey/` and `POST /api/survey/withdraw/` (`backend/survey/`,
+`LEGAL.md` §9b): a finished sheet becomes one row with **no address, no account, no user agent
+and a DATE instead of a timestamp**; the person's optional e-mail and optional key are stored as
+hashes only, and the key blanks the sheet again. Sheets are read in the Django admin and exported
+by `manage.py export_survey <slug> [--format jsonl|csv] [--since YYYY-MM-DD]`; a withdrawal asked
+for by mail is `manage.py survey_withdraw --email <the sender's address>`. It also files notes to
+`POST /api/feedback/` like the first copy. The container stores nothing.
+
+Deploying and rolling it back are the WUM lines with `lsd` for `skoki` and `LSD_TAG` for
+`SKOKI_TAG`; `survey/0001` migrates on the api container's start like every other migration.
+
+After the first deploy of it, in a browser:
+
+1. `https://fuw.lol/lsd` answers 308 to `/lsd/` (relative `Location:`, as for `/fum`) and the app
+   opens **styled** and **in Polish** at the bare path — this copy is not the staropolszczyzna
+   build; an unstyled page or English at the bare path means the build and the mount disagree.
+2. `https://fuw.lol/lsd/en/` exists and is English; every link clicked keeps `/lsd` on it.
+3. `https://fuw.lol/lsd/survey` opens the questionnaire: the heading names the goal (preparation
+   of a student experiment), the three acknowledgements and the 18+ gate come before the first
+   question, and the optional e-mail / key step comes last.
+4. Send one, asking for a key, and look at `https://fuw.lol/admin/survey/surveyresponse/`: the
+   row has the survey slug, version, consent version, locale, duration and a **date only** — no
+   IP, no account, no time of day, no hash anywhere on the page, „ma klucz” ticked. Then
+   `curl -s -X POST https://fuw.lol/api/survey/withdraw/ -H 'content-type: application/json'
+   -d '{"key":"<the key>"}'` answers `{"ok": true, "status": "withdrawn"}` and the row shows
+   „Wycofana” with empty answers. A 403 on sending is the CSRF trap (`backend/survey/views.py`);
+   a 400 keyed `version` or `consent_version` means the app and `survey/rules.py` disagree.
+5. `https://fuw.lol/`, `/fum/` and a post are unchanged, and `docker compose exec web nginx -t`.
+
+If `/lsd/` answers 502, the WUM list above applies unchanged (`logs --tail=20 web`;
+`docker compose ps lsd`).
 
 ## Koło AI — `ai.fuw.lol` (`backend/kolo_ai/`)
 

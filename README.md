@@ -87,6 +87,15 @@ Porty zajęte? `FUWLOL_CORS_ORIGINS` + `frontend/.env` (`PUBLIC_API_BASE_URL`) s
   zdrowotne zostają w przeglądarce, jak dotąd. **Archiwum nigdzie do niej nie linkuje** — od
   27.09.2026 nie ma jej w „Skokach" wehikułu czasu, więc trzeba znać adres; kto go zna, wchodzi jak
   dawniej. Szczegóły: `deploy/OVH.md` („WUM"), `backend/feedback/CLAUDE.md` i `backend/wum/CLAUDE.md`.
+- **LSD pod `/lsd`** — druga kopia tej samej aplikacji MedApp (kontener `lsd`), tym razem z anonimową
+  ankietą retrospektywną o psychodelikach, prowadzoną w ramach przygotowań do eksperymentu
+  studenckiego przez projekt niepowiązany z żadną uczelnią (administrator danych: Piotr Putyło,
+  admin@fuw.lol). Jedyne nowe wywołania serwera to `POST /api/survey/` i `POST /api/survey/withdraw/`
+  (`backend/survey/`, `LEGAL.md` §9b): wiersz bez adresu IP, bez konta i bez godziny — tylko data;
+  kto chce móc później wycofać odpowiedzi, zostawia e-mail (zapisany wyłącznie jako hasz) albo
+  dostaje jednorazowy klucz (też tylko hasz po naszej stronie). Odpowiedzi czyta się w
+  `/admin/survey/surveyresponse/` i eksportuje `manage.py export_survey`. Po polsku pod gołym
+  adresem, `/lsd/en/` po angielsku.
 
 ## Struktura
 
@@ -95,6 +104,7 @@ backend/   config/ (settings, urls, middleware — adres za proxy)  accounts/ (r
            board/ (czat, zgłoszenia, reputacja)  escalation/ (eskalacja do NASK: dowody, kwarantanna plików, widoczność, mixin panelu Django)
            feedback/ (uwagi o ekranach aplikacji WUM spod /fum — jedno POST, bez odczytu przez API)
            wum/ (konta aplikacji WUM, szablony przykładowych pacjentów, zanonimizowane publikacje — /api/wum/…)
+           survey/ (anonimowa ankieta badawcza z kopii LSD spod /lsd — POST bez IP, konta i godziny; wycofanie kluczem; eksport: export_survey)
            consent/ (zgoda na wizerunek: wnioski osób, kolejka, dowód zgody)  portraits/ (zdjęcia osób i głosowanie na zdjęcie profilowe)
            share/ (podglądy linków dla scraperów pod /share/…, sitemap.xml)
 frontend/  src/lib/{api,types,auth}  src/lib/render/{markdown,latex,media}  src/lib/components/{editor,timemachine,…}  src/routes/…
@@ -106,7 +116,7 @@ docs/      fuwlol-dokumentacja.drawio (+ .pdf, render/NN.png) — dokumentacja t
            gemini/ — pięć raportów Gemini Deep Research + note.md (co z nich weszło do kodu, jak ich używać dalej)
 ```
 
-Testy: `cd backend && ../.venv/bin/python manage.py test` (374) · `cd frontend && npm run check && npm run build`
+Testy: `cd backend && ../.venv/bin/python manage.py test` (573) · `cd frontend && npm run check && npm run build`
 · przy działających serwerach: `npm run e2e` (smoke, 34 kroki), `npm run e2e:escalation` (eskalacja od kliknięcia
 do decyzji), `npm run e2e:research` (wzory w Markdownie, wyszukiwanie LaTeX-a, zgłoszenie DSA, oświadczenie o prawach),
 `npm run e2e:render-guard` (treść, która ominęła `check_source` inną drogą niż API — np. panel administracyjny —

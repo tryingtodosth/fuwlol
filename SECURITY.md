@@ -98,7 +98,8 @@ Throttles (DRF, counters in a **file cache** shared between workers and survivin
 | `post_create` | 30/hour | | `presign` | 60/hour (one per file) |
 | `comment_create` | 60/hour | | `claim_request` / `claim_manage` | 3/hour |
 | `suggest` | 20/hour | | `portrait_upload` / `portrait_vote` | 10/hour / 60/hour |
-| `anon` / `user` (defaults) | 300/min / 600/min | | | |
+| `anon` / `user` (defaults) | 300/min / 600/min | | `feedback` (side app) | 120/hour |
+| `survey` (LSD, one sheet) | 60/hour | | `survey_withdraw` (LSD, by key) | 20/hour |
 
 Per-action scopes on a ViewSet were a **silent no-op** until `FixedScopeThrottle`
 (`archive/views.py`): DRF's `ScopedRateThrottle` reads the scope off the view, not the action.
@@ -146,10 +147,11 @@ be probed for a yes/no, `suggestions` refuses (a suggestion's `base` is a frozen
 and `share/` gives a scraper the generic card and no sitemap entry. The serializers blank what a
 caller may not see rather than trusting views to filter.
 
-## The side app on this origin (`fuw.lol/fum`)
+## The side apps on this origin (`fuw.lol/fum`, `fuw.lol/lsd`)
 
-WUM is a different application from a different repository, sharing this hostname. That sharing
-is the security-relevant part, and three decisions follow from it:
+WUM is a different application from a different repository, sharing this hostname; LSD (since
+2026-11) is a second copy of it at `/lsd`. That sharing is the security-relevant part, and the
+decisions below follow from it:
 
 - **Its endpoints drop session authentication.** `POST /api/feedback/` and every view under
   `/api/wum/` accept `TokenAuthentication` only. Same-origin means a visitor signed in to the
@@ -177,6 +179,17 @@ is the security-relevant part, and three decisions follow from it:
 - **Its token is its own.** The app stores its DRF token under `medapp:account` in localStorage,
   not under the archive's `fuwlol.token`; neither app reads the other's key. Same accepted risk as
   the archive's own token (below).
+- **The LSD copy adds two endpoints and stores LESS than feedback does, on purpose.** A finished
+  questionnaire (`POST /api/survey/`, `backend/survey/`) becomes a row with the survey's slug and
+  version, the consent text's version, the language, a duration, the answers as shape-checked
+  JSON (`survey/rules.clean_answers`: ≤ 200 keys, five plain value kinds, ≤ 64 kB) and a DATE —
+  no IP hash, no account, no user agent, no timestamp, so the row cannot be joined to an
+  access-log line by time (`survey/models.py`, `LEGAL.md` §9b). The person's two opt-in ways
+  back are hashes only: an e-mail as HMAC under the salt, a server-minted 256-bit key as SHA-256,
+  returned once; `POST /api/survey/withdraw/ {key}` blanks the sheet (unknown key 404, own scope
+  20/hour, no oracle because the key is the holder's secret). Token-only auth, honeypot, scope
+  `survey` 60/hour; write-only, read in the admin (deletion head-admin only, neither hash shown)
+  and exported by `manage.py export_survey`. Same CSP, same location pattern in nginx.
 
 The notes themselves are plain text, never rendered by `lib/render/`, and read in the Django admin;
 `backend/feedback/CLAUDE.md` says what has to change first if that ever stops being true. A

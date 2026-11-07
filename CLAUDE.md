@@ -32,23 +32,24 @@ frontend/  SvelteKit 2 + Svelte 5 runes + TS, adapter-static SPA (ssr=false, pre
              routes/ + lib/components/  →  lib/api.ts (the only fetch())  →  HTTP
              lib/render/{markdown,latex,guard,media}.ts — the two renderers and their guard
              nginx.conf — the production web server: CSP, /media sandbox, scraper routing
-backend/   Django 5.2 + DRF. 8 apps + config/. SQLite locally, Postgres in production.
+backend/   Django 5.2 + DRF. 11 apps + config/. SQLite locally, Postgres in production.
              views  →  a rule module  →  models
 deploy/    OVH runbook, Caddyfile, firewall.sh, backup.sh.   .github/workflows/deploy.yml IS the deploy.
 docs/      the Polish draw.io documentation deck and the Gemini research reports.
 ```
 
-The 10 apps, each with its own `CLAUDE.md`: `accounts` (tiers) · `archive` (everything about a post:
+The 11 apps, each with its own `CLAUDE.md`: `accounts` (tiers) · `archive` (everything about a post:
 models, API, people, subjects, search, uploads, guards, suggestions) · `board` (the chat) ·
 `consent` (a person's own say about their image) · `escalation` (NASK) · `feedback` (notes about a
 screen, from the side app) · `portraits` (elected profile photos) · `share` (link previews +
-sitemap, no models) · `wum` (the side app's accounts, example templates and anonymised
-publications).
+sitemap, no models) · `survey` (the LSD copy's anonymous questionnaire: one write-only POST and a
+keyed withdraw; a row with no address, no account and a date only) · `wum` (the side app's
+accounts, example templates and anonymised publications).
 `kolo_ai` (Koło AI at **ai.fuw.lol**: a student organisation's register of members, remote votes
 under its regulamin, a status feed — its own `Member` table and its own credentials, no archive
 powers in either direction; `backend/kolo_ai/CLAUDE.md`).
 
-**One thing on this origin is not the archive.** `fuw.lol/fum` is **WUM** — MedApp, a patient
+**Two things on this origin are not the archive.** `fuw.lol/fum` is **WUM** — MedApp, a patient
 prototype from `github.com/tryingtodosth/medapp`, run as the `skoki` container and put on the
 origin by `frontend/nginx.conf`. It shares nothing with the archive but the hostname, the user
 table and two API prefixes (`POST /api/feedback/` and `/api/wum/…` — accounts, example templates
@@ -65,6 +66,16 @@ through to English — and the three real languages sit under a prefix: the imag
 before). It is compiled into the bundle over there, so nothing on this side can change it. Moving or
 renaming a deployment of that app is the medapp repository's `deployment-mount` skill, which lists
 every file on both sides.
+
+`fuw.lol/lsd` is **LSD** — a second copy of the same MedApp (the `lsd` container, that
+repository's `lsd-` image tags, `/lsd` baked in at build time), carrying an anonymous retrospective
+questionnaire about psychedelic use run as **preparation for a student experiment by a project not
+affiliated with any university** (controller Piotr Putyło, `admin@fuw.lol`). The same arrangement
+as `/fum` in `frontend/nginx.conf`, `docker-compose.prod.yml` and the deploy, no aliases, Polish
+at the bare path and `/lsd/en/` for English, and one more API prefix: `POST /api/survey/` plus
+`POST /api/survey/withdraw/` (`backend/survey/`), which store a sheet with **no address, no
+account and a date instead of a timestamp**, and the person's two opt-in ways back only as hashes
+— `LEGAL.md` §9b, `deploy/OVH.md` "LSD".
 
 **Two boundaries are load-bearing and everything else follows from them:**
 
@@ -103,7 +114,12 @@ every file on both sides.
   be a fourth copy and no longer links there at all); `wum/models.PAYLOAD_VERSION`,
   `wum/rules.FORBIDDEN_PAYLOAD_KEYS`, the two `WUM_*_TEXT_VERSION` dates and the size caps ↔
   `src/lib/privacy/project.ts`, `src/lib/api/wum.ts`, `src/lib/templates/types.ts` in the medapp
-  repository (`wum/CLAUDE.md` "Mirrored constants"); the report-reason lists. Change one, change
+  repository (`wum/CLAUDE.md` "Mirrored constants"); the survey contract — `survey/rules.SURVEYS`,
+  `CONSENT_VERSION`, `CONSENT_STATEMENTS` (byte-identical), `MAX_KEYS`, `KEY_RE`, `MAX_STRING`,
+  `MAX_LIST`, `MAX_LIST_ITEM`, `MAX_INT`, `MAX_ANSWERS_BYTES`, `MAX_DURATION_S`, `MAX_EMAIL`,
+  `MAX_KEY` ↔ `src/lib/survey/api.ts` in the medapp repository, and the mount `/lsd` ↔
+  `location /lsd/` ↔ that repository's `lsd-` build (`survey/CLAUDE.md` "Mirrored constants");
+  the report-reason lists. Change one, change
   the other, keep the comment that names it.
 
 ---
@@ -188,6 +204,8 @@ of `archive/latexguard.py`; the exact order, options and limits are in `frontend
 /api/people/<slug>/{aliases,claims,portraits}/    /api/claims/…    /api/portraits/…    /api/suggestions/…
 /api/board/  (+ rss/, <id>/{hide,restore,report,escalate}/)    /api/moderation/{escalations,evidence-audit}/…
 /api/feedback/   POST only — a note about a screen of the side app (feedback/); no GET anywhere
+/api/survey/     POST only — one anonymous questionnaire sheet from the LSD copy (survey/); no GET; no IP, no account, a date only
+/api/survey/withdraw/   POST {key} — blanks the sheet whose key this is (the key was handed back once, at submission)
 /api/wum/auth/{register,login,logout,me}/   the side app's own accounts (wum/); token-only auth, no archive powers
 /api/wum/templates/ (+ <slug>/)             example patients: public GET of `published` rows, staff write
 /api/wum/publications/ (+ <uuid>/, mine/, <uuid>/withdraw/)   anonymised records: public GET lists only
@@ -228,7 +246,7 @@ of `archive/latexguard.py`; the exact order, options and limits are in `frontend
 ```
 
 - Python 3.12, one venv at the repo root. From `backend/`:
-  `FUWLOL_CACHE_DIR=<scratch> ../.venv/bin/python manage.py test` (374 tests, about 4 min on
+  `FUWLOL_CACHE_DIR=<scratch> ../.venv/bin/python manage.py test` (573 tests, about 4 min on
   SQLite), `manage.py check`, `manage.py makemigrations --check --dry-run`.
 - Node 22 (what CI runs). From `frontend/`: `npm run check` (0 errors is the bar), `npm run build`
   (CI builds with `PUBLIC_API_BASE_URL=/api`), and with both servers up the browser scripts

@@ -1,4 +1,4 @@
-# backend/ — Django 5.2 + DRF, 10 apps + `config/`, SQLite locally / Postgres in production
+# backend/ — Django 5.2 + DRF, 11 apps + `config/`, SQLite locally / Postgres in production
 
 Scoped context for backend work. The cross-cutting rules are in the root `CLAUDE.md`; the reasoning
 is in `DESIGN.md`; each app's own `CLAUDE.md` has its rules; `MODERATION-API.md` documents the
@@ -6,7 +6,7 @@ trusted-tier, moderation, escalation, R2 and chat endpoints one by one.
 
 ## Run / test
 
-- `cd backend && FUWLOL_CACHE_DIR=<scratch> ../.venv/bin/python manage.py test` — 399 tests,
+- `cd backend && FUWLOL_CACHE_DIR=<scratch> ../.venv/bin/python manage.py test` — 573 tests,
   about 4 minutes, SQLite, no daemon. `manage.py check`, `manage.py makemigrations --check
   --dry-run` (CI enforces the latter; a model change without its migration fails the deploy).
 - Dev server: `./run.sh` from the repo root, or by hand
@@ -64,20 +64,27 @@ ViewSet needs `FixedScopeThrottle`** (`archive/views.py`) — DRF's `ScopedRateT
 limited per IP *and* per submitted username (`LoginUsernameThrottle`). Counters are in the file
 cache: when a test or a browser run hits 429, it is the cache, not the code.
 
-## The side app's endpoints
+## The side apps' endpoints
 
-`feedback/` and `wum/` exist for WUM (`fuw.lol/fum`), whose only server is this one. Every view in
-both is `TokenAuthentication` only — **not** the project default, because the app is same-origin
+`feedback/` and `wum/` exist for WUM (`fuw.lol/fum`), whose only server is this one, and
+`survey/` for LSD (`fuw.lol/lsd`, the second copy of the same app, since 2026-11). Every view in
+all three is `TokenAuthentication` only — **not** the project default, because the app is same-origin
 with the archive and a visitor's stray session cookie would otherwise trip DRF's CSRF check and
 answer 403 to somebody filing a bug report or signing up. `POST /api/feedback/` is anonymous, scope
 `feedback` 120/hour, high on purpose: a feedback session is a room behind one NAT. `/api/wum/…` is
 the app's own accounts (a `User` marked by a `WumProfile`, no archive powers, the archive's login
 does not open it), staff-written example templates and the anonymised records people choose to
-publish; its scopes count writes only. `feedback/CLAUDE.md` and `wum/CLAUDE.md` have the rest.
+publish; its scopes count writes only. `POST /api/survey/` is the LSD copy's questionnaire: anonymous,
+scope `survey` 60/hour (a room behind one NAT finishing a quarter-hour sheet), and the one table
+in this project built to hold NOTHING about its sender — no `ip_hash`, no FK, a DATE instead of a
+timestamp; the two opt-in ways back (an e-mail, a key) are stored as hashes and
+`POST /api/survey/withdraw/` blanks a sheet for whoever holds its key (`survey/models.py`,
+`LEGAL.md` §9b). `feedback/CLAUDE.md`, `wum/CLAUDE.md` and `survey/CLAUDE.md` have the rest.
 
 ## URL include order (`config/urls.py`)
 
-`api/moderation/` → `escalation.urls`; `api/feedback/` and `api/wum/` on their own prefixes; then
+`api/moderation/` → `escalation.urls`; `api/feedback/`, `api/wum/` and `api/survey/` on their own
+prefixes; then
 `portraits.urls` and `consent.urls` under `api/` **before** `archive.urls`, because the archive
 router is greedy on `people/<slug>/`; then `share/`.
 `MEDIA_URL` is served by Django only under DEBUG — in production nginx serves `/media/` from the
@@ -103,10 +110,13 @@ deletes unclaimed objects after a day.
 | `sweep_people` | archive | proposals with no post of any status after 30 days |
 | `seed_portraits` | portraits | development data |
 | `make_share_images` | share | draws the three 1200×630 fallback cards into `frontend/static/`; committed |
+| `export_survey <slug> [--format jsonl\|csv] [--since YYYY-MM-DD] [--include-withdrawn]` | survey | by hand, by the study team — one survey's sheets to stdout; never cron |
+| `survey_withdraw --email ADDR \| --key KEY \| --id N [--dry-run]` | survey | by hand, when a person asks — blanks their sheet(s); the e-mail is hashed the way the row was |
 
 ## Migrations
 
-18 across seven apps (`share` has no models; `wum/0001` is the side app's three tables, 2026-10).
+19 across eight apps (`share` has no models; `wum/0001` is the side app's three tables, 2026-10;
+`survey/0001` is the LSD copy's one table, 2026-11).
 Four carry data: `accounts/0002` seeds the trusted
 domains from `trust.TRUSTED_DOMAINS_SEED`; `archive/0003` back-fills the search columns;
 `archive/0007` files every existing person with `people.py`'s pure functions; `archive/0008` seeds

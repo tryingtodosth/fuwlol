@@ -137,6 +137,13 @@ because `return` needs the capture; keep them after `location /fum/`, and keep
 `absolute_redirect off` on all of them — TLS is terminated two hops up, so an absolute `Location:`
 comes out as `http://`.
 
+Since 2026-11-07 `location /lsd/` and `location = /lsd` sit beside them: a line-for-line copy of
+the `/fum/` block for **LSD**, the second copy of MedApp (the `lsd` container, an anonymous
+questionnaire run as preparation for a student experiment) — the same resolver variable, the same
+raised buffers, the same repeated headers, no aliases because the path never had another name. Its
+new calls, `POST /api/survey/` and `POST /api/survey/withdraw/`, are same-origin and inside
+`connect-src 'self'`; `/lsd` is baked into that image at build time, like `/fum`.
+
 **This app no longer links to the side app anywhere.** The „Skoki" list in
 `lib/components/timemachine/TimeMachine.svelte` used to carry a **WUM** stop that left the
 timeline; it was taken out on 27.09.2026 and a comment where it stood says so. The app is still

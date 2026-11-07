@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     'feedback',
     'portraits',
     'share',
+    'survey',
     'wum',
     'kolo_ai',
 ]
@@ -147,6 +148,14 @@ REST_FRAMEWORK = {
         # loses the thing it was held for. A note is one short row — no mail, no file, no
         # moderator's attention — so the cost of a flood here is kilobytes.
         'feedback': '120/hour',
+        # The anonymous questionnaire from the LSD copy of MedApp (survey/views.py). A sheet
+        # takes a quarter of an hour and a person sends one — but a dorm or a lecture room sits
+        # behind ONE address, and the rate must let a room finish. A sheet is one JSON row with
+        # nothing about its sender in it, so the cost of a flood is kilobytes.
+        'survey': '60/hour',
+        # Withdrawing one by its key (survey/views.py). A 256-bit key cannot be guessed at any
+        # rate this allows; the scope exists so that the sending budget is not spent on it.
+        'survey_withdraw': '20/hour',
         'presign': '60/hour',  # one per file; a six-file post costs six
         'suggest': '20/hour',  # edit suggestions: a real correction is rare, a flood is not
         'verify': '5/hour',  # institutional-address confirmation mails, per user
