@@ -4,8 +4,8 @@ Read-only by construction: every field is in `readonly_fields`, there is no add 
 because a sheet is a person's own words given under a promise and is never edited here.
 Deletion is the one write, and it belongs to the head admin alone (`is_superuser`): it is how
 the table is emptied once the study's analysis is done and exported (`LEGAL.md` §9b). A single
-person's request to withdraw is `manage.py survey_withdraw`, not this page: the two hashes that
-would identify their row are deliberately not shown here, only whether each exists.
+person's request to withdraw is `manage.py survey_withdraw`, not this page: the key hash that
+would identify their row is deliberately not shown here, only whether it exists.
 """
 import json
 
@@ -18,12 +18,12 @@ from .models import SurveyResponse
 @admin.register(SurveyResponse)
 class SurveyResponseAdmin(admin.ModelAdmin):
     list_display = ['id', 'survey', 'version', 'consent_version', 'status', 'locale', 'duration_s',
-                    'received_on', 'has_contact', 'has_key']
+                    'received_on', 'has_key']
     list_filter = ['survey', 'version', 'consent_version', 'status', 'received_on']
-    # The raw `answers` column is shown through `pretty_answers` instead, and the two hashes
-    # through `has_contact` / `has_key`; `fields` keeps the raw ones off the page.
+    # The raw `answers` column is shown through `pretty_answers` instead, and the key hash
+    # through `has_key`; `fields` keeps the raw ones off the page.
     fields = ['survey', 'version', 'consent_version', 'status', 'withdrawn_on', 'locale',
-              'duration_s', 'received_on', 'has_contact', 'has_key', 'pretty_answers']
+              'duration_s', 'received_on', 'has_key', 'pretty_answers']
     readonly_fields = fields
     # No `search_fields`: nothing in a sheet is meant to be found by its words.
 
@@ -32,10 +32,6 @@ class SurveyResponseAdmin(admin.ModelAdmin):
         # format_html escapes the JSON, so a string answer holding `<script>` is shown as text.
         return format_html('<pre style="white-space: pre-wrap; margin: 0">{}</pre>',
                            json.dumps(obj.answers, ensure_ascii=False, indent=2, sort_keys=True))
-
-    @admin.display(description='zostawił(a) e-mail', boolean=True)
-    def has_contact(self, obj):
-        return bool(obj.contact_hash)
 
     @admin.display(description='ma klucz', boolean=True)
     def has_key(self, obj):

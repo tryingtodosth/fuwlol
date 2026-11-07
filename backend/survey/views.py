@@ -53,7 +53,6 @@ class SurveyView(APIView):
             locale=d.get('locale', ''),
             duration_s=d.get('duration_s'),
             answers=d['answers'],
-            contact_hash=rules.hash_contact(d.get('contact_email', '')),
             key_hash=rules.hash_key(key) if key else '',
         )
         # The id goes back so the client can say "sheet #12 arrived". There is nothing to fetch

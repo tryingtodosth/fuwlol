@@ -3,14 +3,13 @@ in the Django admin and exported by `manage.py export_survey`.
 
 Two kinds of field, and they fail differently — the same arrangement as `feedback/`:
 
-- `survey`, `version`, `consent_version`, `answers`, the honeypot, and the two opt-ins the person
-  typed or ticked themselves (`contact_email`, `wants_key`) ARE the submission; a problem with any
-  of them is a 400 keyed by the field's NAME, because the client (MedApp, trilingual) keys its own
-  translated message off that name and only falls back to the Polish sentence sent here.
-  `survey`, `version` and `consent_version` are what the person fixes by reloading; `answers` is
-  what the client's own form logic should never have let through; a malformed e-mail is refused
-  rather than dropped, because silently losing the one channel the person asked for would be
-  worse than a sentence.
+- `survey`, `version`, `consent_version`, `answers`, the honeypot, and the one opt-in the person
+  ticked themselves (`wants_key`) ARE the submission; a problem with any of them is a 400 keyed by
+  the field's NAME, because the client (MedApp, trilingual) keys its own translated message off
+  that name and only falls back to the Polish sentence sent here. `survey`, `version` and
+  `consent_version` are what the person fixes by reloading; `answers` is what the client's own
+  form logic should never have let through. A `contact_email` key in the body (a client older
+  than SURVEY-R3) is not a field here and is ignored, never stored.
 - `locale` and `duration_s` are bookkeeping. They NEVER refuse a sheet: a malformed one is
   dropped to `''` / `null` and the answers are kept. A questionnaire takes a quarter of an hour;
   losing it over a timer or a language tag is the one failure this endpoint cannot have.
@@ -45,9 +44,7 @@ class SurveyWriteSerializer(serializers.Serializer):
     answers = serializers.JSONField(error_messages={
         'required': rules.ANSWERS_EMPTY, 'null': rules.ANSWERS_EMPTY,
         'invalid': rules.ANSWERS_NOT_AN_OBJECT})
-    # The two opt-ins. Absent, null or '' means "no, thank you" and is the common case.
-    contact_email = serializers.CharField(required=False, allow_blank=True, allow_null=True,
-                                          error_messages={'invalid': 'Ten adres e-mail nie wygląda poprawnie.'})
+    # The one opt-in. Absent, null or false means "no, thank you" and is the common case.
     wants_key = serializers.BooleanField(required=False, default=False, allow_null=True,
                                          error_messages={'invalid': BAD_KEY_WISH})
     # Honeypot, as on the board and in feedback/: a real form leaves it empty because no reader
@@ -81,12 +78,6 @@ class SurveyWriteSerializer(serializers.Serializer):
         if problem:
             raise serializers.ValidationError(problem)
         return clean
-
-    def validate_contact_email(self, value):
-        email, problem = rules.clean_email(value)
-        if problem:
-            raise serializers.ValidationError(problem)
-        return email
 
     def validate(self, attrs):
         # Reached only when every field passed on its own, so `survey` is a known slug here.

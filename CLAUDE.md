@@ -69,13 +69,14 @@ every file on both sides.
 
 `fuw.lol/lsd` is **LSD** — a second copy of the same MedApp (the `lsd` container, that
 repository's `lsd-` image tags, `/lsd` baked in at build time), carrying an anonymous retrospective
-questionnaire about psychedelic use run as **preparation for a student experiment by a project not
-affiliated with any university** (controller Piotr Putyło, `admin@fuw.lol`). The same arrangement
+questionnaire about psychedelic use run as **preparation for a student observational study by a
+project not affiliated with any university** (controller Piotr Putyło, `admin@fuw.lol`). The same arrangement
 as `/fum` in `frontend/nginx.conf`, `docker-compose.prod.yml` and the deploy, no aliases, Polish
 at the bare path and `/lsd/en/` for English, and one more API prefix: `POST /api/survey/` plus
 `POST /api/survey/withdraw/` (`backend/survey/`), which store a sheet with **no address, no
-account and a date instead of a timestamp**, and the person's two opt-in ways back only as hashes
-— `LEGAL.md` §9b, `deploy/OVH.md` "LSD". Since the medapp image of 2026-11-07 (its DOCS-R1,
+account and a date instead of a timestamp**, and the person's one opt-in way back (a key) only as
+a hash — `LEGAL.md` §9b, `deploy/OVH.md` "LSD". (The e-mail opt-in and its `contact_hash` went
+in SURVEY-R3, 2026-11-07, `survey/0002`.) Since the medapp image of 2026-11-07 (its DOCS-R1,
 `docs/HISTORY.md §70`) the copy also publishes the study's working documents at `/lsd/docs` —
 prose rendered into the image at build time, read-only, no call to this server; the design for
 commenting on them (a new `backend/annotations/` app, anonymous or token-authenticated, the
@@ -250,7 +251,7 @@ of `archive/latexguard.py`; the exact order, options and limits are in `frontend
 ```
 
 - Python 3.12, one venv at the repo root. From `backend/`:
-  `FUWLOL_CACHE_DIR=<scratch> ../.venv/bin/python manage.py test` (573 tests, about 4 min on
+  `FUWLOL_CACHE_DIR=<scratch> ../.venv/bin/python manage.py test` (572 tests, about 4 min on
   SQLite), `manage.py check`, `manage.py makemigrations --check --dry-run`.
 - Node 22 (what CI runs). From `frontend/`: `npm run check` (0 errors is the bar), `npm run build`
   (CI builds with `PUBLIC_API_BASE_URL=/api`), and with both servers up the browser scripts

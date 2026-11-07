@@ -1,11 +1,11 @@
 """What the two endpoints promise. `test.md` lists this suite.
 
 Three themes. A finished questionnaire must be hard to lose — only the submission itself
-(`survey`, `version`, `consent_version`, `answers`, the honeypot, the two opt-ins the person
-typed) can be refused, and the bookkeeping fields never refuse anything. A stored sheet must carry
-NOTHING about the person who sent it unless they chose to leave a way back — no address, no
-account, no second — and even then only a hash (`models.py` says why). And the way back works:
-the key withdraws the sheet, the e-mail lets the controller do it.
+(`survey`, `version`, `consent_version`, `answers`, the honeypot, the one opt-in the person
+ticked) can be refused, and the bookkeeping fields never refuse anything. A stored sheet must carry
+NOTHING about the person who sent it unless they chose to take a key — no address, no account,
+no second — and even then only a hash (`models.py` says why). And the way back works: the key
+withdraws the sheet. (The e-mail opt-in and its `contact_hash` went in SURVEY-R3, 2026-11-07.)
 """
 import csv
 import datetime
@@ -71,7 +71,7 @@ class SurveyWriteTests(TestCase):
         self.assertEqual(r.json(), {'ok': True, 'id': r.json()['id'], 'key': None})
         row = SurveyResponse.objects.get(pk=r.json()['id'])
         self.assertEqual(row.survey, SLUG)
-        self.assertEqual(row.version, 1)
+        self.assertEqual(row.version, rules.SURVEYS[SLUG]['version'])
         self.assertEqual(row.consent_version, rules.CONSENT_VERSION)
         self.assertEqual(row.status, 'received')
         self.assertIsNone(row.withdrawn_on)
@@ -79,7 +79,6 @@ class SurveyWriteTests(TestCase):
         self.assertEqual(row.duration_s, 612)
         self.assertEqual(row.answers, good_body()['answers'])
         self.assertEqual(row.received_on, timezone.localdate())
-        self.assertEqual(row.contact_hash, '')
         self.assertEqual(row.key_hash, '')
 
     def test_an_unknown_survey_is_refused_by_name(self):
@@ -91,7 +90,7 @@ class SurveyWriteTests(TestCase):
         self.assertEqual(SurveyResponse.objects.count(), 0)
 
     def test_a_stale_version_is_refused_by_name(self):
-        for bad in (0, 2, 'abc', None):
+        for bad in (0, 1, 3, 'abc', None):
             r = self.post(version=bad)
             self.assertEqual(r.status_code, 400, bad)
             self.assertIn('version', r.json(), bad)
@@ -106,7 +105,7 @@ class SurveyWriteTests(TestCase):
         del body['consent_version']
         self.assertIn('consent_version', self.post(body=body).json())
         # Both stale at once: both named, so the client says "reload" once.
-        r = self.post(version=2, consent_version='2026-01-01')
+        r = self.post(version=99, consent_version='2026-01-01')
         self.assertEqual(set(r.json()), {'version', 'consent_version'})
         self.assertEqual(SurveyResponse.objects.count(), 0)
 
@@ -187,9 +186,9 @@ class SurveyWriteTests(TestCase):
         self.assertIs(stored['f'], 0)
 
     def test_answers_over_the_byte_cap_are_refused(self):
-        # 17 × 2000 × 'ż' is 34 000 CHARACTERS — under the cap counted that way — and 68 000
-        # BYTES of UTF-8, which is what is counted. Every per-field rule passes.
-        self.assert_answers_refused({f'q{i}': 'ż' * rules.MAX_STRING for i in range(17)}, 'bytes')
+        # 120 × 300 × 'ż' is 36 000 CHARACTERS — under the cap counted that way — and 72 000
+        # BYTES of UTF-8, which is what is counted. Every per-field rule passes (120 ≤ MAX_KEYS).
+        self.assert_answers_refused({f'q{i}': 'ż' * rules.MAX_STRING for i in range(120)}, 'bytes')
 
     def test_unknown_question_ids_are_the_clients_business(self):
         # Nothing semantic: this server does not know which questions exist.
@@ -228,33 +227,21 @@ class SurveyWriteTests(TestCase):
         row = SurveyResponse.objects.get()
         self.assertEqual(row.locale, '')
         self.assertIsNone(row.duration_s)
-        self.assertEqual((row.contact_hash, row.key_hash), ('', ''))
+        self.assertEqual(row.key_hash, '')
 
-    # --- the two opt-in ways back -------------------------------------------------------
+    # --- the one opt-in way back ----------------------------------------------------------
 
-    def test_a_contact_email_is_kept_as_a_hash_and_never_as_the_address(self):
-        r = self.post(contact_email='  Osoba@Example.COM ')
+    def test_a_contact_email_from_an_older_client_is_ignored_and_stored_nowhere(self):
+        # SURVEY-R3: there is no e-mail opt-in any more. An older build that still sends the key
+        # loses nothing (201) and the address lands nowhere — the row has no field for it.
+        r = self.post(contact_email='Osoba@Example.COM')
         self.assertEqual(r.status_code, 201)
-        row = SurveyResponse.objects.get()
-        self.assertEqual(len(row.contact_hash), 64)
-        self.assertEqual(row.contact_hash, rules.hash_contact('osoba@example.com'))
-        self.assertNotIn('example', row.contact_hash)
-        self.assertNotIn('osoba', json.dumps(row.answers))
-        # The same address hashes the same way whatever the case or padding — that is how the
-        # controller finds the sheet later — and nothing in the response reveals the hash.
-        self.assertEqual(rules.hash_contact('OSOBA@example.com'), row.contact_hash)
         self.assertEqual(set(r.json()), {'ok', 'id', 'key'})
-
-    def test_a_malformed_contact_email_is_refused_by_name_not_dropped(self):
-        for bad in ('nie-adres', 'a@', '@b.pl', 'a b@c.pl', 'x' * 250 + '@a.pl', ['a@b.pl']):
-            r = self.post(contact_email=bad)
-            self.assertEqual(r.status_code, 400, bad)
-            self.assertEqual(list(r.json()), ['contact_email'], bad)
-        self.assertEqual(SurveyResponse.objects.count(), 0)
-        for none in ('', '   ', None):
-            SurveyResponse.objects.all().delete()
-            self.assertEqual(self.post(contact_email=none).status_code, 201, none)
-            self.assertEqual(SurveyResponse.objects.get().contact_hash, '')
+        row = SurveyResponse.objects.get()
+        self.assertFalse(hasattr(row, 'contact_hash'))
+        self.assertNotIn('example', json.dumps(row.answers).lower())
+        self.assertFalse(hasattr(rules, 'hash_contact'))
+        self.assertFalse(hasattr(rules, 'MAX_EMAIL'))
 
     def test_a_key_is_handed_back_once_and_kept_as_a_hash(self):
         r = self.post(wants_key=True)
@@ -281,7 +268,7 @@ class SurveyWriteTests(TestCase):
         self.assertEqual(list(r.json()), ['wants_key'])
 
     def test_the_key_withdraws_the_sheet_and_only_that_sheet(self):
-        key = self.post(wants_key=True, contact_email='a@b.pl').json()['key']
+        key = self.post(wants_key=True).json()['key']
         other = SurveyResponse.objects.get(pk=self.post().json()['id'])
         r = self.client.post(WITHDRAW, {'key': key}, content_type='application/json')
         self.assertEqual(r.status_code, 200)
@@ -289,7 +276,6 @@ class SurveyWriteTests(TestCase):
         row = SurveyResponse.objects.get(key_hash=rules.hash_key(key))
         self.assertEqual(row.status, 'withdrawn')
         self.assertEqual(row.answers, {})
-        self.assertEqual(row.contact_hash, '')
         self.assertEqual(row.withdrawn_on, timezone.localdate())
         # The row stays, with its date and its survey, so the count of sheets received is right.
         self.assertEqual(row.received_on, timezone.localdate())
@@ -327,11 +313,11 @@ class SurveyWriteTests(TestCase):
     def test_the_row_has_no_address_no_account_and_no_timestamp(self):
         names = {f.name for f in SurveyResponse._meta.get_fields()}
         for forbidden in ('ip_hash', 'ip', 'author', 'user', 'created_at', 'user_agent',
-                          'contact_email', 'email', 'key'):
+                          'contact_email', 'contact_hash', 'email', 'key'):
             self.assertNotIn(forbidden, names)
         self.assertEqual(names, {'id', 'survey', 'version', 'consent_version', 'status',
                                  'withdrawn_on', 'locale', 'duration_s', 'answers',
-                                 'contact_hash', 'key_hash', 'received_on'})
+                                 'key_hash', 'received_on'})
         for name in ('received_on', 'withdrawn_on'):
             field = SurveyResponse._meta.get_field(name)
             self.assertIsInstance(field, models.DateField)
@@ -393,7 +379,7 @@ class AdminTests(TestCase):
         self.row = SurveyResponse.objects.create(
             survey=SLUG, version=1, consent_version=rules.CONSENT_VERSION, locale='pl', duration_s=5,
             answers={'notes': '<script>alert(1)</script>', 'age_band': '25–29'},
-            contact_hash=rules.hash_contact('a@b.pl'), key_hash=rules.hash_key('klucz'))
+            key_hash=rules.hash_key('klucz'))
 
     def test_permissions(self):
         request = RequestFactory().get('/')
@@ -406,9 +392,10 @@ class AdminTests(TestCase):
         self.assertFalse(self.ma.has_change_permission(request))
         self.assertTrue(self.ma.has_delete_permission(request))
         self.assertEqual(set(self.ma.readonly_fields), set(self.ma.fields))
-        for hidden in ('contact_hash', 'key_hash', 'answers'):
+        for hidden in ('key_hash', 'answers'):
             self.assertNotIn(hidden, self.ma.fields)
             self.assertNotIn(hidden, self.ma.list_display)
+        self.assertNotIn('has_contact', self.ma.list_display)
 
     def test_the_answers_are_escaped_and_the_pages_open_without_a_hash(self):
         html = self.ma.pretty_answers(self.row)
@@ -420,16 +407,15 @@ class AdminTests(TestCase):
         r = self.client.get(f'/admin/survey/surveyresponse/{self.row.id}/change/')
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'age_band')
-        for hash_value in (self.row.contact_hash, self.row.key_hash):
-            self.assertNotContains(r, hash_value)
+        self.assertNotContains(r, self.row.key_hash)
 
 
 class WithdrawCommandTests(TestCase):
-    """`manage.py survey_withdraw`: the controller's half, by e-mail, key or id."""
+    """`manage.py survey_withdraw`: the controller's half, by key or id (no `--email` since SURVEY-R3)."""
 
     def setUp(self):
         self.a = SurveyResponse.objects.create(survey=SLUG, version=1, consent_version=rules.CONSENT_VERSION,
-                                               answers={'a': 1}, contact_hash=rules.hash_contact('osoba@example.com'))
+                                               answers={'a': 1})
         self.b = SurveyResponse.objects.create(survey=SLUG, version=1, consent_version=rules.CONSENT_VERSION,
                                                answers={'a': 2}, key_hash=rules.hash_key('klucz-b'))
         self.c = SurveyResponse.objects.create(survey=SLUG, version=1, consent_version=rules.CONSENT_VERSION,
@@ -443,25 +429,19 @@ class WithdrawCommandTests(TestCase):
     def statuses(self):
         return [SurveyResponse.objects.get(pk=row.pk).status for row in (self.a, self.b, self.c)]
 
-    def test_by_email_hashes_the_address_the_way_the_row_did(self):
-        self.assertIn('Do wycofania: 1', self.run_command('--email', 'Osoba@Example.com', '--dry-run'))
-        self.assertEqual(self.statuses(), ['received'] * 3)
-        self.assertIn('Wycofano 1', self.run_command('--email', 'Osoba@Example.com'))
-        self.assertEqual(self.statuses(), ['withdrawn', 'received', 'received'])
-        self.assertEqual(SurveyResponse.objects.get(pk=self.a.pk).answers, {})
-        self.assertIn('Nie znaleziono', self.run_command('--email', 'osoba@example.com'))
-        self.assertIn('Nie znaleziono', self.run_command('--email', 'nikt@example.com'))
-
     def test_by_key_and_by_id(self):
+        self.assertIn('Do wycofania: 1', self.run_command('--key', 'klucz-b', '--dry-run'))
+        self.assertEqual(self.statuses(), ['received'] * 3)
         self.assertIn('Wycofano 1', self.run_command('--key', 'klucz-b'))
         self.assertIn('Wycofano 1', self.run_command('--id', str(self.c.pk)))
         self.assertEqual(self.statuses(), ['received', 'withdrawn', 'withdrawn'])
         self.assertIn('Nie znaleziono', self.run_command('--key', 'nie-ten'))
         self.assertIn('Nie znaleziono', self.run_command('--id', '999999'))
 
-    def test_a_bad_address_is_a_command_error(self):
-        with self.assertRaises(CommandError):
-            call_command('survey_withdraw', '--email', 'nie-adres', stdout=StringIO())
+    def test_there_is_no_email_form_any_more(self):
+        with self.assertRaises((CommandError, SystemExit)):
+            call_command('survey_withdraw', '--email', 'osoba@example.com', stdout=StringIO(), stderr=StringIO())
+        self.assertEqual(self.statuses(), ['received'] * 3)
 
 
 class ExportTests(TestCase):
@@ -470,7 +450,7 @@ class ExportTests(TestCase):
     def setUp(self):
         self.a = SurveyResponse.objects.create(survey=SLUG, version=1, consent_version=rules.CONSENT_VERSION,
                                                locale='pl', duration_s=10, answers={'b': ['x', 'y'], 'a': 1},
-                                               contact_hash=rules.hash_contact('a@b.pl'))
+                                               key_hash=rules.hash_key('klucz-a'))
         self.b = SurveyResponse.objects.create(survey=SLUG, version=1, consent_version=rules.CONSENT_VERSION,
                                                locale='', duration_s=None,
                                                answers={'c': True, 'a': 'tekst, z przecinkiem', 'd': None})
@@ -493,10 +473,21 @@ class ExportTests(TestCase):
         self.assertEqual(rows[2], [str(self.b.id), '1', rules.CONSENT_VERSION, '', '', today,
                                    'tekst, z przecinkiem', '', 'true', ''])
         self.assertEqual(len(rows), 3)
-        self.assertNotIn(self.a.contact_hash, text)
+        self.assertNotIn(self.a.key_hash, text)
         with_gone = list(csv.reader(StringIO(self.run_export('--format', 'csv', '--include-withdrawn'))))
         self.assertEqual(len(with_gone), 4)
         self.assertEqual(with_gone[3][6:], ['', '', '', ''])
+
+    def test_csv_text_that_looks_like_a_formula_is_prefixed_and_numbers_are_not(self):
+        # SURVEY-R3: a respondent's typed answer must not run as a formula in a spreadsheet.
+        SurveyResponse.objects.all().delete()
+        SurveyResponse.objects.create(survey=SLUG, version=2, consent_version=rules.CONSENT_VERSION,
+                                      answers={'e': '=1+1', 'p': '+x', 'm': '-y', 'a': '@z',
+                                               't': '\tx', 'n': -5, 'l': ['=a', 'b'], 'ok': 'zwykły tekst'})
+        rows = list(csv.reader(StringIO(self.run_export('--format', 'csv'))))
+        self.assertEqual(rows[0][6:], ['a', 'e', 'l', 'm', 'n', 'ok', 'p', 't'])
+        self.assertEqual(rows[1][6:], ["'@z", "'=1+1", "'=a|b", "'-y", '-5', 'zwykły tekst', "'+x", "'\tx"])
+        self.assertNotIn('\n=1+1', self.run_export())  # the JSON Lines form is untouched
 
     def test_jsonl_and_since(self):
         lines = [json.loads(line) for line in self.run_export().splitlines()]
@@ -522,17 +513,18 @@ class MirroredConstantsTests(TestCase):
 
     def test_pinned(self):
         self.assertEqual(rules.SURVEYS, {'psychodeliki-retro-2026': {
-            'version': 1,
-            'title': 'Psychodeliki – ankieta retrospektywna w ramach przygotowań do eksperymentu studenckiego'}})
+            'version': 2,
+            'title': 'Psychodeliki – ankieta retrospektywna w ramach przygotowań do studenckiego badania obserwacyjnego'}})
         self.assertEqual(rules.CONSENT_VERSION, '2026-11-07')
         self.assertEqual(rules.CONSENT_STATEMENTS, (
-            'Chcę podzielić się moim doświadczeniem w celach przygotowań do eksperymentu studenckiego.',
+            'Chcę podzielić się moim doświadczeniem w celach przygotowań do studenckiego badania obserwacyjnego.',
             'Projekt nie jest powiązany z żadną uczelnią.',
             'Administrator danych: Piotr Putyło, admin@fuw.lol.',
         ))
         self.assertEqual((rules.CONTROLLER, rules.CONTROLLER_EMAIL), ('Piotr Putyło', 'admin@fuw.lol'))
         self.assertEqual(
             (rules.MAX_KEYS, rules.MAX_STRING, rules.MAX_LIST, rules.MAX_LIST_ITEM, rules.MAX_INT,
-             rules.MAX_ANSWERS_BYTES, rules.MAX_DURATION_S, rules.MAX_EMAIL, rules.MAX_KEY),
-            (200, 2000, 50, 200, 1_000_000, 65536, 86400, 254, 128))
+             rules.MAX_ANSWERS_BYTES, rules.MAX_DURATION_S, rules.MAX_KEY),
+            (200, 300, 50, 200, 1_000_000, 65536, 86400, 128))
+        self.assertFalse(hasattr(rules, 'MAX_EMAIL'))
         self.assertEqual(rules.KEY_RE.pattern, r'^[a-z][a-z0-9_]{0,39}$')

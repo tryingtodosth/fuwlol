@@ -139,7 +139,7 @@ comes out as `http://`.
 
 Since 2026-11-07 `location /lsd/` and `location = /lsd` sit beside them: a line-for-line copy of
 the `/fum/` block for **LSD**, the second copy of MedApp (the `lsd` container, an anonymous
-questionnaire run as preparation for a student experiment) — the same resolver variable, the same
+questionnaire run as preparation for a student observational study) — the same resolver variable, the same
 raised buffers, the same repeated headers, no aliases because the path never had another name. Its
 new calls, `POST /api/survey/` and `POST /api/survey/withdraw/`, are same-origin and inside
 `connect-src 'self'`; `/lsd` is baked into that image at build time, like `/fum`. Its `/lsd/docs`

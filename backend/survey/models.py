@@ -1,12 +1,12 @@
 """fuw.lol — one anonymous answer sheet of a research questionnaire, from the LSD copy of MedApp.
 
 LSD (`fuw.lol/lsd`, the `lsd` container) is a second deployment of MedApp that carries a
-retrospective questionnaire about psychedelic use, run as preparation for a student experiment by
-a project **not affiliated with any university**; the controller is Piotr Putyło
+retrospective questionnaire about psychedelic use, run as preparation for a student observational
+study by a project **not affiliated with any university**; the controller is Piotr Putyło
 (`admin@fuw.lol`, `rules.CONTROLLER`). The questionnaire, its heading, the three acknowledgements
 and the 18+ gate are the client's; this table is where a finished sheet lands, and the only thing
-the server knows about the person is what they chose to answer — plus, if they opted in, one of
-two hashed ways for them to find their own sheet again.
+the server knows about the person is what they chose to answer — plus, if they opted in, one
+hashed way for them to find their own sheet again.
 
 **Privacy is the point, and the schema is the mechanism.** What people answer here is health
 data and data about an offence — art. 9 and art. 10 RODO — and the client promises anonymity. So
@@ -26,12 +26,12 @@ the row has:
   after the lecture". What remains is the `id`, which orders the rows WITHIN a day — accepted,
   and written down in `CLAUDE.md`.
 
-**Two opt-in ways back, both one-way hashes.** The person may leave an e-mail, kept only as
-`contact_hash` (HMAC under the salt — `rules.hash_contact`): they write to the controller from
-that address and `manage.py survey_withdraw --email` finds the sheet. Or they may ask for a key,
-generated here, handed back ONCE in the 201 and kept only as `key_hash`; `POST
-/api/survey/withdraw/` with it blanks the sheet. Neither hash is shown in the admin. A sheet
-with neither cannot be found again by anybody.
+**One opt-in way back, a one-way hash.** The person may ask for a key, generated here, handed
+back ONCE in the 201 and kept only as `key_hash`; `POST /api/survey/withdraw/` with it blanks
+the sheet. The hash is not shown in the admin. A sheet without a key cannot be found again by
+anybody. Until SURVEY-R3 (2026-11-07) there was a `contact_hash` too, an HMAC of an optional
+e-mail — removed in migration 0002 with the reasoning in `rules.py`: pseudonymous, not anonymous,
+and a withdrawal by mail showed the controller the address.
 
 Everything else about the row is the survey's business: which questionnaire (`survey`), which
 version of its definition (`version`), which consent text was ticked (`consent_version`), the
@@ -69,9 +69,6 @@ class SurveyResponse(models.Model):
     # (`rules.clean_answers`). Stored as given, strings stripped; never rendered by anything.
     # `{}` once withdrawn.
     answers = models.JSONField()
-    # HMAC of the e-mail the person CHOSE to leave for a later request (`rules.hash_contact`);
-    # '' when none — the common case. Never the address.
-    contact_hash = models.CharField(max_length=64, blank=True)
     # SHA-256 of the key the person CHOSE to receive (`rules.hash_key`); '' when none. The plain
     # key was returned once and is not here.
     key_hash = models.CharField(max_length=64, blank=True, db_index=True)

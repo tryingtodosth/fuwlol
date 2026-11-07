@@ -10,36 +10,37 @@ its meaning: a key that looks like a question id, a value that is one of five pl
 total that fits in a row. Which ids exist is the client's business, and the analysis side filters
 by the ids it knows.
 
-Two ways back to one's own sheet, both opt-in and both one-way hashes on this side: an e-mail
-(`hash_contact`; the person writes to the controller, who runs `manage.py survey_withdraw
---email`) or a key this server generates and hands back once (`new_key` / `hash_key`; the person
-keeps it, or its QR, and `POST /api/survey/withdraw/` with it blanks the sheet). A sheet with
-neither cannot be found again — which is the point and the price of anonymity.
+One way back to one's own sheet, opt-in and a one-way hash on this side: a key this server
+generates and hands back once (`new_key` / `hash_key`; the person keeps it, or its QR, and
+`POST /api/survey/withdraw/` with it blanks the sheet). A sheet without one cannot be found again
+— which is the point and the price of anonymity. Until SURVEY-R3 (2026-11-07, version 2) there
+was a second way, an e-mail kept as an HMAC: dropped, because a hashed address is pseudonymous
+rather than anonymous (whoever holds the table and the salt can test a candidate) and a
+withdrawal by mail showed the controller the address — the key does the same job without either.
 
 Every constant here is MIRRORED in the medapp repository's `src/lib/survey/api.ts` — a separate
 repository, so nothing can import across. Change one, change the other, and keep the comment
 that says so. `tests.py MirroredConstantsTests` pins this side.
 """
 import hashlib
-import hmac
 import json
 import re
 import secrets
 
-from django.conf import settings
-from django.core.validators import EmailValidator
 from django.utils import timezone
 
 # The surveys this server accepts, by slug, each with the version of its definition the client
 # must be running. A sheet from an older build is refused with 400 keyed `version` and the
 # client tells the person to reload — storing answers against a question list that has since
 # changed would be a dataset nobody can analyse. The title is the heading the client shows and
-# names the goal: preparation of a student experiment.
+# names the goal: preparation of a student observational study (version 2, SURVEY-R3: the word
+# was "experiment" until 2026-11-07; the first consent statement changed with it, under the same
+# date, because no sheet had been received — version 2 is what tells the two apart).
 # MIRRORED in the medapp repository's `src/lib/survey/api.ts` as SURVEYS — change one, change the other.
 SURVEYS = {
     'psychodeliki-retro-2026': {
-        'version': 1,
-        'title': 'Psychodeliki – ankieta retrospektywna w ramach przygotowań do eksperymentu studenckiego',
+        'version': 2,
+        'title': 'Psychodeliki – ankieta retrospektywna w ramach przygotowań do studenckiego badania obserwacyjnego',
     },
 }
 
@@ -54,7 +55,7 @@ CONSENT_VERSION = '2026-11-07'
 # MIRRORED in `src/lib/survey/api.ts` (medapp) as CONSENT_STATEMENTS — byte-identical, like
 # consent/rules.WISH_LABELS ↔ lib/consent.ts.
 CONSENT_STATEMENTS = (
-    'Chcę podzielić się moim doświadczeniem w celach przygotowań do eksperymentu studenckiego.',
+    'Chcę podzielić się moim doświadczeniem w celach przygotowań do studenckiego badania obserwacyjnego.',
     'Projekt nie jest powiązany z żadną uczelnią.',
     'Administrator danych: Piotr Putyło, admin@fuw.lol.',
 )
@@ -72,7 +73,7 @@ MAX_KEYS = 200
 KEY_RE = re.compile(r'^[a-z][a-z0-9_]{0,39}$')
 # A free-text answer, measured after stripping.
 # MIRRORED in `src/lib/survey/api.ts` (medapp) as MAX_STRING — change one, change the other.
-MAX_STRING = 2000
+MAX_STRING = 300
 # A multiple-choice answer: a list of at most MAX_LIST short strings of at most MAX_LIST_ITEM
 # characters each (option ids, or the "other" text).
 # MIRRORED in `src/lib/survey/api.ts` (medapp) as MAX_LIST — change one, change the other.
@@ -89,9 +90,6 @@ MAX_ANSWERS_BYTES = 65536
 # the value is dropped to null, never refused — a timer is not worth losing a sheet over.
 # MIRRORED in `src/lib/survey/api.ts` (medapp) as MAX_DURATION_S — change one, change the other.
 MAX_DURATION_S = 86400
-# The optional e-mail (RFC 5321's practical ceiling); Django's validator decides the shape.
-# MIRRORED in `src/lib/survey/api.ts` (medapp) as MAX_EMAIL — change one, change the other.
-MAX_EMAIL = 254
 # The key handed back once: `secrets.token_urlsafe(32)` is 43 characters; the lookup accepts a
 # little slack for a pasted one and nothing like a payload.
 # MIRRORED in `src/lib/survey/api.ts` (medapp) as MAX_KEY — change one, change the other.
@@ -105,9 +103,6 @@ CONTROL_RE = re.compile(r'[\x00-\x08\x0b-\x1f\x7f]')
 
 ANSWERS_NOT_AN_OBJECT = 'Odpowiedzi muszą być obiektem JSON: identyfikator pytania → odpowiedź.'
 ANSWERS_EMPTY = 'Brak odpowiedzi.'
-
-_email_validator = EmailValidator()
-
 
 def _string_problem(key, text, limit):
     """None when `text` (already stripped) is an acceptable string of at most `limit` characters."""
@@ -170,33 +165,6 @@ def clean_answers(answers):
     return clean, None
 
 
-def clean_email(value):
-    """Return `(email, None)` — lowercased and stripped, or '' for none — or `(None, <sentence>)`."""
-    email = (value or '').strip().lower()
-    if not email:
-        return '', None
-    if len(email) > MAX_EMAIL:
-        return None, 'Ten adres e-mail jest za długi.'
-    try:
-        _email_validator(email)
-    except Exception:
-        return None, 'Ten adres e-mail nie wygląda poprawnie.'
-    return email, None
-
-
-def hash_contact(email):
-    """HMAC-SHA256 of the address — stripped and lowercased HERE, so every caller hashes the
-    same way — under FUWLOL_IP_SALT, in its own context — the
-    same construction as `board.models.hash_ip`, so the salt that is rotated to stop old chat
-    hashes correlating stops these too. Enough for the controller to find the sheets of the
-    person who wrote in from that address; never the address itself."""
-    email = (email or '').strip().lower()
-    if not email:
-        return ''
-    return hmac.new(settings.FUWLOL_IP_SALT.encode(), b'survey-contact:' + email.encode(),
-                    hashlib.sha256).hexdigest()
-
-
 def new_key():
     """The one-time key handed back to a person who asked for one: 256 bits, URL-safe."""
     return secrets.token_urlsafe(32)
@@ -222,15 +190,14 @@ def find_by_key(key):
 
 
 def withdraw(row):
-    """Blank the answers and the contact hash, mark the sheet withdrawn with today's DATE, keep
+    """Blank the answers, mark the sheet withdrawn with today's DATE, keep
     the key hash so a second call finds the same row and does nothing. Returns True when the
     row changed. The row itself stays (root CLAUDE.md rule 6) — empty, so the count of sheets
     ever received is still right and the id is not reused."""
     if row.status == 'withdrawn':
         return False
     row.answers = {}
-    row.contact_hash = ''
     row.status = 'withdrawn'
     row.withdrawn_on = timezone.localdate()
-    row.save(update_fields=['answers', 'contact_hash', 'status', 'withdrawn_on'])
+    row.save(update_fields=['answers', 'status', 'withdrawn_on'])
     return True

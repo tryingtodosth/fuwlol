@@ -184,11 +184,12 @@ decisions below follow from it:
   version, the consent text's version, the language, a duration, the answers as shape-checked
   JSON (`survey/rules.clean_answers`: ≤ 200 keys, five plain value kinds, ≤ 64 kB) and a DATE —
   no IP hash, no account, no user agent, no timestamp, so the row cannot be joined to an
-  access-log line by time (`survey/models.py`, `LEGAL.md` §9b). The person's two opt-in ways
-  back are hashes only: an e-mail as HMAC under the salt, a server-minted 256-bit key as SHA-256,
-  returned once; `POST /api/survey/withdraw/ {key}` blanks the sheet (unknown key 404, own scope
+  access-log line by time (`survey/models.py`, `LEGAL.md` §9b). The person's one opt-in way
+  back is a hash only: a server-minted 256-bit key as SHA-256, returned once (the e-mail opt-in,
+  an HMAC, went in SURVEY-R3 — pseudonymous, not anonymous); `POST /api/survey/withdraw/ {key}`
+  blanks the sheet (unknown key 404, own scope
   20/hour, no oracle because the key is the holder's secret). Token-only auth, honeypot, scope
-  `survey` 60/hour; write-only, read in the admin (deletion head-admin only, neither hash shown)
+  `survey` 60/hour; write-only, read in the admin (deletion head-admin only, the hash not shown)
   and exported by `manage.py export_survey`. Same CSP, same location pattern in nginx.
 
 The notes themselves are plain text, never rendered by `lib/render/`, and read in the Django admin;

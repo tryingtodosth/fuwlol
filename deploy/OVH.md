@@ -388,7 +388,7 @@ docker compose -f docker-compose.prod.yml --env-file .env logs --tail=20 web
 
 A second copy of MedApp from the same repository, mounted at `/lsd` and called **LSD** there, for
 an anonymous retrospective questionnaire about psychedelic use run as preparation for a student
-experiment — a project not affiliated with any university; the controller is Piotr Putyło,
+observational study — a project not affiliated with any university; the controller is Piotr Putyło,
 `admin@fuw.lol`. It is the WUM arrangement a second time: the `lsd` service in
 `docker-compose.prod.yml`, `location /lsd/` and `location = /lsd` in `frontend/nginx.conf`
 through the same resolver variable and raised buffers, the deploy's best-effort pull after `skoki`
@@ -398,10 +398,11 @@ unless pinned in `/srv/fuwlol/.env`); and it has no old names, so there are no a
 
 Its new server calls are `POST /api/survey/` and `POST /api/survey/withdraw/` (`backend/survey/`,
 `LEGAL.md` §9b): a finished sheet becomes one row with **no address, no account, no user agent
-and a DATE instead of a timestamp**; the person's optional e-mail and optional key are stored as
-hashes only, and the key blanks the sheet again. Sheets are read in the Django admin and exported
-by `manage.py export_survey <slug> [--format jsonl|csv] [--since YYYY-MM-DD]`; a withdrawal asked
-for by mail is `manage.py survey_withdraw --email <the sender's address>`. It also files notes to
+and a DATE instead of a timestamp**; the person's optional key is stored as a hash only, and the
+key blanks the sheet again (no e-mail field since the medapp SURVEY-R3 image, 2026-11-07;
+`survey/0002` dropped the column). Sheets are read in the Django admin and exported by
+`manage.py export_survey <slug> [--format jsonl|csv] [--since YYYY-MM-DD]`; a withdrawal asked
+for by mail with a pasted key is `manage.py survey_withdraw --key <the key>`. It also files notes to
 `POST /api/feedback/` like the first copy. The container stores nothing.
 
 Deploying and rolling it back are the WUM lines with `lsd` for `skoki` and `LSD_TAG` for
@@ -430,8 +431,8 @@ After the first deploy of it, in a browser:
    mount disagree.
 2. `https://fuw.lol/lsd/en/` exists and is English; every link clicked keeps `/lsd` on it.
 3. `https://fuw.lol/lsd/survey` opens the questionnaire: the heading names the goal (preparation
-   of a student experiment), the three acknowledgements and the 18+ gate come before the first
-   question, and the optional e-mail / key step comes last.
+   of a student observational study), the three acknowledgements and the 18+ gate come before the
+   first question, and the optional key step comes last (no e-mail field).
 4. Send one, asking for a key, and look at `https://fuw.lol/admin/survey/surveyresponse/`: the
    row has the survey slug, version, consent version, locale, duration and a **date only** — no
    IP, no account, no time of day, no hash anywhere on the page, „ma klucz” ticked. Then
@@ -441,7 +442,7 @@ After the first deploy of it, in a browser:
    a 400 keyed `version` or `consent_version` means the app and `survey/rules.py` disagree.
 5. `https://fuw.lol/`, `/fum/` and a post are unchanged, and `docker compose exec web nginx -t`.
 6. Since the DOCS-R1 image: `https://fuw.lol/lsd/docs` lists the project's documents (a 200 with
-   the titles in the HTML — `curl -s https://fuw.lol/lsd/docs | grep -c docs-row` is 8), each
+   the titles in the HTML — `curl -s https://fuw.lol/lsd/docs | grep -c docs-row` is 9), each
    `https://fuw.lol/lsd/docs/<slug>` opens in its own frame with a twelve-digit revision at the head
    and the foot, `/lsd/docs/nope` is a 404, and nothing on those pages calls `/api/`. A 404 at
    `/lsd/docs` means the running image predates DOCS-R1 (check the `lsd-latest` digest).

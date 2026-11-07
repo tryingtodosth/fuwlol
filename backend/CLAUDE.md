@@ -6,7 +6,7 @@ trusted-tier, moderation, escalation, R2 and chat endpoints one by one.
 
 ## Run / test
 
-- `cd backend && FUWLOL_CACHE_DIR=<scratch> ../.venv/bin/python manage.py test` — 573 tests,
+- `cd backend && FUWLOL_CACHE_DIR=<scratch> ../.venv/bin/python manage.py test` — 572 tests,
   about 4 minutes, SQLite, no daemon. `manage.py check`, `manage.py makemigrations --check
   --dry-run` (CI enforces the latter; a model change without its migration fails the deploy).
 - Dev server: `./run.sh` from the repo root, or by hand
@@ -77,7 +77,7 @@ does not open it), staff-written example templates and the anonymised records pe
 publish; its scopes count writes only. `POST /api/survey/` is the LSD copy's questionnaire: anonymous,
 scope `survey` 60/hour (a room behind one NAT finishing a quarter-hour sheet), and the one table
 in this project built to hold NOTHING about its sender — no `ip_hash`, no FK, a DATE instead of a
-timestamp; the two opt-in ways back (an e-mail, a key) are stored as hashes and
+timestamp; the one opt-in way back (a key) is stored as a hash and
 `POST /api/survey/withdraw/` blanks a sheet for whoever holds its key (`survey/models.py`,
 `LEGAL.md` §9b). `feedback/CLAUDE.md`, `wum/CLAUDE.md` and `survey/CLAUDE.md` have the rest.
 
@@ -111,12 +111,12 @@ deletes unclaimed objects after a day.
 | `seed_portraits` | portraits | development data |
 | `make_share_images` | share | draws the three 1200×630 fallback cards into `frontend/static/`; committed |
 | `export_survey <slug> [--format jsonl\|csv] [--since YYYY-MM-DD] [--include-withdrawn]` | survey | by hand, by the study team — one survey's sheets to stdout; never cron |
-| `survey_withdraw --email ADDR \| --key KEY \| --id N [--dry-run]` | survey | by hand, when a person asks — blanks their sheet(s); the e-mail is hashed the way the row was |
+| `survey_withdraw --key KEY \| --id N [--dry-run]` | survey | by hand, when a person asks — blanks their sheet (no `--email` since SURVEY-R3, 2026-11-07) |
 
 ## Migrations
 
-19 across eight apps (`share` has no models; `wum/0001` is the side app's three tables, 2026-10;
-`survey/0001` is the LSD copy's one table, 2026-11).
+20 across eight apps (`share` has no models; `wum/0001` is the side app's three tables, 2026-10;
+`survey/0001` is the LSD copy's one table, 2026-11; `survey/0002` drops its e-mail hash, SURVEY-R3).
 Four carry data: `accounts/0002` seeds the trusted
 domains from `trust.TRUSTED_DOMAINS_SEED`; `archive/0003` back-fills the search columns;
 `archive/0007` files every existing person with `people.py`'s pure functions; `archive/0008` seeds

@@ -246,11 +246,13 @@ are visible to members only.
 ## 9b. LSD — the anonymous survey (`backend/survey/`)
 
 The second copy of MedApp at `fuw.lol/lsd` carries a retrospective questionnaire about psychedelic
-use, run as **preparation for a student experiment by a project that is not affiliated with any
-university**. **The controller is Piotr Putyło, contact `admin@fuw.lol`** (`survey/rules.CONTROLLER`),
+use, run as **preparation for a student observational study by a project that is not affiliated
+with any university** (the word was "experiment" until the medapp SURVEY-R3 image of 2026-11-07,
+version 2 of the questionnaire; the first acknowledgement changed with it, under the same consent
+date, because no sheet had been received). **The controller is Piotr Putyło, contact `admin@fuw.lol`** (`survey/rules.CONTROLLER`),
 and the questionnaire says so before the first question: its heading names the goal, and three
 acknowledgements are required checkboxes — *Chcę podzielić się moim doświadczeniem w celach
-przygotowań do eksperymentu studenckiego*, *Projekt nie jest powiązany z żadną uczelnią*,
+przygotowań do studenckiego badania obserwacyjnego*, *Projekt nie jest powiązany z żadną uczelnią*,
 *Administrator danych: Piotr Putyło, admin@fuw.lol* (`rules.CONSENT_STATEMENTS`, byte-identical in
 the client; `rules.CONSENT_VERSION` is their date and every sheet records which version was ticked,
 like `WumProfile.agreed_text_version`). What a person answers is **health data and data about an
@@ -269,16 +271,18 @@ make the promise true rather than to rely on good behaviour:
   row's `id` orders sheets within a day; that is the accepted residue.
 - **The way back is the person's choice, and a hash on this side.** Withdrawal of consent must be
   as easy as consent (art. 7 ust. 3 RODO), and an anonymous sheet cannot otherwise be found again,
-  so the form offers two opt-ins, after a second look that says they link the answers to the
-  person: an e-mail, stored only as an HMAC under the salt (`rules.hash_contact`) — the person
-  writes to `admin@fuw.lol` from that address and `manage.py survey_withdraw --email` finds and
-  blanks their sheet without the address ever having been in the database; or a key this server
-  mints and hands back once (shown, saved, or as a QR drawn on the phone), kept as SHA-256 —
-  `POST /api/survey/withdraw/` with it blanks the sheet at once, with no review and no account.
-  Withdrawal keeps the row (status `withdrawn`, the date, the survey) with empty answers and no
-  contact hash, so the count of sheets ever received stays right and nothing about the person
-  remains. "Modify" is withdraw and send again. A sheet with neither opt-in cannot be withdrawn
-  by anybody, and the form says so.
+  so the form offers one opt-in, after a second look that says it links the answers to the person:
+  a key this server mints and hands back once (shown, saved, or as a QR drawn on the phone), kept
+  as SHA-256 — `POST /api/survey/withdraw/` with it blanks the sheet at once, with no review and
+  no account. Withdrawal keeps the row (status `withdrawn`, the date, the survey) with empty
+  answers, so the count of sheets ever received stays right and nothing about the person remains.
+  "Modify" is withdraw and send again. A sheet without a key cannot be withdrawn by anybody, and
+  the form says so. **Until SURVEY-R3 (2026-11-07) there was a second opt-in, an e-mail kept as an
+  HMAC under the salt** (`contact_hash`, dropped in `survey/0002`): removed because a keyed hash of
+  an address is pseudonymisation, not anonymisation (whoever holds the table and the salt can test
+  a candidate address), and because the withdrawal it enabled — a mail to `admin@fuw.lol` — put the
+  person's address in front of the controller and in a mailbox. The key does the same job without
+  either. No sheet had been received with the field.
 - **Consent and the 18+ gate are on the client**, before the first question; this server cannot
   verify an age and does not try (as in §9). No confirmation mail is sent to the optional address
   (the mail gap of §10), so a typo there means no way back.
@@ -311,5 +315,5 @@ make the promise true rather than to rely on good behaviour:
 - The survey table (§9b) has no retention clock of its own: "until the analysis is done and
   exported" is the study team's decision, and the date by which the head admin empties the table
   should be written here when the collection closes. Until then the rows, and the restic backups
-  holding them, stay. Whether an ethics review of the student experiment is sought, and by whom,
-  is the project's question, not this repository's.
+  holding them, stay. Whether an ethics review of the student project's future modules is sought,
+  and by whom, is the project's question, not this repository's.

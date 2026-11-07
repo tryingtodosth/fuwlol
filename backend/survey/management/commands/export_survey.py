@@ -6,12 +6,14 @@
 Not a cron job: the study team runs it by hand when the collection is over (or in between, to
 look). The output carries exactly what the row holds — `id`, `version`, `consent_version`,
 `locale`, `duration_s`, `received_on` and the answers — and nothing about anybody, because the
-row holds nothing of the kind (`models.py`; the two hashes are not exported). Withdrawn sheets
+row holds nothing of the kind (`models.py`; the key hash is not exported). Withdrawn sheets
 are left out unless `--include-withdrawn` asks for their empty rows. The CSV flattens the answers
 into one column per question id: the union of every key across the exported rows, sorted, after
 the six fixed columns; a list answer is joined with `|`, a boolean is `true` / `false`, a null is
-an empty cell. A string answer is written verbatim, so a cell beginning with `=` is a formula to a
-spreadsheet that evaluates formulas — open the CSV in an analysis tool, or use the JSON Lines.
+an empty cell. A text cell that begins with `=`, `+`, `-`, `@`, a tab or a carriage return is
+written with a leading apostrophe (SURVEY-R3, 2026-11-07): a spreadsheet that evaluates formulas
+would otherwise run a respondent's typed answer as one. Numbers are never prefixed, so a negative
+integer stays a number; the JSON Lines form has no such problem.
 """
 import csv
 import datetime
@@ -23,6 +25,8 @@ from survey import rules
 from survey.models import SurveyResponse
 
 FIXED_COLUMNS = ['id', 'version', 'consent_version', 'locale', 'duration_s', 'received_on']
+# What a spreadsheet reads as the start of a formula (OWASP "CSV injection").
+FORMULA_START = ('=', '+', '-', '@', '\t', '\r')
 
 
 def cell(value):
@@ -33,8 +37,12 @@ def cell(value):
     if value is False:
         return 'false'
     if isinstance(value, list):
-        return '|'.join(value)
-    return str(value)
+        text = '|'.join(value)
+    elif isinstance(value, str):
+        text = value
+    else:
+        return str(value)  # an integer is never a formula
+    return "'" + text if text.startswith(FORMULA_START) else text
 
 
 class Command(BaseCommand):

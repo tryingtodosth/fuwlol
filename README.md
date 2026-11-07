@@ -88,12 +88,12 @@ Porty zajęte? `FUWLOL_CORS_ORIGINS` + `frontend/.env` (`PUBLIC_API_BASE_URL`) s
   27.09.2026 nie ma jej w „Skokach" wehikułu czasu, więc trzeba znać adres; kto go zna, wchodzi jak
   dawniej. Szczegóły: `deploy/OVH.md` („WUM"), `backend/feedback/CLAUDE.md` i `backend/wum/CLAUDE.md`.
 - **LSD pod `/lsd`** — druga kopia tej samej aplikacji MedApp (kontener `lsd`), tym razem z anonimową
-  ankietą retrospektywną o psychodelikach, prowadzoną w ramach przygotowań do eksperymentu
-  studenckiego przez projekt niepowiązany z żadną uczelnią (administrator danych: Piotr Putyło,
+  ankietą retrospektywną o psychodelikach, prowadzoną w ramach przygotowań do studenckiego badania
+  obserwacyjnego przez projekt niepowiązany z żadną uczelnią (administrator danych: Piotr Putyło,
   admin@fuw.lol). Jedyne nowe wywołania serwera to `POST /api/survey/` i `POST /api/survey/withdraw/`
   (`backend/survey/`, `LEGAL.md` §9b): wiersz bez adresu IP, bez konta i bez godziny — tylko data;
-  kto chce móc później wycofać odpowiedzi, zostawia e-mail (zapisany wyłącznie jako hasz) albo
-  dostaje jednorazowy klucz (też tylko hasz po naszej stronie). Odpowiedzi czyta się w
+  kto chce móc później wycofać odpowiedzi, bierze jednorazowy klucz (po naszej stronie tylko hasz;
+  pola e-mail nie ma od 2026-11-07, SURVEY-R3). Odpowiedzi czyta się w
   `/admin/survey/surveyresponse/` i eksportuje `manage.py export_survey`. Po polsku pod gołym
   adresem, `/lsd/en/` po angielsku. Od 2026-11-07 (medapp SURVEY-R2) ankieta ma własną ramkę,
   jedno pytanie na ekran i trzy grupy respondentów (własne doświadczenie, towarzyszenie osobie pod
@@ -125,7 +125,7 @@ docs/      fuwlol-dokumentacja.drawio (+ .pdf, render/NN.png) — dokumentacja t
            gemini/ — pięć raportów Gemini Deep Research + note.md (co z nich weszło do kodu, jak ich używać dalej)
 ```
 
-Testy: `cd backend && ../.venv/bin/python manage.py test` (573) · `cd frontend && npm run check && npm run build`
+Testy: `cd backend && ../.venv/bin/python manage.py test` (572) · `cd frontend && npm run check && npm run build`
 · przy działających serwerach: `npm run e2e` (smoke, 34 kroki), `npm run e2e:escalation` (eskalacja od kliknięcia
 do decyzji), `npm run e2e:research` (wzory w Markdownie, wyszukiwanie LaTeX-a, zgłoszenie DSA, oświadczenie o prawach),
 `npm run e2e:render-guard` (treść, która ominęła `check_source` inną drogą niż API — np. panel administracyjny —
