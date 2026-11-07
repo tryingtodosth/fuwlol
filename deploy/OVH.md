@@ -419,7 +419,10 @@ without touching the box by hand; the alternative is the two compose lines over 
 such build is medapp's **DOCS-R1** (`docs/HISTORY.md` §70, 2026-11-07): the copy publishes the
 study's working documents at `/lsd/docs`, rendered into the image at build time from the medapp
 repository's `content/docs/lsd/` — read-only, no new call to this server, nothing here changes
-but this note and the check below.
+but this note and the check below. The same evening two more medapp images followed — SURVEY-R3
+(version 2 of the questionnaire, deployed together with this repository's `survey/0002`) and a
+documents-only build recording the state after that deploy — each taken by a deploy of this
+repository; this paragraph's commit exists to run the second of those deploys.
 
 After the first deploy of it, in a browser:
 
