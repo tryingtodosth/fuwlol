@@ -407,11 +407,23 @@ for by mail is `manage.py survey_withdraw --email <the sender's address>`. It al
 Deploying and rolling it back are the WUM lines with `lsd` for `skoki` and `LSD_TAG` for
 `SKOKI_TAG`; `survey/0001` migrates on the api container's start like every other migration.
 
+**A new build of the LSD image alone** (the medapp repository's SURVEY-R2, its `docs/HISTORY.md`
+§68, 2026-11-07: the questionnaire redrawn in its own frame, one question per screen, and opened
+to people who were with somebody under the influence and to people interested in the initiative —
+the same `POST /api/survey/` body, the same version and consent text, so nothing here changes)
+reaches the box the moment any deploy of this repository runs: the best-effort `pull lsd && up -d
+lsd` at the end of the workflow takes whatever `:lsd-latest` is by then. Pushing a commit to `main`
+here after the medapp image workflow has finished is the way to roll a medapp-only change out
+without touching the box by hand; the alternative is the two compose lines over SSH.
+
 After the first deploy of it, in a browser:
 
-1. `https://fuw.lol/lsd` answers 308 to `/lsd/` (relative `Location:`, as for `/fum`) and the app
-   opens **styled** and **in Polish** at the bare path — this copy is not the staropolszczyzna
-   build; an unstyled page or English at the bare path means the build and the mount disagree.
+1. `https://fuw.lol/lsd` answers 308 to `/lsd/` (relative `Location:`, as for `/fum`), and since
+   the medapp image of 2026-11-07 (its §69) `/lsd/` answers a **307 to `/lsd/survey`** from the
+   app itself — the copy's bare path is the questionnaire; the figure the bare path used to open
+   is at `https://fuw.lol/lsd/baba`. Both open **styled** and **in Polish** — this copy is not the
+   staropolszczyzna build; an unstyled page or English at the bare path means the build and the
+   mount disagree.
 2. `https://fuw.lol/lsd/en/` exists and is English; every link clicked keeps `/lsd` on it.
 3. `https://fuw.lol/lsd/survey` opens the questionnaire: the heading names the goal (preparation
    of a student experiment), the three acknowledgements and the 18+ gate come before the first

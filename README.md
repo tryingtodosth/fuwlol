@@ -95,7 +95,11 @@ Porty zajęte? `FUWLOL_CORS_ORIGINS` + `frontend/.env` (`PUBLIC_API_BASE_URL`) s
   kto chce móc później wycofać odpowiedzi, zostawia e-mail (zapisany wyłącznie jako hasz) albo
   dostaje jednorazowy klucz (też tylko hasz po naszej stronie). Odpowiedzi czyta się w
   `/admin/survey/surveyresponse/` i eksportuje `manage.py export_survey`. Po polsku pod gołym
-  adresem, `/lsd/en/` po angielsku.
+  adresem, `/lsd/en/` po angielsku. Od 2026-11-07 (medapp SURVEY-R2) ankieta ma własną ramkę,
+  jedno pytanie na ekran i trzy grupy respondentów (własne doświadczenie, towarzyszenie osobie pod
+  wpływem, zainteresowanie inicjatywą) — ten sam kontrakt `POST /api/survey/`, więc po stronie
+  archiwum nic się nie zmienia; nowy obraz `lsd-latest` dociera na serwer z każdym deployem. Goły
+  adres `/lsd/` otwiera ankietę (307 z aplikacji), a figura jest pod `/lsd/baba`.
 
 ## Struktura
 
