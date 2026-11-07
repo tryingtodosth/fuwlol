@@ -142,7 +142,9 @@ the `/fum/` block for **LSD**, the second copy of MedApp (the `lsd` container, a
 questionnaire run as preparation for a student experiment) — the same resolver variable, the same
 raised buffers, the same repeated headers, no aliases because the path never had another name. Its
 new calls, `POST /api/survey/` and `POST /api/survey/withdraw/`, are same-origin and inside
-`connect-src 'self'`; `/lsd` is baked into that image at build time, like `/fum`.
+`connect-src 'self'`; `/lsd` is baked into that image at build time, like `/fum`. Its `/lsd/docs`
+pages (the medapp DOCS-R1 image, 2026-11-07) are server-rendered prose from the same container
+through the same `location /lsd/` — no new location, no new call, nothing to add here.
 
 **This app no longer links to the side app anywhere.** The „Skoki" list in
 `lib/components/timemachine/TimeMachine.svelte` used to carry a **WUM** stop that left the

@@ -75,7 +75,11 @@ as `/fum` in `frontend/nginx.conf`, `docker-compose.prod.yml` and the deploy, no
 at the bare path and `/lsd/en/` for English, and one more API prefix: `POST /api/survey/` plus
 `POST /api/survey/withdraw/` (`backend/survey/`), which store a sheet with **no address, no
 account and a date instead of a timestamp**, and the person's two opt-in ways back only as hashes
-— `LEGAL.md` §9b, `deploy/OVH.md` "LSD".
+— `LEGAL.md` §9b, `deploy/OVH.md` "LSD". Since the medapp image of 2026-11-07 (its DOCS-R1,
+`docs/HISTORY.md §70`) the copy also publishes the study's working documents at `/lsd/docs` —
+prose rendered into the image at build time, read-only, no call to this server; the design for
+commenting on them (a new `backend/annotations/` app, anonymous or token-authenticated, the
+`survey/` hygiene) is itself one of those documents and is **not built**.
 
 **Two boundaries are load-bearing and everything else follows from them:**
 

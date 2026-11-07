@@ -99,7 +99,12 @@ Porty zajęte? `FUWLOL_CORS_ORIGINS` + `frontend/.env` (`PUBLIC_API_BASE_URL`) s
   jedno pytanie na ekran i trzy grupy respondentów (własne doświadczenie, towarzyszenie osobie pod
   wpływem, zainteresowanie inicjatywą) — ten sam kontrakt `POST /api/survey/`, więc po stronie
   archiwum nic się nie zmienia; nowy obraz `lsd-latest` dociera na serwer z każdym deployem. Goły
-  adres `/lsd/` otwiera ankietę (307 z aplikacji), a figura jest pod `/lsd/baba`.
+  adres `/lsd/` otwiera ankietę (307 z aplikacji), a figura jest pod `/lsd/baba`. Od obrazu medapp
+  z 2026-11-07 (DOCS-R1) kopia publikuje też robocze dokumenty projektu pod `/lsd/docs` (plan,
+  nota koncepcyjna, treść kwestionariusza, procedury, decyzje projektowe; każdy z numerem wersji):
+  tylko do czytania, wbudowane w obraz, bez żadnego wywołania tego serwera. Projekt systemu
+  komentarzy i propozycji zmian (anonimowo albo z kontem fuw.lol, higiena jak w `survey/`) jest
+  jednym z tych dokumentów i **nie jest zbudowany**.
 
 ## Struktura
 

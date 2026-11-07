@@ -287,6 +287,14 @@ make the promise true rather than to rely on good behaviour:
   by the head admin in the Django admin (deletion is `is_superuser` only; nobody can edit a row).
   The export then lives with the study team, not here. Until the table is emptied the rows are
   also in the nightly restic dump of Postgres. When exactly "done" is, is left open in §10.
+- **The documents at `/lsd/docs`** (since the medapp DOCS-R1 image, 2026-11-07) are the study's
+  own working papers — the plan, the questionnaire's text, the procedures — published as read-only
+  prose built into the image. They hold no data about anybody and make no call to this server; the
+  only personal data on them is the controller's own name and address, which the consent text
+  already names. One of them designs how the documents could be commented on and amended,
+  anonymously or as a signed-in user, with the schema discipline of this section (no address, no
+  account unless chosen, a date, a key as a hash, pre-moderation of anonymous entries); until that
+  is built — and it is **not** — remarks go to `admin@fuw.lol`, as the pages say.
 
 ## 10. Left open
 

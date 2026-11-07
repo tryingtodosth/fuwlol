@@ -414,7 +414,11 @@ the same `POST /api/survey/` body, the same version and consent text, so nothing
 reaches the box the moment any deploy of this repository runs: the best-effort `pull lsd && up -d
 lsd` at the end of the workflow takes whatever `:lsd-latest` is by then. Pushing a commit to `main`
 here after the medapp image workflow has finished is the way to roll a medapp-only change out
-without touching the box by hand; the alternative is the two compose lines over SSH.
+without touching the box by hand; the alternative is the two compose lines over SSH. The second
+such build is medapp's **DOCS-R1** (`docs/HISTORY.md` §70, 2026-11-07): the copy publishes the
+study's working documents at `/lsd/docs`, rendered into the image at build time from the medapp
+repository's `content/docs/lsd/` — read-only, no new call to this server, nothing here changes
+but this note and the check below.
 
 After the first deploy of it, in a browser:
 
@@ -436,6 +440,11 @@ After the first deploy of it, in a browser:
    „Wycofana” with empty answers. A 403 on sending is the CSRF trap (`backend/survey/views.py`);
    a 400 keyed `version` or `consent_version` means the app and `survey/rules.py` disagree.
 5. `https://fuw.lol/`, `/fum/` and a post are unchanged, and `docker compose exec web nginx -t`.
+6. Since the DOCS-R1 image: `https://fuw.lol/lsd/docs` lists the project's documents (a 200 with
+   the titles in the HTML — `curl -s https://fuw.lol/lsd/docs | grep -c docs-row` is 8), each
+   `https://fuw.lol/lsd/docs/<slug>` opens in its own frame with a twelve-digit revision at the head
+   and the foot, `/lsd/docs/nope` is a 404, and nothing on those pages calls `/api/`. A 404 at
+   `/lsd/docs` means the running image predates DOCS-R1 (check the `lsd-latest` digest).
 
 If `/lsd/` answers 502, the WUM list above applies unchanged (`logs --tail=20 web`;
 `docker compose ps lsd`).
