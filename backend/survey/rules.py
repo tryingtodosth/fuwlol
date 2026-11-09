@@ -35,11 +35,15 @@ from django.utils import timezone
 # changed would be a dataset nobody can analyse. The title is the heading the client shows and
 # names the goal: preparation of a student observational study (version 2, SURVEY-R3: the word
 # was "experiment" until 2026-11-07; the first consent statement changed with it, under the same
-# date, because no sheet had been received — version 2 is what tells the two apart).
+# date, because no sheet had been received — version 2 is what tells the two apart). Version 3
+# (SURVEY-R4, 2026-11-09): the questions on recency, frequency, microdosing, dose pattern and
+# interval name "klasycznych psychodelików" themselves, because a respondent could not tell whether
+# they asked about classic psychedelics or the other substances of the question before; ids and the
+# wire contract are unchanged, the version tells sheets answered under the old wording apart.
 # MIRRORED in the medapp repository's `src/lib/survey/api.ts` as SURVEYS — change one, change the other.
 SURVEYS = {
     'psychodeliki-retro-2026': {
-        'version': 2,
+        'version': 3,
         'title': 'Psychodeliki – ankieta retrospektywna w ramach przygotowań do studenckiego badania obserwacyjnego',
     },
 }
@@ -74,6 +78,11 @@ KEY_RE = re.compile(r'^[a-z][a-z0-9_]{0,39}$')
 # A free-text answer, measured after stripping.
 # MIRRORED in `src/lib/survey/api.ts` (medapp) as MAX_STRING — change one, change the other.
 MAX_STRING = 300
+# The one free text allowed to be long: the closing remarks about the questionnaire itself
+# (SURVEY-R4, 2026-11-09, the study team's decision). Every other text stays at MAX_STRING.
+# MIRRORED in `src/lib/survey/api.ts` (medapp) as REMARKS_KEY / MAX_REMARKS — change one, change the other.
+REMARKS_KEY = 'survey_remarks'
+MAX_REMARKS = 1_000_000
 # A multiple-choice answer: a list of at most MAX_LIST short strings of at most MAX_LIST_ITEM
 # characters each (option ids, or the "other" text).
 # MIRRORED in `src/lib/survey/api.ts` (medapp) as MAX_LIST — change one, change the other.
@@ -85,7 +94,8 @@ MAX_LIST_ITEM = 200
 MAX_INT = 1_000_000
 # The whole `answers` object serialised as UTF-8 JSON — bytes, not characters.
 # MIRRORED in `src/lib/survey/api.ts` (medapp) as MAX_ANSWERS_BYTES — change one, change the other.
-MAX_ANSWERS_BYTES = 65536
+# 4 MiB: MAX_REMARKS characters at four UTF-8 bytes each, plus every other answer.
+MAX_ANSWERS_BYTES = 4_194_304
 # `duration_s`: how long the questionnaire took, in seconds; a day is the ceiling. Outside it
 # the value is dropped to null, never refused — a timer is not worth losing a sheet over.
 # MIRRORED in `src/lib/survey/api.ts` (medapp) as MAX_DURATION_S — change one, change the other.
@@ -140,7 +150,7 @@ def clean_answers(answers):
             clean[key] = value
         elif isinstance(value, str):
             text = value.strip()
-            problem = _string_problem(key, text, MAX_STRING)
+            problem = _string_problem(key, text, MAX_REMARKS if key == REMARKS_KEY else MAX_STRING)
             if problem:
                 return None, problem
             clean[key] = text

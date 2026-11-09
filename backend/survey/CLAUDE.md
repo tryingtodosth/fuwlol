@@ -5,7 +5,7 @@ with `/lsd` baked in and pushed under the `lsd-` image tags) carries a retrospec
 about psychedelic use, run as **preparation for a student observational study by a project not
 affiliated with any university**; the controller is Piotr Putyło, `admin@fuw.lol`
 (`rules.CONTROLLER`). This app is where a finished sheet lands. 40 tests. Version 2 of the
-questionnaire since SURVEY-R3 (2026-11-07): no e-mail opt-in, `MAX_STRING` 300, the CSV export
+questionnaire since SURVEY-R3 (2026-11-07): no e-mail opt-in, `MAX_STRING` 300 (the remarks alone `MAX_REMARKS` 1 000 000 and `MAX_ANSWERS_BYTES` 4 MiB since SURVEY-R4), the CSV export
 guarded against formulas.
 
 ## Rules

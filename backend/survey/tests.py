@@ -90,7 +90,7 @@ class SurveyWriteTests(TestCase):
         self.assertEqual(SurveyResponse.objects.count(), 0)
 
     def test_a_stale_version_is_refused_by_name(self):
-        for bad in (0, 1, 3, 'abc', None):
+        for bad in (0, 1, 2, 4, 'abc', None):
             r = self.post(version=bad)
             self.assertEqual(r.status_code, 400, bad)
             self.assertIn('version', r.json(), bad)
@@ -185,10 +185,21 @@ class SurveyWriteTests(TestCase):
         self.assertIs(stored['c'], True)
         self.assertIs(stored['f'], 0)
 
+    def test_the_remarks_may_be_long_and_no_other_text_may(self):
+        # SURVEY-R4: `survey_remarks` takes up to MAX_REMARKS characters; any other key keeps MAX_STRING.
+        key = rules.REMARKS_KEY
+        self.assert_answers_refused({key: 'a' * (rules.MAX_REMARKS + 1)}, 'MAX_REMARKS + 1')
+        self.assert_answers_refused({'notes': 'a' * (rules.MAX_STRING + 1)}, 'another key stays short')
+        self.assertEqual(self.post(answers={key: 'a' * rules.MAX_REMARKS}).status_code, 201)
+        self.assertEqual(len(SurveyResponse.objects.get().answers[key]), rules.MAX_REMARKS)
+
     def test_answers_over_the_byte_cap_are_refused(self):
-        # 120 × 300 × 'ż' is 36 000 CHARACTERS — under the cap counted that way — and 72 000
-        # BYTES of UTF-8, which is what is counted. Every per-field rule passes (120 ≤ MAX_KEYS).
-        self.assert_answers_refused({f'q{i}': 'ż' * rules.MAX_STRING for i in range(120)}, 'bytes')
+        # The remarks at their character cap in 4-byte characters are 4 000 000 BYTES; 199 other texts
+        # of MAX_STRING such characters add 238 800 — over MAX_ANSWERS_BYTES though every per-field rule
+        # passes (a character count under the cap is not a byte count under it).
+        answers = {f'q{i}': '\U0001F600' * rules.MAX_STRING for i in range(199)}
+        answers[rules.REMARKS_KEY] = '\U0001F600' * rules.MAX_REMARKS
+        self.assert_answers_refused(answers, 'bytes')
 
     def test_unknown_question_ids_are_the_clients_business(self):
         # Nothing semantic: this server does not know which questions exist.
@@ -513,7 +524,7 @@ class MirroredConstantsTests(TestCase):
 
     def test_pinned(self):
         self.assertEqual(rules.SURVEYS, {'psychodeliki-retro-2026': {
-            'version': 2,
+            'version': 3,
             'title': 'Psychodeliki – ankieta retrospektywna w ramach przygotowań do studenckiego badania obserwacyjnego'}})
         self.assertEqual(rules.CONSENT_VERSION, '2026-11-07')
         self.assertEqual(rules.CONSENT_STATEMENTS, (
@@ -524,7 +535,8 @@ class MirroredConstantsTests(TestCase):
         self.assertEqual((rules.CONTROLLER, rules.CONTROLLER_EMAIL), ('Piotr Putyło', 'admin@fuw.lol'))
         self.assertEqual(
             (rules.MAX_KEYS, rules.MAX_STRING, rules.MAX_LIST, rules.MAX_LIST_ITEM, rules.MAX_INT,
-             rules.MAX_ANSWERS_BYTES, rules.MAX_DURATION_S, rules.MAX_KEY),
-            (200, 300, 50, 200, 1_000_000, 65536, 86400, 128))
+             rules.MAX_ANSWERS_BYTES, rules.MAX_DURATION_S, rules.MAX_KEY, rules.REMARKS_KEY,
+             rules.MAX_REMARKS),
+            (200, 300, 50, 200, 1_000_000, 4_194_304, 86400, 128, 'survey_remarks', 1_000_000))
         self.assertFalse(hasattr(rules, 'MAX_EMAIL'))
         self.assertEqual(rules.KEY_RE.pattern, r'^[a-z][a-z0-9_]{0,39}$')
