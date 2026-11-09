@@ -121,8 +121,8 @@ commenting on them (a new `backend/annotations/` app, anonymous or token-authent
   `src/lib/privacy/project.ts`, `src/lib/api/wum.ts`, `src/lib/templates/types.ts` in the medapp
   repository (`wum/CLAUDE.md` "Mirrored constants"); the survey contract — `survey/rules.SURVEYS`,
   `CONSENT_VERSION`, `CONSENT_STATEMENTS` (byte-identical), `MAX_KEYS`, `KEY_RE`, `MAX_STRING`,
-  `MAX_LIST`, `MAX_LIST_ITEM`, `MAX_INT`, `MAX_ANSWERS_BYTES`, `MAX_DURATION_S`, `MAX_EMAIL`,
-  `MAX_KEY` ↔ `src/lib/survey/api.ts` in the medapp repository, and the mount `/lsd` ↔
+  `REMARKS_KEY`, `MAX_REMARKS`, `MAX_LIST`, `MAX_LIST_ITEM`, `MAX_INT`, `MAX_ANSWERS_BYTES`,
+  `MAX_DURATION_S`, `MAX_KEY` ↔ `src/lib/survey/api.ts` in the medapp repository, and the mount `/lsd` ↔
   `location /lsd/` ↔ that repository's `lsd-` build (`survey/CLAUDE.md` "Mirrored constants");
   the report-reason lists. Change one, change
   the other, keep the comment that names it.

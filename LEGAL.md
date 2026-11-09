@@ -261,7 +261,14 @@ make the promise true rather than to rely on good behaviour:
 
 - **What is stored** (`SurveyResponse`): the survey's slug and the version of its definition, the
   consent text's version, the interface language, how many seconds the sheet took, the answers as
-  JSON under the client's question ids, and the **date** it arrived.
+  JSON under the client's question ids, and the **date** it arrived. Every free text is capped at
+  300 characters except the closing remarks about the questionnaire itself (`survey_remarks`),
+  which since version 3 (medapp SURVEY-R4, 2026-11-09, the study team's decision) take up to
+  1 000 000 (`rules.MAX_REMARKS`; the sheet's cap is 4 MiB). That field is the one place a person
+  can type something that names them or somebody else, and at that length they may paste a whole
+  account; **nothing on this side screens it**, so the export and whoever reads it must treat it as
+  possibly identifying health data, and a remark that identifies somebody is blanked by the
+  controller rather than kept.
 - **What is not**: no IP address and no hash of one (unlike the board and `feedback/`), no
   account — the view never reads `request.user`, so a visitor signed in to the archive in the
   same browser is not attached — no user agent, and **no timestamp**. The date is deliberate:

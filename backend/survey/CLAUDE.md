@@ -4,7 +4,7 @@ LSD (`fuw.lol/lsd`, the `lsd` container; MedApp from `github.com/tryingtodosth/m
 with `/lsd` baked in and pushed under the `lsd-` image tags) carries a retrospective questionnaire
 about psychedelic use, run as **preparation for a student observational study by a project not
 affiliated with any university**; the controller is Piotr Putyło, `admin@fuw.lol`
-(`rules.CONTROLLER`). This app is where a finished sheet lands. 40 tests. Version 2 of the
+(`rules.CONTROLLER`). This app is where a finished sheet lands. 41 tests. Version 2 of the
 questionnaire since SURVEY-R3 (2026-11-07): no e-mail opt-in, `MAX_STRING` 300 (the remarks alone `MAX_REMARKS` 1 000 000 and `MAX_ANSWERS_BYTES` 4 MiB since SURVEY-R4), the CSV export
 guarded against formulas.
 
@@ -51,7 +51,7 @@ guarded against formulas.
 ## Mirrored constants
 
 Everything in `rules.py` with a MIRRORED comment — `SURVEYS`, `CONSENT_VERSION`,
-`CONSENT_STATEMENTS`, `MAX_KEYS`, `KEY_RE`, `MAX_STRING`, `MAX_LIST`, `MAX_LIST_ITEM`, `MAX_INT`,
+`CONSENT_STATEMENTS`, `MAX_KEYS`, `KEY_RE`, `MAX_STRING`, `REMARKS_KEY`, `MAX_REMARKS`, `MAX_LIST`, `MAX_LIST_ITEM`, `MAX_INT`,
 `MAX_ANSWERS_BYTES`, `MAX_DURATION_S`, `MAX_KEY` — also lives in the medapp
 repository's `src/lib/survey/api.ts`. Separate repository, nothing imports across;
 `tests.py MirroredConstantsTests` pins this side. A new questionnaire or a changed one is a new
