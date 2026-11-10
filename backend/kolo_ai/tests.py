@@ -405,3 +405,95 @@ class SettingTests(Base):
         self.assertEqual(client_for(m).put('/api/kolo/settings/founders_notice/', {'value': 'x'}, format='json').status_code, 403)
         boss = make_member('boss@student.uw.edu.pl', can_manage=True)
         self.assertEqual(client_for(boss).put('/api/kolo/settings/nope/', {'value': 'x'}, format='json').status_code, 404)
+
+
+NO_LINK_LINE = 'Nie chcesz więcej maili? Odpowiedz na tego maila słowem WYPISZ.'
+
+
+class MailingTests(Base):
+    """Unsubscribing (the link in every mailing, the one-click header, the switch on the page) and
+    `kolo_mail`, which honours it."""
+
+    def _send(self, *args):
+        import io
+        from django.core.management import call_command
+        out = io.StringIO()
+        call_command('kolo_mail', *args, '--pause', '0', stdout=out)
+        return out.getvalue()
+
+    def _file(self, text):
+        import tempfile
+        f = tempfile.NamedTemporaryFile('w', suffix='.txt', delete=False, encoding='utf-8')
+        f.write(text)
+        f.close()
+        return f.name
+
+    def test_link_unsubscribes_and_can_undo(self):
+        m = make_member('a@student.uw.edu.pl')
+        token = rules.unsubscribe_token(m)
+        self.assertEqual(APIClient().get('/api/kolo/unsubscribe/', {'t': token}).status_code, 405)
+        m.refresh_from_db()
+        self.assertIsNone(m.mail_opt_out_at)
+        r = APIClient().post('/api/kolo/unsubscribe/', {'token': token}, format='json')
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(r.json()['mail'])
+        self.assertNotIn(m, rules.mailing_recipients())
+        self.assertEqual(MemberAction.objects.filter(member=m, action='mail_off').count(), 1)
+        APIClient().post('/api/kolo/unsubscribe/', {'token': token}, format='json')  # twice: one action
+        self.assertEqual(MemberAction.objects.filter(member=m, action='mail_off').count(), 1)
+        APIClient().post('/api/kolo/unsubscribe/', {'token': token, 'subscribe': True}, format='json')
+        self.assertIn(m, rules.mailing_recipients())
+
+    def test_one_click_form_post(self):
+        m = make_member('a@student.uw.edu.pl')
+        url = '/api/kolo/unsubscribe/?t=' + rules.unsubscribe_token(m)
+        r = APIClient().post(url, 'List-Unsubscribe=One-Click', content_type='application/x-www-form-urlencoded')
+        self.assertEqual(r.status_code, 200)
+        m.refresh_from_db()
+        self.assertIsNotNone(m.mail_opt_out_at)
+
+    def test_forged_token_is_400(self):
+        m = make_member('a@student.uw.edu.pl')
+        self.assertEqual(APIClient().post('/api/kolo/unsubscribe/', {'token': f'{m.pk}:zly'}, format='json').status_code, 400)
+        self.assertEqual(APIClient().post('/api/kolo/unsubscribe/', {'token': str(m.pk)}, format='json').status_code, 400)
+
+    def test_switch_for_logged_in(self):
+        m = make_member('a@student.uw.edu.pl')
+        c = client_for(m)
+        self.assertTrue(c.get('/api/kolo/me/').json()['mail'])
+        self.assertFalse(c.put('/api/kolo/me/mail/', {'mail': False}, format='json').json()['mail'])
+        self.assertTrue(c.put('/api/kolo/me/mail/', {'mail': True}, format='json').json()['mail'])
+        self.assertEqual(APIClient().put('/api/kolo/me/mail/', {'mail': False}, format='json').status_code, 401)
+
+    def test_kolo_mail_sends_only_to_the_list_each_with_own_link(self):
+        a = make_member('a@student.uw.edu.pl')
+        b = Member.objects.create(email='b@student.uw.edu.pl', name='B', status=Member.PENDING_APPROVAL)
+        Member.objects.create(email='c@student.uw.edu.pl', name='C')  # pending_email: never confirmed
+        Member.objects.create(email='l@student.uw.edu.pl', name='L', status=Member.LEFT)
+        Member.objects.create(email='r@student.uw.edu.pl', name='R', status=Member.REJECTED)
+        gone = make_member('d@student.uw.edu.pl')
+        rules.set_mailings(gone, False, None, 'test')
+        path = self._file('Temat ogłoszenia\n\nTreść.\nNie chcesz? [LINK_REZYGNACJI]\n')
+
+        out = self._send(path)  # dry run
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertIn('RECIPIENTS 2', out)
+
+        self._send(path, '--send', '--extra', 'opiekun@fuw.edu.pl', '--extra', 'd@student.uw.edu.pl')
+        self.assertEqual(sorted(x.to[0] for x in mail.outbox), ['a@student.uw.edu.pl', 'b@student.uw.edu.pl', 'opiekun@fuw.edu.pl'])
+        by = {x.to[0]: x for x in mail.outbox}
+        self.assertEqual(by['a@student.uw.edu.pl'].subject, 'Temat ogłoszenia')
+        self.assertIn(rules.unsubscribe_url(a), by['a@student.uw.edu.pl'].body)
+        self.assertNotIn(rules.unsubscribe_url(a), by['b@student.uw.edu.pl'].body)
+        self.assertIn(rules.unsubscribe_url(b), by['b@student.uw.edu.pl'].body)
+        self.assertIn(NO_LINK_LINE, by['opiekun@fuw.edu.pl'].body)
+        self.assertNotIn('[LINK_REZYGNACJI]', by['opiekun@fuw.edu.pl'].body)
+        self.assertNotIn('Nie chcesz? ', by['opiekun@fuw.edu.pl'].body)
+        self.assertEqual(by['a@student.uw.edu.pl'].extra_headers['List-Unsubscribe-Post'], 'List-Unsubscribe=One-Click')
+        self.assertNotIn('List-Unsubscribe-Post', by['opiekun@fuw.edu.pl'].extra_headers)
+
+    def test_kolo_mail_test_copy(self):
+        make_member('a@student.uw.edu.pl')
+        self._send(self._file('Temat\nTreść\n'), '--test', 'admin@fuw.lol')
+        self.assertEqual([x.to for x in mail.outbox], [['admin@fuw.lol']])
+        self.assertEqual(mail.outbox[0].subject, '[TEST] Temat')

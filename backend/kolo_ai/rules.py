@@ -18,8 +18,10 @@ Majorities (pinned by tests, because this is where vote-counting scripts usually
 """
 import random
 from datetime import timedelta
+from urllib.parse import quote, urlsplit
 
 from django.conf import settings
+from django.core import signing
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.core.validators import EmailValidator
@@ -196,6 +198,54 @@ def open_link(raw):
         link.save(update_fields=['used_at'])
         email_confirmed(link.member)
         return link.member
+
+
+# --- mailings and unsubscribing -----------------------------------------------------------
+# A mailing (`kolo_mail`) goes to everybody who confirmed an address and has not unsubscribed.
+# Each copy carries the person's own link: a signature of the row id, never stored and never
+# expiring, so every old mailing still unsubscribes. Rotating SECRET_KEY voids all of them.
+
+UNSUBSCRIBE_SALT = 'kolo_ai.unsubscribe'
+MAILING_STATUSES = (Member.MEMBER, Member.PENDING_APPROVAL, Member.INVITED)
+
+
+def mailing_recipients():
+    return Member.objects.filter(status__in=MAILING_STATUSES, mail_opt_out_at__isnull=True).order_by('email')
+
+
+def unsubscribe_token(member):
+    return signing.Signer(salt=UNSUBSCRIBE_SALT).sign(str(member.pk))
+
+
+def member_from_unsubscribe_token(token):
+    try:
+        pk = int(signing.Signer(salt=UNSUBSCRIBE_SALT).unsign((token or '').strip()))
+    except (signing.BadSignature, ValueError):
+        return None
+    return Member.objects.filter(pk=pk).first()
+
+
+def unsubscribe_url(member):
+    """The page with the button (a GET changes nothing, so a mail scanner unsubscribes nobody)."""
+    return site_url('/wypisz?t=' + quote(unsubscribe_token(member), safe=''))
+
+
+def one_click_url(member):
+    """RFC 8058's `List-Unsubscribe` target: the mail client POSTs here itself."""
+    parts = urlsplit(settings.FUWLOL_KOLO_SITE_URL)
+    return f'{parts.scheme}://{parts.netloc}/api/kolo/unsubscribe/?t=' + quote(unsubscribe_token(member), safe='')
+
+
+def set_mailings(member, on, actor, how):
+    """Turn mailings off or back on; a no-op when nothing changes. Logged as a MemberAction
+    with the status unchanged, so the history says when and by which way."""
+    if (member.mail_opt_out_at is None) == on:
+        return False
+    member.mail_opt_out_at = None if on else timezone.now()
+    member.save(update_fields=['mail_opt_out_at'])
+    MemberAction.objects.create(member=member, actor=actor, action='mail_on' if on else 'mail_off',
+                                from_status=member.status, to_status=member.status, reason=how)
+    return True
 
 
 def new_session(member):

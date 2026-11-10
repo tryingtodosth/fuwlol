@@ -70,6 +70,9 @@ class Member(models.Model):
     email_confirmed_at = models.DateTimeField(null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)  # entry into the register (ewidencja)
     left_at = models.DateTimeField(null=True, blank=True)
+    # Unsubscribed from mailings (`kolo_mail`): set by the link in every mailing or the switch on
+    # the page. Login links, invitations and decisions about the person still go — they are replies.
+    mail_opt_out_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['name']

@@ -76,6 +76,13 @@
 		{:else if kolo.isVoter}
 			<p><a href={kp('/glosowania')}>Głosowania i obrady →</a></p>
 		{/if}
+		<p class="muted">
+			{#if kolo.me.mail}Dostajesz maile z ogłoszeniami Koła.
+				<button type="button" class="btn btn--ghost btn--sm" onclick={() => kolo.setMail(false).catch(() => {})}>Wypisz mnie z maili</button>
+			{:else}Nie dostajesz maili z ogłoszeniami Koła.
+				<button type="button" class="btn btn--ghost btn--sm" onclick={() => kolo.setMail(true).catch(() => {})}>Zapisz mnie z powrotem</button>
+			{/if}
+		</p>
 	</div>
 {/if}
 
@@ -117,6 +124,10 @@
 </ul>
 <p class="muted">Spotkania, warsztaty, wystąpienia gości, wspólne projekty i — w miarę możliwości — dostęp do mocy obliczeniowej.
 	Każda inicjatywa Koła trafia do jawnego dla członków rejestru i kończy się raportem.</p>
+
+<h2 id="spotkania">Spotkania</h2>
+<p>Szukamy terminów kolejnych spotkań. Zaznacz, kiedy możesz:
+	<a href="https://www.when2meet.com/?39662651-WlPww" target="_blank" rel="noopener">ankieta dostępności (when2meet)</a>.</p>
 
 <h2>Status</h2>
 {#if statuses.length}

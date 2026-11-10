@@ -13,6 +13,7 @@ export interface Founder {
 export interface KoloMember {
 	id: number; name: string; status: string; status_label: string; role: 'czlonek' | 'sympatyk';
 	affiliation: 'student' | 'doktorant' | 'inny'; funkcja: string; zarzad: boolean; can_manage: boolean;
+	mail: boolean; // gets the Koło's mailings (false once unsubscribed)
 	email?: string; created_at?: string; email_confirmed_at?: string | null; approved_at?: string | null;
 	uw_email?: boolean; problem_czlonek?: string | null;
 }
@@ -67,6 +68,9 @@ export const kolo = {
 		const r = await api.post<{ session: string; member: KoloMember }>('/kolo/link/', { token });
 		setKoloSession(r.session); me = r.member;
 		return r.member;
+	},
+	async setMail(on: boolean) {
+		me = await api.put<KoloMember>('/kolo/me/mail/', { mail: on });
 	},
 	async logout() {
 		try { await api.post('/kolo/logout/'); } catch { /* already gone */ }

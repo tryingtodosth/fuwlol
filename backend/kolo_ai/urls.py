@@ -12,6 +12,8 @@ urlpatterns = [
     path('me/', views.MeView.as_view()),
     path('logout/', views.LogoutView.as_view()),
     path('me/founder/', views.MyFounderView.as_view()),
+    path('me/mail/', views.MyMailView.as_view()),
+    path('unsubscribe/', views.UnsubscribeView.as_view()),
     path('founders/', views.FounderListView.as_view()),
     path('settings/<str:key>/', views.SettingView.as_view()),
     path('members/', views.MemberListView.as_view()),

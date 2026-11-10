@@ -21,6 +21,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.exceptions import NotFound
+from rest_framework.parsers import FormParser, JSONParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
@@ -58,7 +59,7 @@ def _needs_manager(request):
 def member_row(m, full=False):
     row = {'id': m.pk, 'name': m.name, 'status': m.status, 'status_label': m.get_status_display(),
            'role': m.role, 'affiliation': m.affiliation, 'funkcja': m.funkcja, 'zarzad': m.zarzad,
-           'can_manage': m.can_manage}
+           'can_manage': m.can_manage, 'mail': m.mail_opt_out_at is None}
     if full:
         row.update({'email': m.email, 'created_at': m.created_at, 'email_confirmed_at': m.email_confirmed_at,
                     'approved_at': m.approved_at, 'left_at': m.left_at,
@@ -230,6 +231,34 @@ class LogoutView(KoloView):
             s.revoked_at = timezone.now()
             s.save(update_fields=['revoked_at'])
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class UnsubscribeView(KoloView):
+    """POST {token[, subscribe: true]} from /wypisz, or RFC 8058's one-click POST
+    (`List-Unsubscribe=One-Click`, form-encoded) with the token in `?t=`. No GET: a link
+    scanner that opens every URL in a mail must not unsubscribe anybody."""
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'kolo_login'
+    parser_classes = [JSONParser, FormParser]
+
+    def post(self, request):
+        m = rules.member_from_unsubscribe_token(request.data.get('token') or request.query_params.get('t'))
+        if m is None:
+            return Response({'detail': 'Ten link do rezygnacji jest niepoprawny.'}, status=status.HTTP_400_BAD_REQUEST)
+        on = request.data.get('subscribe') in (True, 'true', '1')
+        rules.set_mailings(m, on, None, 'link z maila')
+        return Response({'mail': on, 'detail': 'Znów dostajesz maile Koła AI.' if on else
+                         'Wypisano. Nie dostaniesz więcej maili z ogłoszeniami Koła AI.'})
+
+
+class MyMailView(KoloView):
+    """PUT {mail: bool}: the switch on the page for whoever is logged in."""
+    def put(self, request):
+        m, err = _needs_member(request)
+        if err:
+            return err
+        rules.set_mailings(m, bool(request.data.get('mail')), m, 'przełącznik na stronie')
+        return Response(member_row(m))
 
 
 # --- managers: the register ----------------------------------------------------------------

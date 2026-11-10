@@ -4,7 +4,7 @@ Koło AI is a student organisation at the Faculty of Physics (in registration at
 2026-11-03). This app is its electronic register of members and its remote-voting system, both
 defined by the Koło's **regulamin**. That document lives outside this repository, in the owner's
 `~/Projects/AI/kolo_ai_zebrania/regulamin.txt`. Every rule below cites its paragraph, so when the
-regulamin changes, this file and `rules.py` change with it. 33 tests (`tests.py`) and one browser
+regulamin changes, this file and `rules.py` change with it. 45 tests (`tests.py`) and one browser
 script (`frontend/e2e/kolo.mjs`, 16 checks).
 
 ## Not the archive
@@ -98,10 +98,28 @@ Nothing is deleted except by `kolo_forget_unconfirmed` (RODO retention, see belo
 | `kolo_invite EMAIL --name … [--manager] [--zarzad] [--funkcja …] [--print-link]` | the first manager gets in this way; also grants flags to an existing member |
 | `kolo_publish_key create\|revoke\|list NAME` | the key for `publikuj_status.py`; printed once |
 | `kolo_protocol ID` | Markdown protocol of a closed vote (§ 10a ust. 8); also `GET polls/<id>/protocol/` |
+| `kolo_mail FILE\|- [--send] [--test ADDR] [--extra ADDR …]` | a mailing: one copy per person on `rules.mailing_recipients()`, each with its own unsubscribe link; without `--send` a dry run. `-` reads stdin, so a file from another machine goes in with `exec -T api python manage.py kolo_mail - --send < mail.txt` |
 | `kolo_forget_unconfirmed` | **nightly cron**: unconfirmed sign-ups older than 30 days, plus used or expired links and sessions. The consent text promises the 30 days |
 
 `can_manage`, `zarzad` and `funkcja` are set in the Django admin (`/admin/kolo_ai/member/`) or by
 `kolo_invite`, never through the API. Ballots are not registered in the admin at all.
+
+## Mailings and unsubscribing
+
+- **Who gets a mailing:** `member`, `pending_approval` and `invited` rows with `mail_opt_out_at`
+  empty. `pending_email` never: nobody confirmed that the address is theirs.
+- **Unsubscribing never touches membership.** It sets `Member.mail_opt_out_at` and writes a
+  `MemberAction` (`mail_off` / `mail_on`, status unchanged). Login links, invitations and
+  decisions still go, because they answer something the person did.
+- **The link** is `/wypisz?t=<signed row id>` (`rules.unsubscribe_token`, `django.core.signing`,
+  salt `kolo_ai.unsubscribe`). It is never stored and never expires; rotating `SECRET_KEY` voids
+  every old link. Opening the page changes nothing (mail scanners follow links); the button POSTs
+  `unsubscribe/`. The same page can undo it.
+- **One click from the mail client:** every copy carries `List-Unsubscribe: <…/api/kolo/unsubscribe/?t=…>,
+  <mailto:…?subject=WYPISZ>` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058).
+  The view takes that form-encoded POST; there is no GET.
+- **Logged in:** the card on `/ai` has a switch (`PUT me/mail/`).
+- An `--extra` address outside the register has no row and so no link; its copy says to reply WYPISZ.
 
 ## Left open
 
