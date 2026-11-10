@@ -92,6 +92,12 @@ services:
       FUWLOL_EMAIL_PASSWORD: ${FUWLOL_EMAIL_PASSWORD:-}
       FUWLOL_FROM_EMAIL: ${FUWLOL_FROM_EMAIL:-FUW <no-reply@fuw.lol>}
       FUWLOL_CONTACT_EMAIL: ${FUWLOL_CONTACT_EMAIL:-admin@fuw.lol}
+      # The medapp.net newsletter's confirmation mail (newsletter/mail.py): medapp.net's own
+      # OVH mailbox, SSL on 465 — not the Brevo relay above.
+      FUWLOL_NEWSLETTER_EMAIL_HOST: ${FUWLOL_NEWSLETTER_EMAIL_HOST:-ssl0.ovh.net}
+      FUWLOL_NEWSLETTER_EMAIL_PORT: ${FUWLOL_NEWSLETTER_EMAIL_PORT:-465}
+      FUWLOL_NEWSLETTER_EMAIL_USER: ${FUWLOL_NEWSLETTER_EMAIL_USER:-}
+      FUWLOL_NEWSLETTER_EMAIL_PASSWORD: ${FUWLOL_NEWSLETTER_EMAIL_PASSWORD:-}
       FUWLOL_SEED_DEMO: "0"
       GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
     volumes:

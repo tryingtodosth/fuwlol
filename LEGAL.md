@@ -231,6 +231,40 @@ one-line signature (`contact`, ≤ 200 characters: a name or an e-mail address).
   admin; there is no sweeper yet, and the table is expected to stay small (`feedback/CLAUDE.md`).
 - The text is the person's own words; nothing in it is screened, as before.
 
+## 9d. The MedApp newsletter (`backend/newsletter/`)
+
+Since 2026-11-10 a person using MedApp's vet clinic app on **https://medapp.net** may sign up to an
+occasional newsletter about MedApp (news, calls for clinics and reviewers). The page sends the
+address here with JavaScript (`POST /api/newsletter/`, CORS for medapp.net only); nobody is sent to
+this site. Stored: the e-mail address, the interface language, the copy it came from (decided by
+the `Origin` header), the version of the consent wording the person ticked (`consent_version`;
+the words are MedApp's `nl_consent` message in en / pl / uk, the English kept in
+`newsletter/models.py`), the status, and the times of the consent, the confirmation, the
+unsubscription and the last mail sent to the address. No IP address or hash of one, no user agent,
+no account, no key: the links are signed with the site's secret and kept nowhere.
+
+- **Basis: consent** (art. 6 ust. 1 lit. a RODO; art. 10 of the Polish act on electronic services
+  for the mail itself), given by ticking a box that is unticked by default, **and confirmed by
+  e-mail (double opt-in)**: the sign-up mails the address a link to medapp.net's `/newsletter`
+  page, and only a press of its button there makes the row `active`. The link works for 7 days.
+  Only active rows are ever exported. The address is used only to send that newsletter.
+- **The confirmation mail** is the only mail sent from here. It goes out from
+  `info@medapp.net` through medapp.net's own mailbox at OVH (SMTP ssl0.ovh.net, not fuw.lol's relay),
+  in the person's interface language, says who asked and that ignoring it is enough, and carries
+  the unsubscribe link. One mail per address per 10 minutes, whatever is requested; a request from
+  any origin but medapp.net is refused before anything is stored or sent.
+- **An address that is never confirmed is deleted** once it is 30 days old (at the next sign-up);
+  it receives nothing but the one confirmation mail.
+- **Withdrawal:** every mail carries a link to medapp.net's `/newsletter#unsubscribe=…`, whose
+  button ends the subscription (`POST /api/newsletter/unsubscribe/`); the admin export gives each
+  active row its own link, and **every issue must carry it**. Without it, an e-mail to the contact
+  point (§1) or to `info@medapp.net` does the same by hand in the admin (*Wypisz*).
+- **Signing up again** answers exactly as a first sign-up, so the endpoint does not reveal who is on
+  the list: an unconfirmed or unsubscribed address gets a new confirmation link, an active one a
+  mail saying nothing changed. A stranger typing somebody's address can make one mail per 10
+  minutes reach them, and nothing else.
+- **Erasure:** on request, the row is deleted in the admin.
+
 ## 9a. Koło AI — the register of members and remote votes (`backend/kolo_ai/`)
 
 **The controller is Piotr Putyło, contact `admin@fuw.lol`** (decided 2026-11-03, while the Koło is

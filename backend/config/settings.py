@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     'consent',
     'escalation',
     'feedback',
+    'newsletter',
     'portraits',
     'share',
     'survey',
@@ -153,6 +154,11 @@ REST_FRAMEWORK = {
         # behind ONE address, and the rate must let a room finish. A sheet is one JSON row with
         # nothing about its sender in it, so the cost of a flood is kilobytes.
         'survey': '60/hour',
+        # Sign-ups to the MedApp newsletter (newsletter/views.py). One person signs up once; a
+        # clinic's staff behind one address may sign up a few. Low on purpose: every sign-up
+        # sends a mail, and a stranger's inbox is worth flooding (one mail per address per
+        # MAIL_COOLDOWN_MINUTES on top of this). Confirm and unsubscribe share the scope.
+        'newsletter': '20/hour',
         # Withdrawing one by its key (survey/views.py). A 256-bit key cannot be guessed at any
         # rate this allows; the scope exists so that the sending budget is not spent on it.
         'survey_withdraw': '20/hour',
@@ -234,10 +240,11 @@ FUWLOL_SHARE_REDIRECT_HUMANS = os.environ.get('FUWLOL_SHARE_REDIRECT_HUMANS', '1
 CORS_ALLOWED_ORIGINS = [o for o in os.environ.get(
     'FUWLOL_CORS_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',') if o]
 CSRF_TRUSTED_ORIGINS = [o for o in os.environ.get('FUWLOL_CSRF_ORIGINS', '').split(',') if o]
-# django-cors-headers answers every preflight itself, before any view; the feedback endpoint
-# answers its own (feedback/views.py), so the middleware leaves that one path alone. Every other
+# django-cors-headers answers every preflight itself, before any view; the feedback and newsletter
+# endpoints answer their own (feedback/views.py, newsletter/views.py), so the middleware leaves
+# those paths alone. Every other
 # path is exactly as before.
-CORS_URLS_REGEX = r'^(?!/api/feedback/).*$'
+CORS_URLS_REGEX = r'^(?!/api/(feedback|newsletter)/).*$'
 # Origins that may file a note at POST /api/feedback/ from another site, each with the `app` the
 # note is filed under (feedback/views.py answers CORS for these itself; CORS_ALLOWED_ORIGINS
 # above stays as it is). `origin=app,origin=app`. Today: MedApp's static copy on medapp.net.
@@ -245,6 +252,27 @@ FUWLOL_FEEDBACK_ORIGINS = dict(
     pair.split('=', 1) for pair in os.environ.get(
         'FUWLOL_FEEDBACK_ORIGINS',
         'https://medapp.net=medapp,https://www.medapp.net=medapp').split(',') if '=' in pair)
+# The same, for the newsletter's two endpoints (newsletter/views.py): origin=source.
+FUWLOL_NEWSLETTER_ORIGINS = dict(
+    pair.split('=', 1) for pair in os.environ.get(
+        'FUWLOL_NEWSLETTER_ORIGINS',
+        'https://medapp.net=medapp,https://www.medapp.net=medapp').split(',') if '=' in pair)
+# Where a newsletter mail's links point, per source: that copy's `/newsletter` page (mail.py).
+FUWLOL_NEWSLETTER_SITES = dict(
+    pair.split('=', 1) for pair in os.environ.get(
+        'FUWLOL_NEWSLETTER_SITES', 'medapp=https://medapp.net').split(',') if '=' in pair)
+# The mailbox the newsletter's confirmation goes out from: medapp.net's own on OVH (MX Plan,
+# ssl0.ovh.net, SSL on 465), NOT fuw.lol's relay above — the person signed up on medapp.net.
+# The login comes from the environment (/srv/fuwlol/.env on the box), never this file.
+FUWLOL_NEWSLETTER_MAIL = {
+    'host': os.environ.get('FUWLOL_NEWSLETTER_EMAIL_HOST', 'ssl0.ovh.net'),
+    'port': int(os.environ.get('FUWLOL_NEWSLETTER_EMAIL_PORT', '465')),
+    'user': os.environ.get('FUWLOL_NEWSLETTER_EMAIL_USER', ''),
+    'password': os.environ.get('FUWLOL_NEWSLETTER_EMAIL_PASSWORD', ''),
+    'use_ssl': os.environ.get('FUWLOL_NEWSLETTER_EMAIL_USE_SSL', '1') == '1',
+    'from': os.environ.get('FUWLOL_NEWSLETTER_FROM_EMAIL', 'medapp.net <info@medapp.net>'),
+    'reply_to': os.environ.get('FUWLOL_NEWSLETTER_REPLY_TO', 'info@medapp.net'),
+}
 
 STORAGES = {
     'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},

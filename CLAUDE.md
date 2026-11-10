@@ -38,10 +38,11 @@ deploy/    OVH runbook, Caddyfile, firewall.sh, backup.sh.   .github/workflows/d
 docs/      the Polish draw.io documentation deck and the Gemini research reports.
 ```
 
-The 11 apps, each with its own `CLAUDE.md`: `accounts` (tiers) · `archive` (everything about a post:
+The 12 apps, each with its own `CLAUDE.md`: `accounts` (tiers) · `archive` (everything about a post:
 models, API, people, subjects, search, uploads, guards, suggestions) · `board` (the chat) ·
 `consent` (a person's own say about their image) · `escalation` (NASK) · `feedback` (notes about a
-screen, from the side app) · `portraits` (elected profile photos) · `share` (link previews +
+screen, from the side app) · `newsletter` (the MedApp newsletter's list: an address and a consent
+version, double opt-in by a link mailed from medapp.net's own OVH mailbox; signed tokens, none stored) · `portraits` (elected profile photos) · `share` (link previews +
 sitemap, no models) · `survey` (the LSD copy's anonymous questionnaire: one write-only POST and a
 keyed withdraw; a row with no address, no account and a date only) · `wum` (the side app's
 accounts, example templates and anonymised publications).
@@ -209,6 +210,9 @@ of `archive/latexguard.py`; the exact order, options and limits are in `frontend
 /api/people/<slug>/{aliases,claims,portraits}/    /api/claims/…    /api/portraits/…    /api/suggestions/…
 /api/board/  (+ rss/, <id>/{hide,restore,report,escalate}/)    /api/moderation/{escalations,evidence-audit}/…
 /api/feedback/   POST only — a note about a screen of the side app (feedback/); no GET anywhere
+/api/newsletter/ POST only — ask for an address on the MedApp newsletter (newsletter/); mails a confirmation link; 202, the same for a known address; CORS for medapp.net
+/api/newsletter/confirm/       POST {token} — the mailed link's press; 200, 410 expired, 404 unknown
+/api/newsletter/unsubscribe/   POST {token} — ends that subscription (200 also when already off); unknown 404
 /api/survey/     POST only — one anonymous questionnaire sheet from the LSD copy (survey/); no GET; no IP, no account, a date only
 /api/survey/withdraw/   POST {key} — blanks the sheet whose key this is (the key was handed back once, at submission)
 /api/wum/auth/{register,login,logout,me}/   the side app's own accounts (wum/); token-only auth, no archive powers
