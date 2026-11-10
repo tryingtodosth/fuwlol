@@ -234,6 +234,17 @@ FUWLOL_SHARE_REDIRECT_HUMANS = os.environ.get('FUWLOL_SHARE_REDIRECT_HUMANS', '1
 CORS_ALLOWED_ORIGINS = [o for o in os.environ.get(
     'FUWLOL_CORS_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',') if o]
 CSRF_TRUSTED_ORIGINS = [o for o in os.environ.get('FUWLOL_CSRF_ORIGINS', '').split(',') if o]
+# django-cors-headers answers every preflight itself, before any view; the feedback endpoint
+# answers its own (feedback/views.py), so the middleware leaves that one path alone. Every other
+# path is exactly as before.
+CORS_URLS_REGEX = r'^(?!/api/feedback/).*$'
+# Origins that may file a note at POST /api/feedback/ from another site, each with the `app` the
+# note is filed under (feedback/views.py answers CORS for these itself; CORS_ALLOWED_ORIGINS
+# above stays as it is). `origin=app,origin=app`. Today: MedApp's static copy on medapp.net.
+FUWLOL_FEEDBACK_ORIGINS = dict(
+    pair.split('=', 1) for pair in os.environ.get(
+        'FUWLOL_FEEDBACK_ORIGINS',
+        'https://medapp.net=medapp,https://www.medapp.net=medapp').split(',') if '=' in pair)
 
 STORAGES = {
     'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},

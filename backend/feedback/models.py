@@ -42,9 +42,15 @@ KIND_CHOICES = [
     ('comment', 'Komentarz'),
 ]
 
-# Which deployed app a note came from. One value today; a second surface (the archive itself,
-# say) would add one here rather than a second table with the same five columns.
-APP_CHOICES = [('skoki', 'MedApp (skoki)')]
+# How long the optional signature may be: a name, an e-mail address, a handle — one line.
+# MIRRORED in MedApp's `src/lib/feedback/api.ts` as CONTACT_MAX — change one, change the other.
+CONTACT_MAX = 200
+
+# Which deployed app a note came from. `skoki` is every copy served from this origin (WUM at /fum,
+# LSD at /lsd); `medapp` is the copy on its own domain, https://medapp.net, which files its notes
+# here across origins. A cross-origin note's app is decided by its Origin header
+# (settings.FUWLOL_FEEDBACK_ORIGINS), never by what the caller says it is.
+APP_CHOICES = [('skoki', 'MedApp (skoki)'), ('medapp', 'MedApp (medapp.net)')]
 
 # The lifecycle, as ONE field (root CLAUDE.md: never two booleans). `new` is the queue,
 # `triaged` means somebody has read it and knows where it belongs, `done` means it was acted
@@ -71,6 +77,10 @@ class Feedback(models.Model):
     # address in this project. Enough to see that thirty notes came from one laptop; never the
     # address itself.
     ip_hash = models.CharField(max_length=64, blank=True)
+    # How to answer, IF the person wanted an answer: whatever they typed into the optional
+    # "sign it" line — a name, an e-mail address, anything on one line. Personal data that they
+    # chose to give, read only in the admin and used only to reply (LEGAL.md, "Uwagi o aplikacji").
+    contact = models.CharField(max_length=CONTACT_MAX, blank=True)
     # Who wrote it, IF they happened to be signed in to fuw.lol in the same browser. MedApp has
     # no accounts and sends no token, so in practice this is null and the note is anonymous.
     author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,

@@ -214,6 +214,23 @@ k-anonymous, whatever the projection removes — may be published on an opt-in b
 wording the app shows. Withdrawn payloads also survive in the restic backups until a sweeper
 exists (`wum/CLAUDE.md` "Left open").
 
+## 9c. Notes about MedApp's screens (`backend/feedback/`)
+
+Anybody using a MedApp copy — the ones served here (`/fum`, `/lsd`) and, since 2026-11-10, the
+static copy on **https://medapp.net**, which files its notes here across origins — may leave a
+note about a screen. Stored: the kind, the text, the screen path, the interface language, the
+copy it came from (`app`, decided for a cross-origin note by its `Origin` header), a salted hash
+of the address (`board.models.hash_ip`, as on the board) and, **only if the person typed one**, a
+one-line signature (`contact`, ≤ 200 characters: a name or an e-mail address).
+
+- **The signature is optional and said to be so** beside the box, with what it is for: it is kept
+  with the note and used only to answer that note. Empty, the note is anonymous. Its basis is the
+  person's own act of giving it in order to be answered (art. 6 ust. 1 lit. a/f RODO); it is read
+  only in the Django admin and never shown elsewhere, sent on or used for anything else.
+- **Erasure:** a person who asks has their signature blanked (or the note deleted) by hand in the
+  admin; there is no sweeper yet, and the table is expected to stay small (`feedback/CLAUDE.md`).
+- The text is the person's own words; nothing in it is screened, as before.
+
 ## 9a. Koło AI — the register of members and remote votes (`backend/kolo_ai/`)
 
 **The controller is Piotr Putyło, contact `admin@fuw.lol`** (decided 2026-11-03, while the Koło is

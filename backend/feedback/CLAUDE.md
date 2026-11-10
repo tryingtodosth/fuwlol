@@ -1,7 +1,8 @@
 # feedback — one note about one screen, from an app that has no backend of its own
 
-MedApp (deployed here as **WUM**, container `skoki`, served at `fuw.lol/fum`) calls exactly
-one endpoint on this server, and this is it. 16 tests.
+MedApp (deployed here as **WUM**, container `skoki`, served at `fuw.lol/fum`, and LSD at `/lsd`)
+calls exactly one endpoint on this server, and this is it — and since 2026-11-10 so does the static
+copy on **https://medapp.net**, from another origin. 28 tests.
 
 ## Rules
 
@@ -10,7 +11,18 @@ one endpoint on this server, and this is it. 16 tests.
   `locale`, `ip_hash` (`board.models.hash_ip` — the one place in this project that hashes an
   address; not a second copy of the salt logic), `author` (null in practice: WUM has no
   accounts and sends no token), `status` `new|triaged|done|spam`, `created_at`.
-- **Only `text` can refuse a note.** `location` and `locale` are hidden fields with no
+- `contact` (≤ `CONTACT_MAX` 200): the optional one-line signature — a name or an e-mail address,
+  so the note can be answered. Typed by the person, so it **can** refuse, but only for its length
+  (keyed `contact`, so the widget says it in the reader's language); line breaks and control
+  characters are folded to spaces. Blank means anonymous. Personal data: `LEGAL.md` §9c.
+- **Across origins, this endpoint only.** `settings.FUWLOL_FEEDBACK_ORIGINS` (`origin=app,…`;
+  default medapp.net and www.medapp.net → `medapp`) are answered by the view itself:
+  `Access-Control-Allow-Origin` with that origin, POST + `Content-Type`/`Accept`, no
+  `Allow-Credentials`; a preflight spends no throttle. The project-wide `CORS_ALLOWED_ORIGINS`
+  stays empty in production and django-cors-headers is told to leave this one path alone
+  (`CORS_URLS_REGEX`), because it answers every preflight itself before any view. A listed
+  origin decides `app`; the body's `app` counts only for same-origin notes.
+- **Only `text` and `contact` can refuse a note.** `location` and `locale` are hidden fields with no
   `max_length` and `allow_null`, and anything that is not a path / not a language tag is dropped
   to `''`. Both of those refused a submission the first time the suite ran — a note lost because
   a *hidden* field was malformed is the one failure this endpoint cannot afford.
@@ -26,7 +38,7 @@ one endpoint on this server, and this is it. 16 tests.
 
 ## Mirrored constants
 
-`KIND_CHOICES` and `MAX_LEN` also live in MedApp's `src/lib/feedback/api.ts` — a **separate
+`KIND_CHOICES`, `MAX_LEN` and `CONTACT_MAX` also live in MedApp's `src/lib/feedback/api.ts` — a **separate
 repository**, so nothing can import across the two. `tests.py MirroredConstantsTests` pins this
 side so that a change is a visible diff on both.
 
@@ -42,8 +54,8 @@ first.**
 
 - No mail and no alert when a note arrives; somebody opens the admin. Same gap as everywhere
   else in this project (root `CLAUDE.md`, "No mail beyond the verification SMTP").
-- No API read path, so no in-site queue and no reply-to-the-reporter. There is nowhere to reply
-  *to*: the endpoint asks for no address, on purpose.
+- No API read path, so no in-site queue and no reply-to-the-reporter from the site. A signed note
+  is answered by hand from the admin, at whatever the person wrote.
 - Notes are never deleted or retained-out. `ip_hash` has no sweeper here, unlike
   `Post.submitter_ip` (`forget_submitter_ips`); it is a hash, not an address, and the table is
   expected to hold hundreds of rows, not millions. Revisit if either changes.

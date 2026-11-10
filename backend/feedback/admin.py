@@ -7,11 +7,11 @@ from .models import Feedback
 class FeedbackAdmin(admin.ModelAdmin):
     """The queue. `status` is the only editable field: a note is somebody's own words and is
     never edited here — it is read, filed, and left as it arrived."""
-    list_display = ['id', 'kind', 'excerpt', 'location', 'locale', 'status', 'created_at']
+    list_display = ['id', 'app', 'kind', 'excerpt', 'contact', 'location', 'locale', 'status', 'created_at']
     list_filter = ['status', 'kind', 'app', 'locale', 'created_at']
-    search_fields = ['text', 'location']
+    search_fields = ['text', 'location', 'contact']
     list_editable = ['status']
-    readonly_fields = ['app', 'kind', 'text', 'location', 'locale', 'ip_hash', 'author',
+    readonly_fields = ['app', 'kind', 'text', 'contact', 'location', 'locale', 'ip_hash', 'author',
                        'created_at']
     actions = ['mark_triaged', 'mark_done', 'mark_spam']
 

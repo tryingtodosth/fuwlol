@@ -5,10 +5,10 @@ hidden fields never refuse anything, and the response says plainly that the note
 """
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from rest_framework.authtoken.models import Token
 
-from .models import MAX_LEN, Feedback
+from .models import CONTACT_MAX, MAX_LEN, Feedback
 
 URL = '/api/feedback/'
 
@@ -143,6 +143,97 @@ class FeedbackWriteTests(TestCase):
         self.assertEqual(self.post().status_code, 429)
 
 
+class SignatureTests(TestCase):
+    """The optional "sign it" line: kept as typed on one line, refused only for its length."""
+
+    def setUp(self):
+        cache.clear()
+
+    def post(self, **kwargs):
+        body = {'kind': 'comment', 'text': 'Dobre.', 'location': '/today', 'locale': 'pl'}
+        body.update(kwargs)
+        return self.client.post(URL, body, content_type='application/json')
+
+    def test_a_note_without_a_signature_is_anonymous_as_before(self):
+        r = self.post()
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(Feedback.objects.get().contact, '')
+
+    def test_a_signature_is_kept(self):
+        self.assertEqual(self.post(contact='  Ola, ola@example.org ').status_code, 201)
+        self.assertEqual(Feedback.objects.get().contact, 'Ola, ola@example.org')
+
+    def test_line_breaks_are_folded_not_refused(self):
+        self.assertEqual(self.post(contact='Ola\r\nola@example.org\t').status_code, 201)
+        self.assertEqual(Feedback.objects.get().contact, 'Ola ola@example.org')
+
+    def test_null_and_blank_are_anonymous(self):
+        for value in (None, '', '   '):
+            self.assertEqual(self.post(contact=value).status_code, 201, value)
+        self.assertEqual(set(Feedback.objects.values_list('contact', flat=True)), {''})
+
+    def test_a_signature_over_the_limit_is_refused_by_name_and_one_at_it_is_not(self):
+        self.assertEqual(self.post(contact='a' * CONTACT_MAX).status_code, 201)
+        r = self.post(contact='a' * (CONTACT_MAX + 1))
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('contact', r.json())
+        self.assertEqual(Feedback.objects.count(), 1)
+
+
+@override_settings(FUWLOL_FEEDBACK_ORIGINS={'https://medapp.net': 'medapp'})
+class CrossOriginTests(TestCase):
+    """medapp.net files notes here from another origin; nothing else is opened."""
+
+    def setUp(self):
+        cache.clear()
+
+    def post(self, origin, **kwargs):
+        body = {'kind': 'bug', 'text': 'Przycisk nie działa.', 'location': '/today', 'locale': 'en'}
+        body.update(kwargs)
+        return self.client.post(URL, body, content_type='application/json', HTTP_ORIGIN=origin)
+
+    def test_the_preflight_from_a_listed_origin_is_answered(self):
+        r = self.client.options(URL, HTTP_ORIGIN='https://medapp.net',
+                                HTTP_ACCESS_CONTROL_REQUEST_METHOD='POST',
+                                HTTP_ACCESS_CONTROL_REQUEST_HEADERS='content-type')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r['Access-Control-Allow-Origin'], 'https://medapp.net')
+        self.assertIn('POST', r['Access-Control-Allow-Methods'])
+        self.assertIn('Content-Type', r['Access-Control-Allow-Headers'])
+        self.assertNotIn('Access-Control-Allow-Credentials', r)
+
+    def test_a_note_from_a_listed_origin_is_filed_under_its_app(self):
+        r = self.post('https://medapp.net', app='skoki', contact='x@example.org')
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(r['Access-Control-Allow-Origin'], 'https://medapp.net')
+        self.assertIn('Origin', r['Vary'])
+        note = Feedback.objects.get()
+        self.assertEqual(note.app, 'medapp')
+        self.assertEqual(note.contact, 'x@example.org')
+
+    def test_an_unlisted_origin_gets_no_cors_headers(self):
+        r = self.post('https://evil.example')
+        self.assertNotIn('Access-Control-Allow-Origin', r)
+        r = self.client.options(URL, HTTP_ORIGIN='https://evil.example',
+                                HTTP_ACCESS_CONTROL_REQUEST_METHOD='POST')
+        self.assertNotIn('Access-Control-Allow-Origin', r)
+
+    def test_same_origin_notes_keep_their_app(self):
+        self.assertEqual(self.post('https://fuw.lol').status_code, 201)
+        self.assertEqual(Feedback.objects.get().app, 'skoki')
+
+    def test_a_preflight_does_not_spend_the_allowance(self):
+        for _ in range(130):
+            self.client.options(URL, HTTP_ORIGIN='https://medapp.net',
+                                HTTP_ACCESS_CONTROL_REQUEST_METHOD='POST')
+        self.assertEqual(self.post('https://medapp.net').status_code, 201)
+
+    def test_the_other_endpoints_are_not_opened(self):
+        r = self.client.options('/api/wum/', HTTP_ORIGIN='https://medapp.net',
+                                HTTP_ACCESS_CONTROL_REQUEST_METHOD='POST')
+        self.assertNotIn('Access-Control-Allow-Origin', r)
+
+
 class MirroredConstantsTests(TestCase):
     """`KIND_CHOICES` and `MAX_LEN` exist twice — here and in MedApp's widget, which is a
     SEPARATE REPOSITORY and therefore cannot be imported. This test pins the server's copy so
@@ -154,3 +245,4 @@ class MirroredConstantsTests(TestCase):
         self.assertEqual([k for k, _ in KIND_CHOICES],
                          ['bug', 'suggestion', 'idea', 'comment'])
         self.assertEqual(MAX_LEN, 4096)
+        self.assertEqual(CONTACT_MAX, 200)

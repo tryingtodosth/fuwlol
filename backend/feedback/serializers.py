@@ -16,12 +16,14 @@ import re
 
 from rest_framework import serializers
 
-from .models import APP_CHOICES, KIND_CHOICES, MAX_LEN
+from .models import APP_CHOICES, CONTACT_MAX, KIND_CHOICES, MAX_LEN
 
 # A router path and nothing else: one leading slash (never two — `//host` is a URL), then no
 # whitespace, no control characters, no scheme. Query and fragment are allowed because a screen
 # can be a filter state (`/history?symptom=3`) and that is worth knowing.
 LOCATION_RE = re.compile(r'^/(?!/)[^\s\x00-\x1f]{0,199}$')
+# Line breaks and other control characters in the signature become spaces.
+CONTROL_RE = re.compile(r'[\x00-\x1f\x7f]')
 # `pl`, `uk`, `en`, and a regional pair like `pt-BR`. Anything else is dropped, not refused.
 LOCALE_RE = re.compile(r'^[a-z]{2}(-[A-Za-z]{2})?$')
 
@@ -45,6 +47,12 @@ class FeedbackWriteSerializer(serializers.Serializer):
     locale = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     app = serializers.ChoiceField(choices=[c[0] for c in APP_CHOICES], required=False,
                                   default='skoki')
+    # The optional signature. Typed by the person, so unlike the hidden fields it CAN refuse —
+    # only for being longer than one line holds, and the refusal is keyed by the field name
+    # (`contact`) so the widget says it in the reader's language while the sheet is still open.
+    # Line breaks and control characters are folded to spaces, never refused.
+    contact = serializers.CharField(required=False, allow_blank=True, allow_null=True,
+                                    trim_whitespace=True)
     # Honeypot, as on the board: a real widget leaves this empty because no reader can see it.
     website = serializers.CharField(required=False, allow_blank=True)
 
@@ -60,6 +68,12 @@ class FeedbackWriteSerializer(serializers.Serializer):
         if len(text) > MAX_LEN:
             raise serializers.ValidationError(f'Najwyżej {MAX_LEN} znaków.')
         return text
+
+    def validate_contact(self, value):
+        contact = ' '.join(CONTROL_RE.sub(' ', value or '').split())
+        if len(contact) > CONTACT_MAX:
+            raise serializers.ValidationError(f'Podpis: najwyżej {CONTACT_MAX} znaków.')
+        return contact
 
     def validate_location(self, value):
         """Never refuses — see the module docstring. Anything that is not a path becomes ''."""
