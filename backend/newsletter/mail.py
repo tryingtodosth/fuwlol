@@ -9,6 +9,8 @@ the token is in no access log and no Referer. The page asks for a press before i
 
 Plain text, in the person's interface language (en / pl / uk; anything else gets English).
 """
+from email.utils import make_msgid, parseaddr
+
 from django.conf import settings
 from django.core.mail import EmailMessage, get_connection
 
@@ -78,6 +80,11 @@ def unsubscribe_url(row):
     return page_url(row, 'unsubscribe=' + row.unsubscribe_token())
 
 
+def _sender_domain(from_line):
+    """The domain of the From address ('medapp.net <info@medapp.net>' → 'medapp.net')."""
+    return parseaddr(from_line)[1].rpartition('@')[2] or 'medapp.net'
+
+
 def _send(row, subject, paragraphs):
     cfg = settings.FUWLOL_NEWSLETTER_MAIL
     sign = f'—\nmedapp.net · {cfg["reply_to"]}' if cfg['reply_to'] else '—\nmedapp.net'
@@ -87,8 +94,11 @@ def _send(row, subject, paragraphs):
         from_email=cfg['from'],
         to=[row.email],
         reply_to=[cfg['reply_to']] if cfg['reply_to'] else None,
+        # The Message-ID names the sender's domain, not the container's hostname, which Django's
+        # default would put there (spam filters mark an id without a real domain down).
         headers={'Auto-Submitted': 'auto-generated',
-                 'List-Unsubscribe': f'<{unsubscribe_url(row)}>'},
+                 'List-Unsubscribe': f'<{unsubscribe_url(row)}>',
+                 'Message-ID': make_msgid(domain=_sender_domain(cfg['from']))},
         # The project's EMAIL_BACKEND (console in DEBUG, locmem under tests, SMTP in production)
         # with the medapp.net mailbox's server and login; the other two backends ignore them.
         connection=get_connection(host=cfg['host'], port=cfg['port'], username=cfg['user'],

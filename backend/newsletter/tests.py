@@ -59,6 +59,7 @@ class SubscribeTests(NewsletterCase):
         self.assertEqual(m.to, ['vet@example.org'])
         self.assertEqual(m.from_email, 'medapp.net <info@medapp.net>')
         self.assertEqual(m.reply_to, ['info@medapp.net'])
+        self.assertRegex(m.message()['Message-ID'], r'^<[^@<>\s]+@medapp\.net>$')
         self.assertIn('Potwierdź', m.subject)
         self.assertIn('https://medapp.net/pl/newsletter#confirm=', m.body)
         self.assertIn(f'{CONFIRM_DAYS} dni', m.body)
