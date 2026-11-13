@@ -1,4 +1,4 @@
-# backend/ — Django 5.2 + DRF, 11 apps + `config/`, SQLite locally / Postgres in production
+# backend/ — Django 5.2 + DRF, 13 apps + `config/`, SQLite locally / Postgres in production
 
 Scoped context for backend work. The cross-cutting rules are in the root `CLAUDE.md`; the reasoning
 is in `DESIGN.md`; each app's own `CLAUDE.md` has its rules; `MODERATION-API.md` documents the
@@ -6,7 +6,7 @@ trusted-tier, moderation, escalation, R2 and chat endpoints one by one.
 
 ## Run / test
 
-- `cd backend && FUWLOL_CACHE_DIR=<scratch> ../.venv/bin/python manage.py test` — 572 tests,
+- `cd backend && FUWLOL_CACHE_DIR=<scratch> ../.venv/bin/python manage.py test` — 663 tests (2026-11-13),
   about 4 minutes, SQLite, no daemon. `manage.py check`, `manage.py makemigrations --check
   --dry-run` (CI enforces the latter; a model change without its migration fails the deploy).
 - Dev server: `./run.sh` from the repo root, or by hand
@@ -67,7 +67,9 @@ cache: when a test or a browser run hits 429, it is the cache, not the code.
 ## The side apps' endpoints
 
 `feedback/` and `wum/` exist for WUM (`fuw.lol/fum`), whose only server is this one, and
-`survey/` for LSD (`fuw.lol/lsd`, the second copy of the same app, since 2026-11). Every view in
+`survey/` for LSD (`fuw.lol/lsd`, the second copy of the same app, since 2026-11); `newsletter/` and
+`vetdir/` serve medapp.net, a static copy on another origin, by `fetch` with CORS answered by their
+views (`newsletter/CLAUDE.md`, `vetdir/CLAUDE.md`). Every view in
 all three is `TokenAuthentication` only — **not** the project default, because the app is same-origin
 with the archive and a visitor's stray session cookie would otherwise trip DRF's CSRF check and
 answer 403 to somebody filing a bug report or signing up. `POST /api/feedback/` is anonymous, scope
@@ -79,12 +81,16 @@ scope `survey` 60/hour (a room behind one NAT finishing a quarter-hour sheet), a
 in this project built to hold NOTHING about its sender — no `ip_hash`, no FK, a DATE instead of a
 timestamp; the one opt-in way back (a key) is stored as a hash and
 `POST /api/survey/withdraw/` blanks a sheet for whoever holds its key (`survey/models.py`,
-`LEGAL.md` §9b). `feedback/CLAUDE.md`, `wum/CLAUDE.md` and `survey/CLAUDE.md` have the rest.
+`LEGAL.md` §9b). `/api/vetdir/…` (2026-11-13) is MedApp's clinic directory: a clinic's
+structured public card, listed and changed with a key the server keeps as a hash, and pet owners'
+visit requests confirmed by a mailed link — no authentication class at all, no IP, no account, a
+request's personal fields blanked 30 days after it ends (`vetdir/rules.sweep`, run at every write).
+`feedback/CLAUDE.md`, `wum/CLAUDE.md`, `survey/CLAUDE.md` and `vetdir/CLAUDE.md` have the rest.
 
 ## URL include order (`config/urls.py`)
 
-`api/moderation/` → `escalation.urls`; `api/feedback/`, `api/wum/` and `api/survey/` on their own
-prefixes; then
+`api/moderation/` → `escalation.urls`; `api/feedback/`, `api/newsletter/`, `api/vetdir/`, `api/wum/`
+and `api/survey/` on their own prefixes; then
 `portraits.urls` and `consent.urls` under `api/` **before** `archive.urls`, because the archive
 router is greedy on `people/<slug>/`; then `share/`.
 `MEDIA_URL` is served by Django only under DEBUG — in production nginx serves `/media/` from the
@@ -112,11 +118,14 @@ deletes unclaimed objects after a day.
 | `make_share_images` | share | draws the three 1200×630 fallback cards into `frontend/static/`; committed |
 | `export_survey <slug> [--format jsonl\|csv] [--since YYYY-MM-DD] [--include-withdrawn]` | survey | by hand, by the study team — one survey's sheets to stdout; never cron |
 | `survey_withdraw --key KEY \| --id N [--dry-run]` | survey | by hand, when a person asks — blanks their sheet (no `--email` since SURVEY-R3, 2026-11-07) |
+| `vetdir_seed_examples [--clear]` | vetdir | by hand, if at all — five fictional example listings and their requests, marked `example`, mailed nobody (`vetdir/CLAUDE.md`); `--clear` removes exactly them |
+| `vetdir_sweep` | vetdir | optional — every vetdir write already runs the same sweep (requests blanked after 30 days, unconfirmed after 2, never-confirmed listings deleted after 30) |
 
 ## Migrations
 
-20 across eight apps (`share` has no models; `wum/0001` is the side app's three tables, 2026-10;
-`survey/0001` is the LSD copy's one table, 2026-11; `survey/0002` drops its e-mail hash, SURVEY-R3).
+32 across twelve apps as of 2026-11-13 (`share` has no models; `wum/0001` is the side app's three tables, 2026-10;
+`survey/0001` is the LSD copy's one table, 2026-11; `survey/0002` drops its e-mail hash, SURVEY-R3;
+`vetdir/0001` is the clinic directory's two tables, 2026-11-13, no data).
 Four carry data: `accounts/0002` seeds the trusted
 domains from `trust.TRUSTED_DOMAINS_SEED`; `archive/0003` back-fills the search columns;
 `archive/0007` files every existing person with `people.py`'s pure functions; `archive/0008` seeds

@@ -13,6 +13,9 @@ urlpatterns = [
     path('api/feedback/', include('feedback.urls')),
     # The MedApp newsletter's list (newsletter/): sign up and unsubscribe, POST only.
     path('api/newsletter/', include('newsletter.urls')),
+    # The clinic directory (vetdir/): a clinic's public card and owners' visit requests, called
+    # across origins from medapp.net. Own prefix, before the archive's greedy router.
+    path('api/vetdir/', include('vetdir.urls')),
     # The side app's accounts, example templates and anonymised publications (wum/). Same
     # reasoning as feedback: its own prefix, placed before the archive's greedy router.
     path('api/wum/', include('wum.urls')),

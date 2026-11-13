@@ -125,6 +125,9 @@ commenting on them (a new `backend/annotations/` app, anonymous or token-authent
   `REMARKS_KEY`, `MAX_REMARKS`, `MAX_LIST`, `MAX_LIST_ITEM`, `MAX_INT`, `MAX_ANSWERS_BYTES`,
   `MAX_DURATION_S`, `MAX_KEY` ↔ `src/lib/survey/api.ts` in the medapp repository, and the mount `/lsd` ↔
   `location /lsd/` ↔ that repository's `lsd-` build (`survey/CLAUDE.md` "Mirrored constants");
+  the clinic directory's vocabularies, transition table, card and request keys and limits —
+  `vetdir/rules.py` ↔ `src/lib/vetdir/api.ts` in the medapp repository (`vetdir/CLAUDE.md`
+  "Mirrored constants");
   the report-reason lists. Change one, change
   the other, keep the comment that names it.
 
@@ -213,6 +216,8 @@ of `archive/latexguard.py`; the exact order, options and limits are in `frontend
 /api/newsletter/ POST only — ask for an address on the MedApp newsletter (newsletter/); mails a confirmation link; 202, the same for a known address; CORS for medapp.net
 /api/newsletter/confirm/       POST {token} — the mailed link's press; 200, 410 expired, 404 unknown
 /api/newsletter/unsubscribe/   POST {token} — ends that subscription (200 also when already off); unknown 404
+/api/vetdir/listings/ (+ confirm/, <id>/, <id>/unlist/, <id>/requests/, <id>/requests/<rid>/)   MedApp's clinic directory (vetdir/): a clinic's structured public card, its key returned once and kept as a hash; owners' visit requests, always 202; CORS for medapp.net
+/api/vetdir/requests/{confirm,cancel}/   POST {token} — an owner's mailed link: send the request to the clinic, or cancel it
 /api/survey/     POST only — one anonymous questionnaire sheet from the LSD copy (survey/); no GET; no IP, no account, a date only
 /api/survey/withdraw/   POST {key} — blanks the sheet whose key this is (the key was handed back once, at submission)
 /api/wum/auth/{register,login,logout,me}/   the side app's own accounts (wum/); token-only auth, no archive powers

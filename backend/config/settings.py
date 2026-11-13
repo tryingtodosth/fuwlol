@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     'portraits',
     'share',
     'survey',
+    'vetdir',
     'wum',
     'kolo_ai',
 ]
@@ -162,6 +163,15 @@ REST_FRAMEWORK = {
         # Withdrawing one by its key (survey/views.py). A 256-bit key cannot be guessed at any
         # rate this allows; the scope exists so that the sending budget is not spent on it.
         'survey_withdraw': '20/hour',
+        # The clinic directory (vetdir/views.py), from MedApp's vet app and its owner pages on
+        # medapp.net. A listing mails its clinic and an owner's request mails the owner, so those two
+        # are low, like the newsletter; the mailed links' presses share `vetdir_token`; the clinic's
+        # own reads and decisions with its key are a desk's morning, and the public page is a read.
+        'vetdir_listing': '10/hour',
+        'vetdir_request': '20/hour',
+        'vetdir_token': '60/hour',
+        'vetdir_clinic': '600/hour',
+        'vetdir_read': '600/hour',
         'presign': '60/hour',  # one per file; a six-file post costs six
         'suggest': '20/hour',  # edit suggestions: a real correction is rare, a flood is not
         'verify': '5/hour',  # institutional-address confirmation mails, per user
@@ -241,10 +251,10 @@ CORS_ALLOWED_ORIGINS = [o for o in os.environ.get(
     'FUWLOL_CORS_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',') if o]
 CSRF_TRUSTED_ORIGINS = [o for o in os.environ.get('FUWLOL_CSRF_ORIGINS', '').split(',') if o]
 # django-cors-headers answers every preflight itself, before any view; the feedback and newsletter
-# endpoints answer their own (feedback/views.py, newsletter/views.py), so the middleware leaves
+# endpoints answer their own (feedback/views.py, newsletter/views.py, vetdir/views.py), so the middleware leaves
 # those paths alone. Every other
 # path is exactly as before.
-CORS_URLS_REGEX = r'^(?!/api/(feedback|newsletter)/).*$'
+CORS_URLS_REGEX = r'^(?!/api/(feedback|newsletter|vetdir)/).*$'
 # Origins that may file a note at POST /api/feedback/ from another site, each with the `app` the
 # note is filed under (feedback/views.py answers CORS for these itself; CORS_ALLOWED_ORIGINS
 # above stays as it is). `origin=app,origin=app`. Today: MedApp's static copy on medapp.net.
@@ -273,6 +283,18 @@ FUWLOL_NEWSLETTER_MAIL = {
     'from': os.environ.get('FUWLOL_NEWSLETTER_FROM_EMAIL', 'medapp.net <info@medapp.net>'),
     'reply_to': os.environ.get('FUWLOL_NEWSLETTER_REPLY_TO', 'info@medapp.net'),
 }
+# The clinic directory (vetdir/): the origins that may call it (origin=source), where its mailed
+# links point per source (that copy's `/vets/confirm` page), and the mailbox it sends from — by
+# default the newsletter's (medapp.net's own, info@medapp.net), since a clinic and an owner both
+# met the directory on medapp.net.
+FUWLOL_VETDIR_ORIGINS = dict(
+    pair.split('=', 1) for pair in os.environ.get(
+        'FUWLOL_VETDIR_ORIGINS',
+        'https://medapp.net=medapp,https://www.medapp.net=medapp').split(',') if '=' in pair)
+FUWLOL_VETDIR_SITES = dict(
+    pair.split('=', 1) for pair in os.environ.get(
+        'FUWLOL_VETDIR_SITES', 'medapp=https://medapp.net').split(',') if '=' in pair)
+FUWLOL_VETDIR_MAIL = FUWLOL_NEWSLETTER_MAIL
 
 STORAGES = {
     'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
